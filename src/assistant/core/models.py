@@ -48,6 +48,17 @@ class ReminderStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class ReminderStatusType(TypeDecorator[ReminderStatus]):
+    impl = String(16)
+    cache_ok = True
+
+    def process_bind_param(self, value: ReminderStatus | None, dialect: Dialect) -> str | None:
+        return None if value is None else ReminderStatus(value).value
+
+    def process_result_value(self, value: str | None, dialect: Dialect) -> ReminderStatus | None:
+        return None if value is None else ReminderStatus(value)
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -89,7 +100,9 @@ class Reminder(Base):
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"))
     text: Mapped[str] = mapped_column(Text)
     due_at: Mapped[datetime] = mapped_column(UTCDateTime)
-    status: Mapped[ReminderStatus] = mapped_column(String(16), default=ReminderStatus.PENDING)
+    status: Mapped[ReminderStatus] = mapped_column(
+        ReminderStatusType(), default=ReminderStatus.PENDING
+    )
     attempts: Mapped[int] = mapped_column(default=0)
     next_attempt_at: Mapped[datetime] = mapped_column(UTCDateTime)
     last_error: Mapped[str | None] = mapped_column(Text)

@@ -33,6 +33,7 @@ async def test_utc_datetime_roundtrip(session, make_user) -> None:
     stored = (await session.execute(select(Reminder))).scalar_one()
     assert stored.due_at == due and stored.due_at.tzinfo is not None
     assert stored.status == ReminderStatus.PENDING and stored.attempts == 0
+    assert isinstance(stored.status, ReminderStatus)
 
 
 async def test_naive_datetime_rejected(session, make_user) -> None:
