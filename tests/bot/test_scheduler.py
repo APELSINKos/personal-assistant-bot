@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from aiogram.exceptions import (
+    ClientDecodeError,
     TelegramBadRequest,
     TelegramForbiddenError,
     TelegramNetworkError,
@@ -13,6 +14,7 @@ from aiogram.exceptions import (
 from aiogram.methods import SendMessage
 from sqlalchemy import select
 
+from assistant.bot import scheduler as scheduler_module
 from assistant.bot.scheduler import Scheduler
 from assistant.core.models import FsmState, Reminder, ReminderStatus
 from assistant.core.services import reminders
@@ -128,6 +130,46 @@ async def test_bad_request_fails_without_blocking(scheduler, session, make_user,
     assert not (await reload(session, user)).bot_blocked
 
 
+async def test_client_decode_error_does_not_stop_the_batch(
+    scheduler, session, make_user, fake
+) -> None:
+    await make_user(id=1, morning_enabled=False)
+    await make_user(id=2, morning_enabled=False)
+    first = await add_reminder(session, user_id=1, ago=timedelta(minutes=2), text="полить цветы")
+    second = await add_reminder(session, user_id=2, ago=timedelta(minutes=1), text="call mom")
+    fake.errors.append(ClientDecodeError("failed to decode", ValueError("bad json"), b"<html>"))
+    assert await scheduler.deliver_reminders(NOW) == 1
+    # Both were attempted (the fake records the outgoing call before the error), only
+    # the second one actually went through.
+    assert fake.sent_texts() == ["⏰ Напоминание: полить цветы", "⏰ Напоминание: call mom"]
+    first = await reload(session, first)
+    assert (first.status, first.attempts) == (ReminderStatus.PENDING, 1)
+    assert first.next_attempt_at == NOW + timedelta(seconds=reminders.BACKOFF[0])
+    assert (await reload(session, second)).status == ReminderStatus.SENT
+
+
+async def test_unexpected_error_for_one_reminder_does_not_stop_the_batch(
+    scheduler, session, make_user, fake, monkeypatch
+) -> None:
+    await make_user(id=1, morning_enabled=False)
+    await make_user(id=2, morning_enabled=False)
+    first = await add_reminder(session, user_id=1, ago=timedelta(minutes=2), text="broken")
+    await add_reminder(session, user_id=2, ago=timedelta(minutes=1), text="ok")
+    original = scheduler_module.reminder_text
+
+    def flaky(reminder, user, now, t):
+        if reminder.text == "broken":
+            raise RuntimeError("boom")
+        return original(reminder, user, now, t)
+
+    monkeypatch.setattr(scheduler_module, "reminder_text", flaky)
+    assert await scheduler.deliver_reminders(NOW) == 1
+    assert fake.sent_texts() == ["⏰ Напоминание: ok"]
+    first = await reload(session, first)
+    assert (first.status, first.attempts) == (ReminderStatus.PENDING, 1)
+    assert first.next_attempt_at == NOW + timedelta(seconds=reminders.BACKOFF[0])
+
+
 # 23:30 Moscow = 20:30 UTC; the window lasts until 00:30 of the next local day.
 AT_2345 = datetime(2026, 9, 28, 20, 45, tzinfo=UTC)
 AT_0015 = datetime(2026, 9, 28, 21, 15, tzinfo=UTC)
@@ -173,6 +215,36 @@ async def test_digest_403_blocks_user(scheduler, session, make_user, fake) -> No
     await scheduler.send_digests(AT_2345)
     user = await reload(session, user)
     assert user.bot_blocked and user.last_morning_date is None
+
+
+async def test_digest_bad_request_sets_last_morning_date_without_retry(
+    scheduler, session, make_user, fake
+) -> None:
+    user = await make_user(morning_time="23:30")
+    fake.errors.append(TelegramBadRequest(method=METHOD, message="Bad Request: chat not found"))
+    assert await scheduler.send_digests(AT_2345) == 0
+    user = await reload(session, user)
+    assert user.last_morning_date == date(2026, 9, 28)
+    assert not user.bot_blocked
+    assert await scheduler.send_digests(AT_0015) == 0
+    assert len(fake.calls) == 1
+
+
+async def test_digest_one_user_raising_does_not_stop_others(
+    scheduler, session, make_user, fake, monkeypatch
+) -> None:
+    await make_user(id=1, morning_time="23:30")
+    await make_user(id=2, morning_time="23:30")
+    original = Scheduler._digest
+
+    async def flaky(self, user_id, day, now):
+        if user_id == 1:
+            raise RuntimeError("boom")
+        return await original(self, user_id, day, now)
+
+    monkeypatch.setattr(Scheduler, "_digest", flaky)
+    assert await scheduler.send_digests(AT_2345) == 1
+    assert len(fake.calls) == 1
 
 
 async def test_tick_survives_a_failing_job(

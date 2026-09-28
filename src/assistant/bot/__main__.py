@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 
 import httpx
@@ -41,8 +40,12 @@ async def main() -> None:
             await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
         finally:
             background.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
+            try:
                 await background
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                log.exception("scheduler task ended with an error")
             await bot.session.close()
             await engine.dispose()
 

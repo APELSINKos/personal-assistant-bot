@@ -7,9 +7,11 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from functools import partial
 
 from aiogram import Bot
 from aiogram.exceptions import (
+    ClientDecodeError,
     TelegramAPIError,
     TelegramBadRequest,
     TelegramForbiddenError,
@@ -112,38 +114,88 @@ class Scheduler:
             return Delivery(False, permanent=True, error=error.message)
         except TelegramNetworkError as error:
             return Delivery(False, error=f"network: {error.message}")
+        except ClientDecodeError as error:  # a non-JSON body, usually an HTML 502/504: temporary
+            return Delivery(False, error=f"decode: {error.message}")
         except TelegramAPIError as error:  # 5xx, conflicts, anything else: temporary
             return Delivery(False, error=f"{type(error).__name__}: {error.message}")
         return Delivery(True)
 
+    async def _update_reminder(self, reminder_id: int, mutate: Callable[[Reminder], None]) -> None:
+        """Re-fetch one reminder in its own session and commit a single mutation.
+
+        Never holds a write transaction open across a network await: each call opens,
+        writes and commits before returning. A reminder gone by the time we get here
+        (e.g. the user was deleted meanwhile) is silently skipped.
+        """
+        async with self._sessionmaker() as session:
+            reminder = await session.get(Reminder, reminder_id)
+            if reminder is not None:
+                mutate(reminder)
+                await session.commit()
+
+    async def _fail_and_block(self, reminder_id: int, user_id: int, error: str) -> None:
+        async with self._sessionmaker() as session:
+            reminder = await session.get(Reminder, reminder_id)
+            if reminder is not None:
+                reminders.mark_failed(reminder, error)
+            await users.mark_blocked(session, user_id)
+            await session.commit()
+
     async def deliver_reminders(self, now: datetime) -> int:
         sent = 0
         async with self._sessionmaker() as session:
-            blocked: set[int] = set()
-            for reminder, user in await reminders.due(session, now):
-                if user.id in blocked:
-                    continue
+            batch = await reminders.due(session, now)
+        # The read session above is closed before any send; each outcome below is then
+        # written in its own short session, so one reminder's failure (a decode error, a
+        # busy database, a bug) cannot corrupt or abort the delivery of the others.
+        blocked: set[int] = set()
+        for reminder, user in batch:
+            if user.id in blocked:
+                continue
+            try:
                 delivery = await self._send(
                     user.id, reminder_text(reminder, user, now, _translator(user))
                 )
-                if delivery.ok:
-                    reminders.mark_sent(reminder, now)
-                    sent += 1
-                elif delivery.retry_after is not None:
-                    reminders.schedule_retry(reminder, now, delivery.error, delivery.retry_after)
-                    await session.commit()
+                if delivery.retry_after is not None:
+                    await self._update_reminder(
+                        reminder.id,
+                        partial(
+                            reminders.schedule_retry,
+                            now=now,
+                            error=delivery.error,
+                            retry_after=delivery.retry_after,
+                        ),
+                    )
                     log.warning("Telegram asked to wait %.0f s", delivery.retry_after)
                     break
+                if delivery.ok:
+                    await self._update_reminder(reminder.id, partial(reminders.mark_sent, now=now))
+                    sent += 1
                 elif delivery.blocked:
-                    reminders.mark_failed(reminder, delivery.error)
-                    await users.mark_blocked(session, user.id)
+                    await self._fail_and_block(reminder.id, user.id, delivery.error)
                     blocked.add(user.id)
+                    log.info("reminder %s failed permanently: %s", reminder.id, delivery.error)
                 elif delivery.permanent:
-                    reminders.mark_failed(reminder, delivery.error)
+                    await self._update_reminder(
+                        reminder.id, partial(reminders.mark_failed, error=delivery.error)
+                    )
+                    log.info("reminder %s failed permanently: %s", reminder.id, delivery.error)
                 else:
-                    reminders.schedule_retry(reminder, now, delivery.error)
+                    await self._update_reminder(
+                        reminder.id,
+                        partial(reminders.schedule_retry, now=now, error=delivery.error),
+                    )
                     log.warning("reminder %s not delivered: %s", reminder.id, delivery.error)
-                await session.commit()
+            except Exception as error:
+                # An unexpected failure (a busy database, a formatting bug) must not pin
+                # this reminder at the head of the queue and must not stop the rest of
+                # the batch: log it, push the reminder back with the normal backoff, and
+                # move on. No reminder text in the log — only ids and error types.
+                log.exception("reminder %s failed", reminder.id)
+                await self._update_reminder(
+                    reminder.id,
+                    partial(reminders.schedule_retry, now=now, error=type(error).__name__),
+                )
         return sent
 
     async def send_digests(self, now: datetime) -> int:
@@ -165,6 +217,8 @@ class Scheduler:
                 # One broken user must not stop the others; their own session is gone already.
                 log.exception("morning digest for user %s failed", user.id)
                 continue
+            if not delivery.ok:
+                log.warning("morning digest for user %s not delivered: %s", user.id, delivery.error)
             sent += int(delivery.ok)
             if delivery.retry_after is not None:
                 break
