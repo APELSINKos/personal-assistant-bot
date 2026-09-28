@@ -75,5 +75,5 @@ def test_dates() -> None:
 
 
 def test_numbers() -> None:
-    assert i18n.format_number(1500.5, "ru") == "1 500,50"
+    assert i18n.format_number(1500.5, "ru") == "1\xa0500,50"
     assert i18n.format_number(1500.5, "en") == "1,500.50"

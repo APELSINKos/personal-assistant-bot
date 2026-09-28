@@ -56,5 +56,4 @@ def format_short_day(day: date, lang: str) -> str:
 
 def format_number(value: float, lang: str, digits: int = 2) -> str:
     pattern = "#,##0." + "0" * digits if digits else "#,##0"
-    result = str(format_decimal(value, format=pattern, locale=lang))
-    return result.replace("\xa0", " ")
+    return str(format_decimal(value, format=pattern, locale=lang))
