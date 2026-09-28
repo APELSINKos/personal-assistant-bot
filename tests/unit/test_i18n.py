@@ -77,3 +77,11 @@ def test_dates() -> None:
 def test_numbers() -> None:
     assert i18n.format_number(1500.5, "ru") == "1\xa0500,50"
     assert i18n.format_number(1500.5, "en") == "1,500.50"
+
+
+def test_tip_plurals_ru() -> None:
+    t = i18n.translator("ru")
+    rain = t("tip-precip-soon", kind="rain", minutes=45)
+    snow = t("tip-precip-soon", kind="snow", minutes=21)
+    assert rain == "🌧 Через 45 минут дождь — возьми зонт"
+    assert snow == "🌨 Через 21 минуту снег — надень капюшон"
