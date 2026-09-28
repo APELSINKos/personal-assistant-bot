@@ -81,3 +81,52 @@ cmd-app = Open the app
 cmd-settings = Settings
 cmd-help = What the bot can do
 cmd-cancel = Cancel input
+
+## Weather
+weather-now = { $emoji } { $city }: { $temp }, { $description }
+weather-feels = Feels like { $feels }, wind { $wind } m/s
+weather-range = Today: { $range }
+weather-unavailable = ⚠️ Couldn't get the weather. Please try again a bit later.
+weather-change-city = 🏙 Change city
+
+## My day and the morning digest
+today-title = { $part ->
+        [morning] 🌅 Good morning
+        [day] ☀️ Good afternoon
+        [evening] 🌆 Good evening
+       *[night] 🌙 Hello
+    }, { $name }!
+today-date = 📅 Today, { $weekday }, { $date }
+today-weather-unavailable = 🌤 Weather is temporarily unavailable
+today-reminders = { $count ->
+        [0] 📌 No reminders for today
+        [one] 📌 { $count } reminder for today:
+       *[other] 📌 { $count } reminders for today:
+    }
+list-item-time = • { $time } — { $text }
+today-habits = 🎯 Habits: { $done } of { $total }
+today-habits-none = 🎯 No habits yet
+today-streak = 🔥 Best streak: “{ $name }” — { $count } { $count ->
+        [one] day
+       *[other] days
+    }
+today-notes = 📝 Notes: { $count }
+today-rates = 💵 { $usd } ₽ · 💶 { $eur } ₽
+morning-title = ☀️ Good morning, { $name }!
+morning-date = 📅 { $weekday }, { $date }
+morning-weather = 🌡 { $city }: { $range }
+morning-reminders = { $count ->
+        [0] 📌 No reminders for today
+       *[other] 📌 Today:
+    }
+morning-habits = 🎯 Habits for today: { $count } — don't forget to mark them
+
+## Exchange rates
+rates-title = 💱 Bank of Russia rates for { $date }
+rates-line = { $emoji } { $code }: { $value } ₽  { $arrow } { $change }
+rates-converter = Converter 👇
+rates-unavailable = ⚠️ Couldn't get the rates. Please try again a bit later.
+rates-ask = How many { $source } to convert to { $target }?
+hint-amount = Send the amount as a number, e.g. 100 or 99.5.
+rates-bad-amount = I need a number above zero and up to one billion, e.g. 100 or 99.5. Try again:
+rates-result = 💱 { $amount } { $source } = { $result } { $target }

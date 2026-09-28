@@ -90,3 +90,54 @@ cmd-app = Открыть приложение
 cmd-settings = Настройки
 cmd-help = Что умеет бот
 cmd-cancel = Отменить ввод
+
+## Weather
+weather-now = { $emoji } { $city }: { $temp }, { $description }
+weather-feels = Ощущается как { $feels }, ветер { $wind } м/с
+weather-range = Сегодня: { $range }
+weather-unavailable = ⚠️ Не удалось получить погоду. Попробуй чуть позже.
+weather-change-city = 🏙 Сменить город
+
+## My day and the morning digest
+today-title = { $part ->
+        [morning] 🌅 Доброе утро
+        [day] ☀️ Добрый день
+        [evening] 🌆 Добрый вечер
+       *[night] 🌙 Доброй ночи
+    }, { $name }!
+today-date = 📅 Сегодня, { $date }, { $weekday }
+today-weather-unavailable = 🌤 Погода временно недоступна
+today-reminders = { $count ->
+        [0] 📌 На сегодня напоминаний нет
+        [one] 📌 На сегодня { $count } напоминание:
+        [few] 📌 На сегодня { $count } напоминания:
+       *[many] 📌 На сегодня { $count } напоминаний:
+    }
+list-item-time = • { $time } — { $text }
+today-habits = 🎯 Привычки: { $done } из { $total }
+today-habits-none = 🎯 Привычек пока нет
+today-streak = 🔥 Лучшая серия: «{ $name }» — { $count } { $count ->
+        [one] день
+        [few] дня
+       *[many] дней
+    }
+today-notes = 📝 Заметок: { $count }
+today-rates = 💵 { $usd } ₽ · 💶 { $eur } ₽
+morning-title = ☀️ Доброе утро, { $name }!
+morning-date = 📅 { $date }, { $weekday }
+morning-weather = 🌡 { $city }: { $range }
+morning-reminders = { $count ->
+        [0] 📌 На сегодня напоминаний нет
+       *[other] 📌 Сегодня:
+    }
+morning-habits = 🎯 Привычек на сегодня: { $count } — не забудь отметить
+
+## Exchange rates
+rates-title = 💱 Курс ЦБ РФ на { $date }
+rates-line = { $emoji } { $code }: { $value } ₽  { $arrow } { $change }
+rates-converter = Конвертер 👇
+rates-unavailable = ⚠️ Не удалось получить курсы. Попробуй чуть позже.
+rates-ask = Сколько { $source } перевести в { $target }?
+hint-amount = Напиши сумму числом, например 100 или 99,5.
+rates-bad-amount = Нужно число больше нуля и не больше миллиарда, например 100 или 99,5. Попробуй ещё раз:
+rates-result = 💱 { $amount } { $source } = { $result } { $target }
