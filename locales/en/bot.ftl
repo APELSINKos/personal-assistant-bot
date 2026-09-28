@@ -54,3 +54,30 @@ tip-frost = 🥶 Very cold — wrap up
 tip-heat = 🥵 It's hot — drink more water
 tip-bike = 🚲 A great day for a bike ride
 tip-calm = 👌 No weather surprises today
+
+## Start and bot profile
+welcome =
+    👋 Hi, { $name }! I'm your personal assistant.
+
+    🌤 Weather — forecast with useful tips
+    📅 My day — everything important in one message
+    ⏰ Reminders — I'll ping you at the right time
+    📝 Notes — keep what you don't want to forget
+    🎯 Habits — mark them daily and keep the streak
+    💱 Exchange rates — USD and EUR by the Bank of Russia
+    ⚙️ Settings — city, morning digest and language
+
+    Pick a section in the menu below 👇
+friend = friend
+app-soon = 📱 The app is coming soon — stay tuned.
+app-open = Open the app with the button below 👇
+menu-button = Open
+stale-button = This button is outdated — open the section again from the menu.
+bot-name = Personal Assistant
+bot-short-description = Weather with tips, reminders, notes, habits and exchange rates — in one chat.
+bot-description = Personal assistant: smart weather, reminders, notes, a habit tracker, exchange rates and a morning digest the bot sends on its own.
+cmd-start = Main menu
+cmd-app = Open the app
+cmd-settings = Settings
+cmd-help = What the bot can do
+cmd-cancel = Cancel input
