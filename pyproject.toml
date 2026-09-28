@@ -39,7 +39,7 @@ packages = ["src/assistant"]
 line-length = 100
 target-version = "py312"
 src = ["src", "tests"]
-extend-exclude = ["./bot.py","./loader.py","./config.py","./database.py","./keyboards.py","./weather.py","./currency.py","./notes.py","./reminders.py","./habits.py","./settings.py","./my_day.py","./scheduler.py","testing","_report_build","_other_team","_defense","_local"]
+extend-exclude = ["docs/coursework", "_report_build", "_other_team", "_defense", "_local"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "ASYNC"]

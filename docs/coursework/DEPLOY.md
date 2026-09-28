@@ -9,7 +9,7 @@
 | `/opt/tgbot/app` | код из этого репозитория, файл базы `bot.db` |
 | `/opt/tgbot/app/.env` | токен бота, права `600` |
 | `/opt/tgbot/venv` | виртуальное окружение Python |
-| `/etc/systemd/system/tgbot.service` | служба, копия [deploy/tgbot.service](../deploy/tgbot.service) |
+| `/etc/systemd/system/tgbot.service` | служба, копия [deploy/tgbot.service](https://github.com/APELSINKos/personal-assistant-bot/blob/v1.0.0/deploy/tgbot.service) |
 
 Служба работает от отдельного пользователя `tgbot` без права входа в систему и без `sudo`.
 
