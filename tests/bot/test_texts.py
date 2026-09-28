@@ -138,6 +138,21 @@ def test_morning_text_minimal() -> None:
     )
 
 
+def test_reminder_list_is_capped_within_the_telegram_message_limit() -> None:
+    reminders = [
+        Reminder(text="x" * 200, due_at=datetime(2026, 9, 28, 9, 30, tzinfo=UTC)) for _ in range(20)
+    ]
+    data = day_data(reminders=reminders)
+    for render in (texts.today_text, texts.morning_text):
+        text = render(data, "Alex", RU)
+        assert len(text) <= 4096
+        lines = text.splitlines()
+        bullets = [line for line in lines if line.startswith("• ")]
+        assert len(bullets) == 10
+        overflow = lines.index("…и ещё 10")
+        assert lines[overflow - 10 : overflow] == bullets
+
+
 def test_rates_text() -> None:
     assert texts.rates_text(RATES, RU) == (
         "💱 Курс ЦБ РФ на 28 сентября\n"

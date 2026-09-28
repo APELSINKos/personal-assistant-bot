@@ -11,6 +11,10 @@ from assistant.core.services.digest import TodayData
 from assistant.core.services.weather import Tip, WeatherNow, describe
 
 NO_VALUE = "—"
+# Telegram messages are capped at 4096 characters; with up to 20 pending reminders at
+# 200 characters each, rendering all of them could blow that limit on its own. Cap the
+# rendered list and summarise the rest in one line instead.
+DAY_REMINDERS_SHOWN = 10
 
 
 def temp(value: float | None) -> str:
@@ -60,9 +64,12 @@ def weather_text(now: WeatherNow, t: Translator) -> str:
 
 def _reminder_lines(data: TodayData, t: Translator) -> list[str]:
     zone = data.local_now.tzinfo or ZoneInfo("UTC")
-    return [
-        t("list-item-time", time=local_time(r.due_at, zone), text=r.text) for r in data.reminders
-    ]
+    shown = data.reminders[:DAY_REMINDERS_SHOWN]
+    lines = [t("list-item-time", time=local_time(r.due_at, zone), text=r.text) for r in shown]
+    hidden = len(data.reminders) - len(shown)
+    if hidden > 0:
+        lines.append(t("list-more", count=hidden))
+    return lines
 
 
 def _rates_line(rates: Rates, t: Translator) -> str:

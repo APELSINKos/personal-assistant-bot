@@ -104,6 +104,7 @@ today-reminders = { $count ->
        *[other] 📌 { $count } reminders for today:
     }
 list-item-time = • { $time } — { $text }
+list-more = …and { $count } more
 today-habits = 🎯 Habits: { $done } of { $total }
 today-habits-none = 🎯 No habits yet
 today-streak = 🔥 Best streak: “{ $name }” — { $count } { $count ->

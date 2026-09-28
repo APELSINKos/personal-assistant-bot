@@ -114,6 +114,7 @@ today-reminders = { $count ->
        *[many] 📌 На сегодня { $count } напоминаний:
     }
 list-item-time = • { $time } — { $text }
+list-more = …и ещё { $count }
 today-habits = 🎯 Привычки: { $done } из { $total }
 today-habits-none = 🎯 Привычек пока нет
 today-streak = 🔥 Лучшая серия: «{ $name }» — { $count } { $count ->

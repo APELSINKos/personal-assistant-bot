@@ -52,6 +52,15 @@ async def test_rates_and_converter(feed, fake) -> None:
     assert fake.sent_texts()[-1].startswith("🤔")
 
 
+async def test_converter_clears_state_when_rates_fail_at_conversion_time(feed, fake, cbr) -> None:
+    await feed(callback_update(RatesCb(source="USD", target="RUB").pack()))
+    cbr.fail = True
+    await feed(message_update("100"))
+    assert fake.sent_texts()[-1] == "⚠️ Не удалось получить курсы. Попробуй чуть позже."
+    await feed(message_update("100"))  # the dialog is over: state was cleared, not stuck
+    assert fake.sent_texts()[-1].startswith("🤔")
+
+
 async def test_converter_rejects_forged_pair(feed, fake) -> None:
     await feed(callback_update(RatesCb(source="RUB", target="RUB").pack()))
     [answer] = fake.of(AnswerCallbackQuery)
