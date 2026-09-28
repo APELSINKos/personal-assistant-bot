@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import (
@@ -93,6 +93,20 @@ def paginate[T](
     pages = max((len(items) + per_page - 1) // per_page, 1)
     page = min(max(page, 0), pages - 1)
     return list(items[page * per_page : (page + 1) * per_page]), page, pages
+
+
+def page_buttons(
+    t: Translator,
+    page: int,
+    pages: int,
+    pack: Callable[[int], str],
+) -> list[InlineKeyboardButton]:
+    buttons: list[InlineKeyboardButton] = []
+    if page > 0:
+        buttons.append(InlineKeyboardButton(text=t("prev"), callback_data=pack(page - 1)))
+    if page < pages - 1:
+        buttons.append(InlineKeyboardButton(text=t("next"), callback_data=pack(page + 1)))
+    return buttons
 
 
 def app_markup(t: Translator, url: str | None) -> InlineKeyboardMarkup | None:

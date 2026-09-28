@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime, tzinfo
+from datetime import date, datetime, tzinfo
 from zoneinfo import ZoneInfo
+
+from babel.dates import format_date, format_datetime
 
 from assistant.core.clients.cbr import Rates
 from assistant.core.i18n import Translator, format_day, format_number, format_weekday
 from assistant.core.services.digest import TodayData
 from assistant.core.services.weather import Tip, WeatherNow, describe
+from assistant.core.timeutil import to_local, utcnow
 
 NO_VALUE = "—"
 # Telegram messages are capped at 4096 characters; with up to 20 pending reminders at
@@ -158,3 +161,17 @@ def rates_text(rates: Rates, t: Translator) -> str:
         )
     lines += ["", t("rates-converter")]
     return "\n".join(lines)
+
+
+def short_moment(moment: datetime, tz: str, lang: str, now: datetime | None = None) -> str:
+    local = to_local(moment, tz)
+    same_year = local.year == to_local(now or utcnow(), tz).year
+    return str(
+        format_datetime(local, "d MMM, HH:mm" if same_year else "d MMM y, HH:mm", locale=lang)
+    )
+
+
+def long_day(day: date, lang: str, current_year: int) -> str:
+    if day.year == current_year:
+        return format_day(day, lang)
+    return str(format_date(day, "d MMMM y" if lang == "ru" else "MMMM d, y", locale=lang))

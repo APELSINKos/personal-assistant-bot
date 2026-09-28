@@ -7,3 +7,12 @@ from aiogram.fsm.state import State, StatesGroup
 
 class RatesForm(StatesGroup):
     amount = State()
+
+
+class NoteForm(StatesGroup):
+    text = State()
+
+
+class ReminderForm(StatesGroup):
+    text = State()
+    when = State()

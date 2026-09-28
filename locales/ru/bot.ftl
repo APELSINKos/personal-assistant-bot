@@ -142,3 +142,36 @@ rates-ask = Сколько { $source } перевести в { $target }?
 hint-amount = Напиши сумму числом, например 100 или 99,5.
 rates-bad-amount = Нужно число больше нуля и не больше миллиарда, например 100 или 99,5. Попробуй ещё раз:
 rates-result = 💱 { $amount } { $source } = { $result } { $target }
+
+## Lists
+list-item = { $number }. { $text }
+button-add = ➕ Добавить
+button-delete-item = 🗑 { $number }. { $text }
+deleted = 🗑 Удалено
+
+## Notes
+notes-empty = 📝 Заметок пока нет. Нажми «➕ Добавить», чтобы создать первую.
+notes-title = 📝 Твои заметки ({ $count }/{ $limit }):
+notes-limit = Достигнут лимит — { $limit } заметок. Удали лишние.
+note-ask = ✍️ Напиши текст заметки (до { $limit } символов):
+hint-note = Напиши текст заметки.
+note-bad-text = Заметка — это текст от 1 до { $limit } символов. Попробуй ещё раз:
+note-saved = ✅ Заметка сохранена.
+
+## Reminders
+reminders-empty = ⏰ Активных напоминаний нет. Нажми «➕ Добавить», чтобы создать.
+reminders-title = ⏰ Твои напоминания ({ $count }/{ $limit }):
+reminder-item = { $number }. { $when } — { $text }
+reminders-limit = Достигнут лимит — { $limit } напоминаний. Удали лишние.
+reminder-ask-text = ✍️ О чём напомнить? (до { $limit } символов)
+hint-reminder-text = Напиши, о чём напомнить.
+reminder-bad-text = Нужен текст от 1 до { $limit } символов. Попробуй ещё раз:
+reminder-ask-when =
+    Когда напомнить? Примеры:
+    • 18:30 — сегодня (или завтра, если время уже прошло)
+    • 25.09 18:30 — в этом году
+    • 25.09.2027 18:30 — точная дата
+hint-when = Напиши время, например 18:30 или 25.09 18:30.
+reminder-bad-when = Не понял время. { reminder-ask-when }
+reminder-past = Это время уже прошло. Укажи момент в будущем:
+reminder-saved = ✅ Напомню { $date } в { $time }: { $text }

@@ -131,3 +131,36 @@ rates-ask = How many { $source } to convert to { $target }?
 hint-amount = Send the amount as a number, e.g. 100 or 99.5.
 rates-bad-amount = I need a number above zero and up to one billion, e.g. 100 or 99.5. Try again:
 rates-result = 💱 { $amount } { $source } = { $result } { $target }
+
+## Lists
+list-item = { $number }. { $text }
+button-add = ➕ Add
+button-delete-item = 🗑 { $number }. { $text }
+deleted = 🗑 Deleted
+
+## Notes
+notes-empty = 📝 No notes yet. Tap “➕ Add” to create the first one.
+notes-title = 📝 Your notes ({ $count }/{ $limit }):
+notes-limit = You've reached the limit of { $limit } notes. Delete some first.
+note-ask = ✍️ Send the text of the note (up to { $limit } characters):
+hint-note = Send the text of the note.
+note-bad-text = A note is text from 1 to { $limit } characters. Try again:
+note-saved = ✅ Note saved.
+
+## Reminders
+reminders-empty = ⏰ No active reminders. Tap “➕ Add” to create one.
+reminders-title = ⏰ Your reminders ({ $count }/{ $limit }):
+reminder-item = { $number }. { $when } — { $text }
+reminders-limit = You've reached the limit of { $limit } reminders. Delete some first.
+reminder-ask-text = ✍️ What should I remind you about? (up to { $limit } characters)
+hint-reminder-text = Send what to remind you about.
+reminder-bad-text = I need text from 1 to { $limit } characters. Try again:
+reminder-ask-when =
+    When should I remind you? Examples:
+    • 18:30 — today (or tomorrow if the time has passed)
+    • 25.09 18:30 — this year (day.month)
+    • 25.09.2027 18:30 — exact date
+hint-when = Send a time, e.g. 18:30 or 25.09 18:30.
+reminder-bad-when = I didn't get the time. { reminder-ask-when }
+reminder-past = That time has already passed. Pick a moment in the future:
+reminder-saved = ✅ I'll remind you on { $date } at { $time }: { $text }
