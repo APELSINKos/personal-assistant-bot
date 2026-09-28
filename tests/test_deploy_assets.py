@@ -78,4 +78,5 @@ def test_workflow_deploys_only_green_pushes_to_main() -> None:
     text = (ROOT / ".github" / "workflows" / "deploy.yml").read_text(encoding="utf-8")
     assert "workflows: [CI]" in text and "branches: [main]" in text
     assert "github.event.workflow_run.conclusion == 'success'" in text
+    assert "github.event.workflow_run.event == 'push'" in text
     assert "cancel-in-progress: false" in text

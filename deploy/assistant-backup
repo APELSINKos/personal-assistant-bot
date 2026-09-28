@@ -11,10 +11,13 @@ if [[ ! -f $db ]]; then
   exit 0
 fi
 target="$dir/assistant-$(date -u +%Y%m%d).db"
-sqlite3 "$db" ".backup '$target'"
-if [[ $(sqlite3 "$target" "PRAGMA integrity_check;") != "ok" ]]; then
-  echo "integrity check of $target failed" >&2
+tmp="$target.tmp"
+sqlite3 "$db" ".backup '$tmp'"
+if [[ $(sqlite3 "$tmp" "PRAGMA integrity_check;") != "ok" ]]; then
+  echo "integrity check of $tmp failed" >&2
+  rm -f "$tmp"
   exit 1
 fi
+mv -f "$tmp" "$target"
 echo "backup written: $target"
 ls -1t "$dir"/assistant-*.db | tail -n +$((keep + 1)) | xargs -r rm --

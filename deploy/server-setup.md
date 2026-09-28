@@ -81,15 +81,15 @@ the old bot is not on the same host.
 
 ## 4. Services and backups
 
-Install the unit files and the scripts from branch `v2` (they are not on
-`main` yet) and start the nightly backup timer:
+Install the unit files and the scripts from the branch being deployed
+(`main`) and start the nightly backup timer:
 
 ```bash
 ssh <server> 'sudo bash -s' <<'EOF'
 set -euo pipefail
 cd /opt/assistant/app
-runuser -u assistant -- git fetch --quiet origin v2
-show() { runuser -u assistant -- git show "origin/v2:deploy/$1"; }
+runuser -u assistant -- git fetch --quiet origin main
+show() { runuser -u assistant -- git show "origin/main:deploy/$1"; }
 show assistant-deploy > /usr/local/sbin/assistant-deploy
 show assistant-backup > /usr/local/sbin/assistant-backup
 chmod 0755 /usr/local/sbin/assistant-deploy /usr/local/sbin/assistant-backup
@@ -117,7 +117,7 @@ and allow the `deploy` account through SSH:
 ```bash
 ssh <server> 'sudo bash -s' <<'EOF'
 set -euo pipefail
-runuser -u assistant -- git -C /opt/assistant/app show origin/v2:deploy/sudoers-assistant-deploy \
+runuser -u assistant -- git -C /opt/assistant/app show origin/main:deploy/sudoers-assistant-deploy \
   > /etc/sudoers.d/assistant-deploy
 chmod 0440 /etc/sudoers.d/assistant-deploy
 visudo -cf /etc/sudoers.d/assistant-deploy
@@ -142,12 +142,25 @@ ssh-keygen -q -t ed25519 -N "" -C "github-actions-deploy" -f "$SCRATCH/deploy_ke
 
 ## 6. GitHub secrets
 
+Create the `production` environment and restrict it to deployments of the
+`main` branch only, so a workflow run on any other branch or ref can never
+use its secrets even if the workflow file is changed to try:
+
+```bash
+gh api -X PUT repos/APELSINKos/personal-assistant-bot/environments/production \
+  -f 'deployment_branch_policy[protected_branches]=false' \
+  -f 'deployment_branch_policy[custom_branch_policies]=true' >/dev/null
+gh api -X POST repos/APELSINKos/personal-assistant-bot/environments/production/deployment-branch-policies \
+  -f name=main >/dev/null
+```
+
+Set the secrets on that environment (`--env production`, not repository-wide):
+
 ```bash
 HOST=$(ssh -G <server> | awk '/^hostname /{print $2}')
-gh api -X PUT repos/APELSINKos/personal-assistant-bot/environments/production >/dev/null
-gh secret set DEPLOY_SSH_KEY < "$SCRATCH/deploy_key"
-printf '%s' "$HOST" | gh secret set DEPLOY_HOST
-ssh-keyscan -t ed25519 "$HOST" 2>/dev/null | gh secret set DEPLOY_KNOWN_HOSTS
+gh secret set DEPLOY_SSH_KEY --env production < "$SCRATCH/deploy_key"
+printf '%s' "$HOST" | gh secret set DEPLOY_HOST --env production
+ssh-keyscan -t ed25519 "$HOST" 2>/dev/null | gh secret set DEPLOY_KNOWN_HOSTS --env production
 ```
 
 Verify the forced command before deleting the key (both calls must be
@@ -160,13 +173,13 @@ ssh -i "$SCRATCH/deploy_key" -o IdentitiesOnly=yes "deploy@$HOST" "$(printf '0%.
 ssh -i "$SCRATCH/deploy_key" -o IdentitiesOnly=yes -t "deploy@$HOST" 2>&1 | head -2; echo "shell attempt done"
 rm -f "$SCRATCH"/deploy_key "$SCRATCH"/deploy_key.pub
 unset HOST
-gh secret list
+gh secret list --env production
 ```
 
 Expected: `usage: …` with `exit 2`; `refusing: 000… is not on origin/main`
 with `exit 2`; the interactive attempt gets no shell (it prints the usage
-line — `restrict` refuses a PTY); `gh secret list` shows the three secret
-names, never their values.
+line — `restrict` refuses a PTY); `gh secret list --env production` shows
+the three secret names, never their values.
 
 ## 7. Manual deploy and rollback
 
@@ -177,9 +190,40 @@ Actions is unavailable:
 ssh <server> 'sudo /usr/local/sbin/assistant-deploy <40-character commit sha>'
 ```
 
-Exit codes: `0` deployed; `1` failed and already rolled back to the previous
-commit; `2` bad argument or the sha is not on `origin/main`; `3` another
-deploy is already running.
+Exit codes:
+
+| Code | Meaning |
+|---|---|
+| `0` | deployed, or skipped because the sha is not newer than the commit already running |
+| `1` | the deploy failed; the previously running commit is back up |
+| `2` | refused — bad argument, invalid branch name, not root, or the sha is not on `origin/main`; nothing was stopped |
+| `3` | another deploy is already running |
+| `4` | the bot is down and the rollback itself failed — manual attention needed |
+
+By default the script refuses to move backwards: if the given sha is an
+ancestor of the commit currently running, it exits `0` without touching
+anything (this is what keeps an out-of-order Actions run, or a leaked deploy
+key, from ever downgrading production). Root can override this from the
+server to deploy an older commit on purpose, for example to roll back by
+hand:
+
+```bash
+ssh <server> 'sudo DEPLOY_ALLOW_OLDER=1 /usr/local/sbin/assistant-deploy <older commit sha>'
+```
+
+If a push to `main` was never deployed because a later push finished CI
+first and its own deploy overtook it, nothing is wrong — re-run the `Deploy`
+workflow for the missed commit from the Actions tab (or push an empty commit
+to `main`) to deploy it explicitly.
+
+Root can also point the script at a different branch for a drill, without
+touching what GitHub Actions is allowed to deploy (`DEPLOY_BRANCH` and
+`DEPLOY_ALLOW_OLDER` are both stripped from the environment before the
+`deploy` user's forced command runs, by the sudoers rule in section 5):
+
+```bash
+ssh <server> 'sudo DEPLOY_BRANCH=some-branch /usr/local/sbin/assistant-deploy <sha on some-branch>'
+```
 
 Everything the script prints, on success or failure, also goes to the
 journal under the `assistant-deploy` syslog identifier:
@@ -199,7 +243,7 @@ by hand:
 ssh <server> 'sudo bash -s' <<'EOF'
 set -euo pipefail
 systemctl stop assistant-bot
-cp /var/backups/assistant/<snapshot>.db /var/lib/assistant/assistant.db
+install -o assistant -g assistant -m 0640 /var/backups/assistant/<snapshot>.db /var/lib/assistant/assistant.db
 rm -f /var/lib/assistant/assistant.db-wal /var/lib/assistant/assistant.db-shm
 systemctl start assistant-bot
 EOF

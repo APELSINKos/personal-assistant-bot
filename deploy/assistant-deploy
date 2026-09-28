@@ -3,8 +3,18 @@
 # Called by GitHub Actions through the restricted "deploy" user:
 #   sudo /usr/local/sbin/assistant-deploy <40-character commit sha>
 # Root may deploy a commit of another branch for a drill: DEPLOY_BRANCH=name (sudo drops this
-# variable for the deploy user, so GitHub Actions can only ever deploy main).
-# Exit codes: 0 deployed, 1 failed and rolled back, 2 refused, 3 another deploy is running.
+# variable for the deploy user, so GitHub Actions can only ever deploy main). Root may also
+# force a sha that is older than the one currently running: DEPLOY_ALLOW_OLDER=1 (also dropped
+# for the deploy user) — without it, an older sha is skipped rather than deployed, so an
+# out-of-order CI run (or a leaked deploy key) can never downgrade production. Re-deploying the
+# commit that is already running is always allowed.
+# Exit codes: 0 deployed, or skipped because the sha is not newer than the commit already
+#               running;
+#             1 the deploy failed; the previously running commit is back up;
+#             2 refused — bad argument, invalid branch name, not root, or the sha is not on
+#               origin/<branch>; nothing was stopped;
+#             3 another deploy is already running;
+#             4 the bot is down and the rollback itself failed — manual attention needed.
 set -euo pipefail
 
 APP=/opt/assistant/app
@@ -14,6 +24,7 @@ KEEP_SNAPSHOTS=5
 SERVICE=assistant-bot
 HEALTH_TIMEOUT=30
 branch="${DEPLOY_BRANCH:-main}"
+allow_older="${DEPLOY_ALLOW_OLDER:-0}"
 
 sha="${1:-}"
 if [[ ! $sha =~ ^[0-9a-f]{40}$ ]]; then
@@ -34,8 +45,11 @@ if ! flock -n 9; then
   echo "another deploy is running" >&2
   exit 3
 fi
-# Everything below goes both to the caller (the Actions log) and to the journal.
-exec > >(tee >(systemd-cat -t assistant-deploy)) 2>&1
+# Everything below goes both to the caller (the Actions log) and to the journal. "tee -p"
+# keeps writing to the journal even after the reader on the other end (the caller's SSH
+# session) goes away, instead of dying of SIGPIPE and taking the rest of the script with it.
+exec > >(tee -p >(systemd-cat -t assistant-deploy)) 2>&1
+trap '' HUP
 
 as_app() {
   runuser -u assistant -- env -i HOME=/opt/assistant PATH=/usr/local/bin:/usr/bin:/bin \
@@ -46,17 +60,19 @@ with_service_env() {
   as_app bash -c 'set -a; . /etc/assistant/assistant.env; set +a; exec "$@"' _ "$@"
 }
 
+built=0
 build() {
+  built=1
   as_app git checkout --quiet --detach "$1" &&
     as_app uv sync --frozen --no-dev --quiet
 }
 
 healthy() {
-  local since=$1
+  local inv=$1
   for _ in $(seq "$HEALTH_TIMEOUT"); do
     sleep 1
     if systemctl is-active --quiet "$SERVICE" &&
-      journalctl -u "$SERVICE" --since "$since" -o cat | grep -q "Bot started"; then
+      journalctl _SYSTEMD_INVOCATION_ID="$inv" -o cat | grep "Bot started" >/dev/null; then
       sleep 3
       systemctl is-active --quiet "$SERVICE" && return 0
     fi
@@ -65,9 +81,22 @@ healthy() {
 }
 
 start_and_check() {
-  local since
-  since=$(date '+%Y-%m-%d %H:%M:%S')
-  systemctl start "$SERVICE" && healthy "$since"
+  systemctl start "$SERVICE" || return 1
+  healthy "$(systemctl show -p InvocationID --value "$SERVICE")"
+}
+
+snapshot=""
+take_snapshot() {
+  [[ -f $DB ]] || return 0
+  snapshot="$SNAPSHOTS/pre-deploy-${sha:0:12}.db"
+  as_app sqlite3 "$DB" ".backup '$snapshot'" &&
+    ls -1t "$SNAPSHOTS"/pre-deploy-*.db | tail -n +$((KEEP_SNAPSHOTS + 1)) | xargs -r rm --
+}
+
+restore_snapshot() {
+  as_app cp "$snapshot" "$DB.restore" &&
+    mv -f "$DB.restore" "$DB" &&
+    rm -f "$DB-wal" "$DB-shm"
 }
 
 cd "$APP"
@@ -77,32 +106,44 @@ if ! as_app git merge-base --is-ancestor "$sha" "origin/$branch"; then
   exit 2
 fi
 previous=$(as_app git rev-parse HEAD)
+
+if [[ $sha != "$previous" && $allow_older != 1 ]] &&
+  as_app git merge-base --is-ancestor "$sha" "$previous"; then
+  echo "skipping: $sha is older than the running $previous"
+  exit 0
+fi
 echo "deploying $sha (running $previous)"
 
 systemctl stop "$SERVICE"
-snapshot=""
-if [[ -f $DB ]]; then
-  snapshot="$SNAPSHOTS/pre-deploy-${sha:0:12}.db"
-  as_app sqlite3 "$DB" ".backup '$snapshot'"
-  ls -1t "$SNAPSHOTS"/pre-deploy-*.db | tail -n +$((KEEP_SNAPSHOTS + 1)) | xargs -r rm --
-fi
 
-if build "$sha" && with_service_env .venv/bin/alembic upgrade head && start_and_check; then
+if take_snapshot && build "$sha" && with_service_env .venv/bin/alembic upgrade head && start_and_check; then
   echo "deployed $sha"
   exit 0
 fi
 
-echo "deploy of $sha failed, rolling back to $previous" >&2
-journalctl -u "$SERVICE" -n 30 --no-pager -o cat || true
+echo "deploy of $sha failed" >&2
+echo "see: journalctl -u $SERVICE -n 50" >&2
+
+if [[ $built -eq 0 ]]; then
+  # The snapshot step itself failed before anything changed — just bring the still-current
+  # version back up, no checkout/rebuild and nothing to restore.
+  if start_and_check; then
+    echo "$previous is running"
+    exit 1
+  fi
+  echo "ROLLBACK FAILED: the bot is down, manual attention needed" >&2
+  exit 4
+fi
+
+echo "rolling back to $previous" >&2
 systemctl stop "$SERVICE" || true
-if [[ -n $snapshot ]]; then
-  as_app cp "$snapshot" "$DB.restore"
-  mv -f "$DB.restore" "$DB"
-  rm -f "$DB-wal" "$DB-shm"
+if [[ -n $snapshot ]] && ! restore_snapshot; then
+  echo "ROLLBACK FAILED: could not restore the database, the bot is down, manual attention needed" >&2
+  exit 4
 fi
 if build "$previous" && start_and_check; then
   echo "rolled back to $previous"
-else
-  echo "ROLLBACK FAILED: the bot is down, manual attention needed" >&2
+  exit 1
 fi
-exit 1
+echo "ROLLBACK FAILED: the bot is down, manual attention needed" >&2
+exit 4
