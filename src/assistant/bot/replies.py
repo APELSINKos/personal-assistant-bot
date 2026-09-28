@@ -38,3 +38,14 @@ async def edit(
             return
         log.info("could not edit a message, sending a new one: %s", error.message)
         await send(bot, query, text, markup)
+
+
+async def drop_buttons(bot: Bot, query: CallbackQuery) -> None:
+    if query.message is None:
+        return
+    try:
+        await bot.edit_message_reply_markup(
+            chat_id=query.message.chat.id, message_id=query.message.message_id, reply_markup=None
+        )
+    except TelegramBadRequest as error:
+        log.info("could not remove buttons: %s", error.message)

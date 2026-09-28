@@ -164,3 +164,61 @@ hint-when = Send a time, e.g. 18:30 or 25.09 18:30.
 reminder-bad-when = I didn't get the time. { reminder-ask-when }
 reminder-past = That time has already passed. Pick a moment in the future:
 reminder-saved = ✅ I'll remind you on { $date } at { $time }: { $text }
+
+## Habits
+habits-empty = 🎯 No habits yet. Tap “➕ Add” to start.
+habits-title = 🎯 Your habits ({ $count }/{ $limit }):
+habit-line = { $number }. { $name } — { $done } of { $total } { $total ->
+        [one] day
+       *[other] days
+    }{ $fire }
+habit-days = { $strip }  streak: { $count } { $count ->
+        [one] day
+       *[other] days
+    }
+habits-legend = 🟩 done · 🟥 skipped · ⬜ no mark — the last 9 days
+button-mark-today = ✅ Mark today
+button-delete = 🗑 Delete
+button-back = ↩️ Back
+habits-mark-title = 📅 Mark your habits for { $date }
+habits-mark-help = Tap a habit: ✅ done → ❌ skipped → ⬜ no mark
+habits-mark-progress = Done: { $done } of { $total }
+habits-need-one = Add at least one habit first.
+habits-delete-title = Which habit should I delete?
+habit-delete-confirm = Delete the habit “{ $name }” with all its statistics?
+button-confirm-delete = 🗑 Yes, delete
+habits-limit = You've reached the limit of { $limit } habits. Delete some first.
+habit-ask = ✍️ What is the habit called? (up to { $limit } characters)
+hint-habit = Send the name of the habit.
+habit-bad-name = A name is text from 1 to { $limit } characters. Try again:
+habit-duplicate = You already have this habit. Pick another name:
+habit-added = ✅ Habit “{ $name }” added.
+
+## Settings
+settings-title = ⚙️ Settings
+settings-city = 🏙 City: { $city }
+settings-morning-on = 🌅 Morning digest: on ✅
+settings-morning-off = 🌅 Morning digest: off ❌
+settings-time = 🕗 Digest time: { $time }
+settings-language = 🌐 Language: { $language }
+settings-language-auto = 🌐 Language: same as Telegram ({ $language })
+button-time = 🕗 Digest time
+button-morning-off = 🔕 Turn the digest off
+button-morning-on = 🔔 Turn the digest on
+button-language = 🌐 Language
+language-name = English
+language-button = 🇬🇧 English
+language-auto = 📱 Same as Telegram
+language-pick = 🌐 Choose a language:
+language-changed = ✅ Language: { $language }
+city-ask = 🏙 Send the name of your city:
+hint-city = Send the name of your city.
+city-bad-name = A city name is text up to { $limit } characters. Try again:
+city-not-found = I couldn't find “{ $name }”. Check the name and send it again:
+city-unavailable = ⚠️ City search is unavailable. Please try later.
+city-choose = I found several cities — pick yours:
+city-saved = ✅ City saved: { $city }
+time-ask = 🕗 When should I send the morning digest? Format HH:MM, e.g. 07:30
+hint-time = Send a time as HH:MM, e.g. 07:30.
+time-bad = That doesn't look like a time. I need HH:MM, e.g. 07:30:
+time-saved = ✅ The digest will arrive at { $time }

@@ -175,3 +175,62 @@ hint-when = Напиши время, например 18:30 или 25.09 18:30.
 reminder-bad-when = Не понял время. { reminder-ask-when }
 reminder-past = Это время уже прошло. Укажи момент в будущем:
 reminder-saved = ✅ Напомню { $date } в { $time }: { $text }
+
+## Habits
+habits-empty = 🎯 Привычек пока нет. Нажми «➕ Добавить», чтобы начать.
+habits-title = 🎯 Твои привычки ({ $count }/{ $limit }):
+habit-line = { $number }. { $name } — { $done } из { $total } { $total ->
+        [one] дня
+       *[other] дней
+    }{ $fire }
+habit-days = { $strip }  серия: { $count } { $count ->
+        [one] день
+        [few] дня
+       *[many] дней
+    }
+habits-legend = 🟩 выполнено · 🟥 пропущено · ⬜ без отметки — последние 9 дней
+button-mark-today = ✅ Отметить сегодня
+button-delete = 🗑 Удалить
+button-back = ↩️ Назад
+habits-mark-title = 📅 Отметь привычки за { $date }
+habits-mark-help = Нажимай на привычку: ✅ выполнено → ❌ пропущено → ⬜ без отметки
+habits-mark-progress = Выполнено: { $done } из { $total }
+habits-need-one = Сначала добавь хотя бы одну привычку.
+habits-delete-title = Какую привычку удалить?
+habit-delete-confirm = Удалить привычку «{ $name }» вместе со всей статистикой?
+button-confirm-delete = 🗑 Да, удалить
+habits-limit = Достигнут лимит — { $limit } привычек. Удали лишние.
+habit-ask = ✍️ Как называется привычка? (до { $limit } символов)
+hint-habit = Напиши название привычки.
+habit-bad-name = Название — это текст от 1 до { $limit } символов. Попробуй ещё раз:
+habit-duplicate = Такая привычка уже есть. Придумай другое название:
+habit-added = ✅ Привычка «{ $name }» добавлена.
+
+## Settings
+settings-title = ⚙️ Настройки
+settings-city = 🏙 Город: { $city }
+settings-morning-on = 🌅 Утренняя сводка: включена ✅
+settings-morning-off = 🌅 Утренняя сводка: выключена ❌
+settings-time = 🕗 Время сводки: { $time }
+settings-language = 🌐 Язык: { $language }
+settings-language-auto = 🌐 Язык: как в Telegram ({ $language })
+button-time = 🕗 Время сводки
+button-morning-off = 🔕 Выключить сводку
+button-morning-on = 🔔 Включить сводку
+button-language = 🌐 Язык
+language-name = Русский
+language-button = 🇷🇺 Русский
+language-auto = 📱 Как в Telegram
+language-pick = 🌐 Выбери язык:
+language-changed = ✅ Язык: { $language }
+city-ask = 🏙 Напиши название города:
+hint-city = Напиши название города.
+city-bad-name = Название города — текст до { $limit } символов. Попробуй ещё раз:
+city-not-found = Не нашёл город «{ $name }». Проверь название и напиши ещё раз:
+city-unavailable = ⚠️ Сервис поиска городов недоступен. Попробуй позже.
+city-choose = Нашлось несколько городов — выбери свой:
+city-saved = ✅ Город сохранён: { $city }
+time-ask = 🕗 Во сколько присылать утреннюю сводку? Формат ЧЧ:ММ, например 07:30
+hint-time = Напиши время в формате ЧЧ:ММ, например 07:30.
+time-bad = Не похоже на время. Нужен формат ЧЧ:ММ, например 07:30:
+time-saved = ✅ Сводка будет приходить в { $time }

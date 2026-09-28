@@ -16,3 +16,12 @@ class NoteForm(StatesGroup):
 class ReminderForm(StatesGroup):
     text = State()
     when = State()
+
+
+class HabitForm(StatesGroup):
+    name = State()
+
+
+class SettingsForm(StatesGroup):
+    city = State()
+    time = State()
