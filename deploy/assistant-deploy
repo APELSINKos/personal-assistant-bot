@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Deploys one commit of main and rolls back automatically if the bot does not come up.
+# Called by GitHub Actions through the restricted "deploy" user:
+#   sudo /usr/local/sbin/assistant-deploy <40-character commit sha>
+# Root may deploy a commit of another branch for a drill: DEPLOY_BRANCH=name (sudo drops this
+# variable for the deploy user, so GitHub Actions can only ever deploy main).
+# Exit codes: 0 deployed, 1 failed and rolled back, 2 refused, 3 another deploy is running.
+set -euo pipefail
+
+APP=/opt/assistant/app
+DB=/var/lib/assistant/assistant.db
+SNAPSHOTS=/var/backups/assistant
+KEEP_SNAPSHOTS=5
+SERVICE=assistant-bot
+HEALTH_TIMEOUT=30
+branch="${DEPLOY_BRANCH:-main}"
+
+sha="${1:-}"
+if [[ ! $sha =~ ^[0-9a-f]{40}$ ]]; then
+  echo "usage: assistant-deploy <40-character commit sha>" >&2
+  exit 2
+fi
+if [[ ! $branch =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]; then
+  echo "invalid branch name" >&2
+  exit 2
+fi
+if [[ $EUID -ne 0 ]]; then
+  echo "must run as root" >&2
+  exit 2
+fi
+
+exec 9>/run/assistant-deploy.lock
+if ! flock -n 9; then
+  echo "another deploy is running" >&2
+  exit 3
+fi
+# Everything below goes both to the caller (the Actions log) and to the journal.
+exec > >(tee >(systemd-cat -t assistant-deploy)) 2>&1
+
+as_app() {
+  runuser -u assistant -- env -i HOME=/opt/assistant PATH=/usr/local/bin:/usr/bin:/bin \
+    UV_CACHE_DIR=/opt/assistant/.cache/uv UV_PYTHON_DOWNLOADS=never UV_COMPILE_BYTECODE=1 "$@"
+}
+
+with_service_env() {
+  as_app bash -c 'set -a; . /etc/assistant/assistant.env; set +a; exec "$@"' _ "$@"
+}
+
+build() {
+  as_app git checkout --quiet --detach "$1" &&
+    as_app uv sync --frozen --no-dev --quiet
+}
+
+healthy() {
+  local since=$1
+  for _ in $(seq "$HEALTH_TIMEOUT"); do
+    sleep 1
+    if systemctl is-active --quiet "$SERVICE" &&
+      journalctl -u "$SERVICE" --since "$since" -o cat | grep -q "Bot started"; then
+      sleep 3
+      systemctl is-active --quiet "$SERVICE" && return 0
+    fi
+  done
+  return 1
+}
+
+start_and_check() {
+  local since
+  since=$(date '+%Y-%m-%d %H:%M:%S')
+  systemctl start "$SERVICE" && healthy "$since"
+}
+
+cd "$APP"
+as_app git fetch --quiet origin "$branch"
+if ! as_app git merge-base --is-ancestor "$sha" "origin/$branch"; then
+  echo "refusing: $sha is not on origin/$branch" >&2
+  exit 2
+fi
+previous=$(as_app git rev-parse HEAD)
+echo "deploying $sha (running $previous)"
+
+systemctl stop "$SERVICE"
+snapshot=""
+if [[ -f $DB ]]; then
+  snapshot="$SNAPSHOTS/pre-deploy-${sha:0:12}.db"
+  as_app sqlite3 "$DB" ".backup '$snapshot'"
+  ls -1t "$SNAPSHOTS"/pre-deploy-*.db | tail -n +$((KEEP_SNAPSHOTS + 1)) | xargs -r rm --
+fi
+
+if build "$sha" && with_service_env .venv/bin/alembic upgrade head && start_and_check; then
+  echo "deployed $sha"
+  exit 0
+fi
+
+echo "deploy of $sha failed, rolling back to $previous" >&2
+journalctl -u "$SERVICE" -n 30 --no-pager -o cat || true
+systemctl stop "$SERVICE" || true
+if [[ -n $snapshot ]]; then
+  as_app cp "$snapshot" "$DB.restore"
+  mv -f "$DB.restore" "$DB"
+  rm -f "$DB-wal" "$DB-shm"
+fi
+if build "$previous" && start_and_check; then
+  echo "rolled back to $previous"
+else
+  echo "ROLLBACK FAILED: the bot is down, manual attention needed" >&2
+fi
+exit 1

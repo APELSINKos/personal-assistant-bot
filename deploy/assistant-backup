@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Online copy of the SQLite database (safe while the bot runs); keeps the 14 newest copies.
+set -euo pipefail
+
+db=/var/lib/assistant/assistant.db
+dir=/var/backups/assistant
+keep=14
+
+if [[ ! -f $db ]]; then
+  echo "no database yet, nothing to back up"
+  exit 0
+fi
+target="$dir/assistant-$(date -u +%Y%m%d).db"
+sqlite3 "$db" ".backup '$target'"
+if [[ $(sqlite3 "$target" "PRAGMA integrity_check;") != "ok" ]]; then
+  echo "integrity check of $target failed" >&2
+  exit 1
+fi
+echo "backup written: $target"
+ls -1t "$dir"/assistant-*.db | tail -n +$((keep + 1)) | xargs -r rm --
