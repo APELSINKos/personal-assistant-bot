@@ -12,6 +12,7 @@ if [[ ! -f $db ]]; then
 fi
 target="$dir/assistant-$(date -u +%Y%m%d).db"
 tmp="$target.tmp"
+rm -f "$tmp"
 sqlite3 "$db" ".backup '$tmp'"
 if [[ $(sqlite3 "$tmp" "PRAGMA integrity_check;") != "ok" ]]; then
   echo "integrity check of $tmp failed" >&2

@@ -148,11 +148,14 @@ use its secrets even if the workflow file is changed to try:
 
 ```bash
 gh api -X PUT repos/APELSINKos/personal-assistant-bot/environments/production \
-  -f 'deployment_branch_policy[protected_branches]=false' \
-  -f 'deployment_branch_policy[custom_branch_policies]=true' >/dev/null
+  -F 'deployment_branch_policy[protected_branches]=false' \
+  -F 'deployment_branch_policy[custom_branch_policies]=true' >/dev/null
 gh api -X POST repos/APELSINKos/personal-assistant-bot/environments/production/deployment-branch-policies \
   -f name=main >/dev/null
 ```
+
+(`-F` sends these two fields as JSON booleans, not strings — `gh api -f` always sends a
+string, which the API rejects here with "is not a boolean".)
 
 Set the secrets on that environment (`--env production`, not repository-wide):
 
@@ -194,9 +197,9 @@ Exit codes:
 
 | Code | Meaning |
 |---|---|
-| `0` | deployed, or skipped because the sha is not newer than the commit already running |
+| `0` | deployed, or skipped because the sha is older than (an ancestor of) the commit already running |
 | `1` | the deploy failed; the previously running commit is back up |
-| `2` | refused — bad argument, invalid branch name, not root, or the sha is not on `origin/main`; nothing was stopped |
+| `2` | refused — bad argument, invalid branch name, not root, the git fetch of `origin/main` failed, or the sha is not on `origin/main`; nothing was stopped |
 | `3` | another deploy is already running |
 | `4` | the bot is down and the rollback itself failed — manual attention needed |
 
@@ -211,10 +214,14 @@ hand:
 ssh <server> 'sudo DEPLOY_ALLOW_OLDER=1 /usr/local/sbin/assistant-deploy <older commit sha>'
 ```
 
-If a push to `main` was never deployed because a later push finished CI
-first and its own deploy overtook it, nothing is wrong — re-run the `Deploy`
-workflow for the missed commit from the Actions tab (or push an empty commit
-to `main`) to deploy it explicitly.
+If a push to `main` was skipped (exit `0`) because CI for a later push
+finished first and that push was deployed before this one's turn came up, no
+action is needed: the commit that is running is newer and already contains
+this change, and redeploying the skipped commit would just skip again.
+Re-running the `Deploy` workflow only helps for the *newest* commit on
+`main`, and only when its own deploy run failed or was cancelled before it
+finished — in that case, re-run it for that commit from the Actions tab (or
+push an empty commit to `main`) to retry it.
 
 Root can also point the script at a different branch for a drill, without
 touching what GitHub Actions is allowed to deploy (`DEPLOY_BRANCH` and
@@ -224,6 +231,17 @@ touching what GitHub Actions is allowed to deploy (`DEPLOY_BRANCH` and
 ```bash
 ssh <server> 'sudo DEPLOY_BRANCH=some-branch /usr/local/sbin/assistant-deploy <sha on some-branch>'
 ```
+
+If the drill commit is left deployed afterwards (rather than reverted right
+away), redeploy the tip of `main` before the next automated deploy is due:
+
+```bash
+ssh <server> 'sudo DEPLOY_ALLOW_OLDER=1 /usr/local/sbin/assistant-deploy <main tip sha>'
+```
+
+Otherwise `main`'s own commits can look like an ancestor of the drill
+commit to the out-of-order check, and pushes to `main` get skipped instead
+of deployed until a commit that is not an ancestor of it comes along.
 
 Everything the script prints, on success or failure, also goes to the
 journal under the `assistant-deploy` syslog identifier:

@@ -8,11 +8,12 @@
 # for the deploy user) — without it, an older sha is skipped rather than deployed, so an
 # out-of-order CI run (or a leaked deploy key) can never downgrade production. Re-deploying the
 # commit that is already running is always allowed.
-# Exit codes: 0 deployed, or skipped because the sha is not newer than the commit already
-#               running;
+# Exit codes: 0 deployed, or skipped because the sha is older than (an ancestor of) the commit
+#               already running;
 #             1 the deploy failed; the previously running commit is back up;
-#             2 refused — bad argument, invalid branch name, not root, or the sha is not on
-#               origin/<branch>; nothing was stopped;
+#             2 refused — bad argument, invalid branch name, not root, the git fetch of
+#               origin/<branch> failed, or the sha is not on origin/<branch>; nothing was
+#               stopped;
 #             3 another deploy is already running;
 #             4 the bot is down and the rollback itself failed — manual attention needed.
 set -euo pipefail
@@ -45,11 +46,13 @@ if ! flock -n 9; then
   echo "another deploy is running" >&2
   exit 3
 fi
+# Ignore a hangup from the caller's SSH session disconnecting; the redirection below must be
+# set up after this so the tee/systemd-cat processes it starts inherit the ignored disposition.
+trap '' HUP
 # Everything below goes both to the caller (the Actions log) and to the journal. "tee -p"
 # keeps writing to the journal even after the reader on the other end (the caller's SSH
 # session) goes away, instead of dying of SIGPIPE and taking the rest of the script with it.
 exec > >(tee -p >(systemd-cat -t assistant-deploy)) 2>&1
-trap '' HUP
 
 as_app() {
   runuser -u assistant -- env -i HOME=/opt/assistant PATH=/usr/local/bin:/usr/bin:/bin \
@@ -99,22 +102,46 @@ restore_snapshot() {
     rm -f "$DB-wal" "$DB-shm"
 }
 
-cd "$APP"
-as_app git fetch --quiet origin "$branch"
+# Nothing changed (or the change was undone) — try to leave the previously running commit up
+# and healthy; used both when a pre-stop step fails and when the snapshot itself fails.
+give_up_unchanged() {
+  if start_and_check; then
+    echo "$previous is running"
+    exit 1
+  fi
+  echo "ROLLBACK FAILED: the bot is down, manual attention needed" >&2
+  exit 4
+}
+
+cd "$APP" || {
+  echo "refusing: cannot cd to $APP" >&2
+  exit 2
+}
+if ! as_app git fetch --quiet origin "$branch"; then
+  echo "refusing: git fetch of origin/$branch failed" >&2
+  exit 2
+fi
 if ! as_app git merge-base --is-ancestor "$sha" "origin/$branch"; then
   echo "refusing: $sha is not on origin/$branch" >&2
   exit 2
 fi
-previous=$(as_app git rev-parse HEAD)
+previous=$(as_app git rev-parse HEAD) || {
+  echo "refusing: cannot determine the currently running commit" >&2
+  exit 2
+}
 
 if [[ $sha != "$previous" && $allow_older != 1 ]] &&
   as_app git merge-base --is-ancestor "$sha" "$previous"; then
-  echo "skipping: $sha is older than the running $previous"
+  echo "skipping: $sha is older than (an ancestor of) the running $previous"
   exit 0
 fi
 echo "deploying $sha (running $previous)"
 
-systemctl stop "$SERVICE"
+if ! systemctl stop "$SERVICE"; then
+  echo "deploy of $sha failed: could not stop $SERVICE" >&2
+  echo "see: journalctl -u $SERVICE -n 50" >&2
+  give_up_unchanged
+fi
 
 if take_snapshot && build "$sha" && with_service_env .venv/bin/alembic upgrade head && start_and_check; then
   echo "deployed $sha"
@@ -127,12 +154,7 @@ echo "see: journalctl -u $SERVICE -n 50" >&2
 if [[ $built -eq 0 ]]; then
   # The snapshot step itself failed before anything changed — just bring the still-current
   # version back up, no checkout/rebuild and nothing to restore.
-  if start_and_check; then
-    echo "$previous is running"
-    exit 1
-  fi
-  echo "ROLLBACK FAILED: the bot is down, manual attention needed" >&2
-  exit 4
+  give_up_unchanged
 fi
 
 echo "rolling back to $previous" >&2
