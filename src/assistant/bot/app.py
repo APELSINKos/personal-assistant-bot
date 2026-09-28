@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from aiogram import Bot, Dispatcher, Router
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from assistant.bot.db_commit import install_commit_before_request
 from assistant.bot.fsm_storage import SqliteStorage
 from assistant.bot.middlewares import DbSession, PrivateOnly, UserContext
 from assistant.bot.routers import SECTION_ROUTERS, errors, fallback, menu, start
@@ -16,7 +17,9 @@ from assistant.core.config import Settings
 
 
 def create_bot(settings: Settings) -> Bot:
-    return Bot(settings.bot_token.get_secret_value())
+    bot = Bot(settings.bot_token.get_secret_value())
+    install_commit_before_request(bot)
+    return bot
 
 
 def build_dispatcher(

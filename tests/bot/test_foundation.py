@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 
 from assistant.bot import sections
 from assistant.bot.context import Ctx
+from assistant.bot.fsm_storage import current_session
 from assistant.bot.keyboards import menu_key, paginate, preview
 from assistant.core.models import User
 from tests.bot.fakes import callback_update, message_update
@@ -78,6 +79,7 @@ async def test_menu_button_mid_dialog_clears_state(make_dp, feed, fake, monkeypa
     await feed(message_update("hello"), dispatcher)
     assert opened == ["notes"]
     assert not any(text.startswith("SAVED") for text in fake.sent_texts())
+    assert not any(text.startswith("⚠️") for text in fake.sent_texts())
 
 
 async def test_command_mid_dialog_clears_state(make_dp, feed, fake) -> None:
@@ -86,6 +88,7 @@ async def test_command_mid_dialog_clears_state(make_dp, feed, fake) -> None:
     await feed(message_update("/start"), dispatcher)
     await feed(message_update("hello"), dispatcher)
     assert not any(text.startswith("SAVED") for text in fake.sent_texts())
+    assert not any(text.startswith("⚠️") for text in fake.sent_texts())
 
 
 async def test_sticker_in_dialog_asks_for_text_and_keeps_state(make_dp, feed, fake) -> None:
@@ -95,6 +98,29 @@ async def test_sticker_in_dialog_asks_for_text_and_keeps_state(make_dp, feed, fa
     assert fake.sent_texts()[-1] == "Нужен текст. Отменить ввод"
     await feed(message_update("after"), dispatcher)
     assert fake.sent_texts()[-1] == "SAVED after"
+
+
+async def test_write_lock_is_released_before_sending_the_reply(feed, fake, monkeypatch) -> None:
+    lock_released: list[bool] = []
+
+    def on_request(method: object) -> None:
+        if isinstance(method, SendMessage):
+            session = current_session.get()
+            lock_released.append(session is None or not session.in_transaction())
+
+    fake.on_request = on_request
+
+    async def show(message: Message, ctx: Ctx) -> None:
+        # A write straight through ctx.session (not via SqliteStorage, which already
+        # commits its own writes immediately) — only CommitBeforeRequest can release
+        # this one before the send below.
+        ctx.user.first_name = "Changed"
+        await ctx.session.flush()
+        await message.answer("ok")
+
+    monkeypatch.setitem(sections.SECTIONS, "weather", show)
+    await feed(message_update("🌤 Погода"))
+    assert lock_released == [True]
 
 
 async def test_cancel_and_unknown(feed, fake) -> None:
@@ -123,6 +149,32 @@ async def test_handler_crash_gives_generic_error(feed, fake, monkeypatch) -> Non
     monkeypatch.setitem(sections.SECTIONS, "rates", boom)
     await feed(message_update("💱 Курс валют"))
     assert fake.sent_texts()[-1].startswith("⚠️")
+
+
+async def test_callback_crash_answers_query_and_gives_generic_error(make_dp, feed, fake) -> None:
+    async def boom(query, ctx: Ctx) -> None:
+        raise RuntimeError("boom")
+
+    router = Router(name="boom")
+    router.callback_query.register(boom)
+    dispatcher = make_dp([router])
+    await feed(callback_update("whatever"), dispatcher)
+    assert any(type(c).__name__ == "AnswerCallbackQuery" for c in fake.calls)
+    assert fake.sent_texts()[-1].startswith("⚠️")
+
+
+async def test_current_session_is_cleared_after_feed(feed, fake) -> None:
+    await feed(message_update("/start"))
+    assert current_session.get() is None
+
+
+async def test_current_session_is_cleared_after_a_crash(feed, fake, monkeypatch) -> None:
+    async def boom(message: Message, ctx: Ctx) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setitem(sections.SECTIONS, "rates", boom)
+    await feed(message_update("💱 Курс валют"))
+    assert current_session.get() is None
 
 
 async def test_app_command_without_webapp(feed, fake) -> None:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import itertools
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -21,6 +21,11 @@ class FakeSession(BaseSession):
         self.calls: list[TelegramMethod[Any]] = []
         self.errors: list[BaseException] = []  # raised one per call, oldest first
         self.results: dict[type[Any], Any] = {}
+        # Called at the start of make_request, before the call is recorded — lets tests
+        # observe ambient state (e.g. whether the write lock was released) at exactly
+        # the point a request goes out, since aiogram's request middlewares (including
+        # CommitBeforeRequest) run before make_request is reached.
+        self.on_request: Callable[[TelegramMethod[Any]], None] | None = None
 
     async def make_request(
         self,
@@ -30,6 +35,8 @@ class FakeSession(BaseSession):
     ) -> Any:
         # ASYNC109 is suppressed above: this overrides BaseSession.make_request, whose
         # signature (including `timeout`) is fixed by aiogram and cannot be changed.
+        if self.on_request is not None:
+            self.on_request(method)
         self.calls.append(method)
         if self.errors:
             raise self.errors.pop(0)

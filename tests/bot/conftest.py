@@ -9,6 +9,7 @@ from aiogram import Bot, Dispatcher, Router
 from aiogram.types import Update
 
 from assistant.bot.app import build_dispatcher
+from assistant.bot.db_commit import install_commit_before_request
 from assistant.core.clients.cbr import Rate, Rates
 from assistant.core.clients.openmeteo import City
 from assistant.core.config import Settings
@@ -65,7 +66,9 @@ def fake() -> FakeSession:
 
 @pytest.fixture
 async def bot(fake: FakeSession) -> AsyncIterator[Bot]:
-    yield Bot("123456:TEST-TOKEN", session=fake)
+    bot = Bot("123456:TEST-TOKEN", session=fake)
+    install_commit_before_request(bot)
+    yield bot
 
 
 @pytest.fixture

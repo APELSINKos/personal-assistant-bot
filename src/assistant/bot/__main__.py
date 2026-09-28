@@ -22,15 +22,18 @@ log = logging.getLogger("assistant.bot")
 async def main() -> None:
     settings = get_settings()
     setup_logging(settings.log_level, [settings.bot_token.get_secret_value()])
+    # One shared engine/sessionmaker for the bot and (Task 13) the scheduler — the
+    # write-lock handling in middlewares.py/fsm_storage.py/db_commit.py assumes there's
+    # only one.
     engine = create_engine(settings.database_url)
     sessionmaker = make_sessionmaker(engine)
     async with httpx.AsyncClient(timeout=settings.http_timeout) as http:
         bot = create_bot(settings)
         meteo, cbr = OpenMeteoClient(http), CbrClient(http)
         dp = build_dispatcher(sessionmaker, meteo, cbr, settings)
-        await configure(bot, settings)
-        log.info("Bot started, version %s", __version__)
         try:
+            await configure(bot, settings)
+            log.info("Bot started, version %s", __version__)
             await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
         finally:
             await bot.session.close()

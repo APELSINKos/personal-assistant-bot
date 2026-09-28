@@ -38,9 +38,9 @@ class DbSession(BaseMiddleware):
     async def __call__(self, handler: Handler, event: TelegramObject, data: dict[str, Any]) -> Any:
         async with self._sessionmaker() as session:
             data["session"] = session
-            # Let SqliteStorage reuse this session for the FSM writes this update makes,
-            # so they join the same transaction instead of racing it for SQLite's one
-            # write lock (see fsm_storage.current_session).
+            # Let SqliteStorage and CommitBeforeRequest (db_commit.py) reuse this session
+            # for the rest of the update, instead of racing it for SQLite's one write
+            # lock with a second connection (see fsm_storage.current_session).
             token = current_session.set(session)
             try:
                 result = await handler(event, data)
@@ -57,6 +57,11 @@ class UserContext(BaseMiddleware):
             return None
         session: AsyncSession = data["session"]
         user = await users.ensure(session, tg_user.id, tg_user.first_name, tg_user.language_code)
+        # Release SQLite's write lock now rather than holding it through the handler's
+        # network awaits (Telegram sends, and in later tasks Open-Meteo/CBR requests);
+        # a cheap no-op when ensure() found nothing to change. expire_on_commit=False on
+        # the sessionmaker keeps `user`'s attributes usable after this commit.
+        await session.commit()
         data["ctx"] = Ctx(
             session=session,
             user=user,
