@@ -23,3 +23,15 @@ __pycache__/
 # Private keys - never commit
 *.pem
 *.key
+
+# v2
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+*.db-wal
+*.db-shm
+node_modules/
+webapp/dist/
