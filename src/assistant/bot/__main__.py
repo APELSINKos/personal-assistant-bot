@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 
 import httpx
 
 from assistant import __version__
 from assistant.bot.app import build_dispatcher, create_bot
+from assistant.bot.scheduler import Scheduler
 from assistant.bot.setup import configure
 from assistant.core.clients.cbr import CbrClient
 from assistant.core.clients.openmeteo import OpenMeteoClient
@@ -31,11 +33,16 @@ async def main() -> None:
         bot = create_bot(settings)
         meteo, cbr = OpenMeteoClient(http), CbrClient(http)
         dp = build_dispatcher(sessionmaker, meteo, cbr, settings)
+        scheduler = Scheduler(bot, sessionmaker, meteo, cbr, interval=settings.scheduler_interval)
+        background = asyncio.create_task(scheduler.run(), name="scheduler")
         try:
             await configure(bot, settings)
             log.info("Bot started, version %s", __version__)
             await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
         finally:
+            background.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await background
             await bot.session.close()
             await engine.dispose()
 

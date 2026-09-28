@@ -47,6 +47,7 @@ def make_user(session: AsyncSession) -> Callable[..., Awaitable[User]]:
         values: dict[str, Any] = {
             "id": id,
             "first_name": "Test",
+            "tg_language": "ru",
             "city": "Москва",
             "lat": 55.75,
             "lon": 37.62,

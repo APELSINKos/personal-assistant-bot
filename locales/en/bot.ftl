@@ -222,3 +222,7 @@ time-ask = 🕗 When should I send the morning digest? Format HH:MM, e.g. 07:30
 hint-time = Send a time as HH:MM, e.g. 07:30.
 time-bad = That doesn't look like a time. I need HH:MM, e.g. 07:30:
 time-saved = ✅ The digest will arrive at { $time }
+
+## Delivery
+reminder-fire = ⏰ Reminder: { $text }
+reminder-fire-late = ⏰ Reminder: { $text } (was due at { $when })
