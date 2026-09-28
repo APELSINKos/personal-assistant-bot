@@ -26,3 +26,8 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy
       - run: uv run pytest --cov --cov-report=term-missing
+      - name: Migrations are in sync with models
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./ci.db
+          BOT_TOKEN: "123456:CI-ONLY"
+        run: uv run alembic upgrade head && uv run alembic check
