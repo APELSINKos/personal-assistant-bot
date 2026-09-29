@@ -46,7 +46,8 @@ async def ensure(
     else:
         if user.first_name != first_name:
             user.first_name = first_name
-        if user.tg_language != tg_language:
+        # Telegram does not always send a language code; keep the last known one then.
+        if tg_language is not None and user.tg_language != tg_language:
             user.tg_language = tg_language
         if user.bot_blocked:
             user.bot_blocked = False

@@ -85,3 +85,14 @@ def test_tip_plurals_ru() -> None:
     snow = t("tip-precip-soon", kind="snow", minutes=21)
     assert rain == "🌧 Через 45 минут дождь — возьми зонт"
     assert snow == "🌨 Через 21 минуту снег — надень капюшон"
+
+
+def test_check_translations_fails_fast_without_locale_files(monkeypatch, tmp_path) -> None:
+    i18n.check_translations()  # the real files are in place
+    monkeypatch.setattr(i18n, "LOCALES_DIR", tmp_path)
+    i18n.translator.cache_clear()
+    try:
+        with pytest.raises(RuntimeError, match="translations for 'ru' are missing"):
+            i18n.check_translations()
+    finally:
+        i18n.translator.cache_clear()  # the next call loads the real files again

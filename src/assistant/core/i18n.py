@@ -38,6 +38,13 @@ def translator(lang: str) -> Translator:
     return Translator(lang, localization)
 
 
+def check_translations() -> None:
+    """Fail fast at startup: without the locale files Fluent would show raw keys to users."""
+    for lang in SUPPORTED:
+        if translator(lang)("menu-weather") == "menu-weather":
+            raise RuntimeError(f"translations for {lang!r} are missing in {LOCALES_DIR}")
+
+
 def labels(key: str) -> frozenset[str]:
     return frozenset(translator(lang)(key) for lang in SUPPORTED)
 

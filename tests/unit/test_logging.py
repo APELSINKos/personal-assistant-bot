@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 import logging
 
-from assistant.core.logging import TokenRedactor
+from assistant.core.logging import TokenRedactor, setup_logging
 
 TOKEN = "1234567:AAHabcdefghijklmnopqrstuvwxyz012345"
 
@@ -41,3 +41,17 @@ def test_unknown_token_shape_is_masked_too() -> None:
     stream = io.StringIO()
     _logger(stream).warning("see /bot987654321:ZZZ-other_token/getMe")
     assert "ZZZ-other_token" not in stream.getvalue()
+
+
+def test_setup_logging_quiets_http_client_loggers() -> None:
+    root = logging.getLogger()
+    saved = root.handlers[:], root.level
+    try:
+        setup_logging("INFO")
+        for name in ("httpx", "httpcore"):
+            assert logging.getLogger(name).getEffectiveLevel() == logging.WARNING
+            assert not logging.getLogger(name).isEnabledFor(logging.INFO)
+        assert logging.getLogger("assistant").isEnabledFor(logging.INFO)
+    finally:
+        root.handlers[:], _ = saved
+        root.setLevel(saved[1])

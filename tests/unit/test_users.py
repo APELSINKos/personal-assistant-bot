@@ -68,3 +68,11 @@ async def test_set_city_rejects_unknown_zone(session, make_user) -> None:
     user = await make_user()
     with pytest.raises(InvalidInput):
         await users.set_city(session, user, "Марс", 0, 0, "Mars/Base")
+
+
+async def test_ensure_keeps_the_language_when_telegram_sends_none(session, make_user) -> None:
+    await make_user(id=9, tg_language="uk")
+    user = await users.ensure(session, 9, "Test", None)
+    assert user.tg_language == "uk"
+    user = await users.ensure(session, 9, "Test", "de")
+    assert user.tg_language == "de"

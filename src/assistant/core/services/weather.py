@@ -58,12 +58,24 @@ def _first(values: object) -> float | None:
     return _num(values[0]) if isinstance(values, list) and values else None
 
 
+def _moment(value: object) -> datetime | None:
+    """A local time from Open-Meteo ('2026-09-28T10:00'); anything else counts as missing."""
+    if not isinstance(value, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    # The forecast is requested in local time without an offset; an offset would make the
+    # moments incomparable, so such an entry is treated as malformed too.
+    return moment if moment.tzinfo is None else None
+
+
 def build_tips(data: Mapping[str, Any]) -> list[Tip]:
     current = data.get("current") or {}
-    time_text = current.get("time")
-    if not isinstance(time_text, str):
+    now = _moment(current.get("time"))
+    if now is None:
         return [Tip("tip-calm")]
-    now = datetime.fromisoformat(time_text)
     temp = _num(current.get("temperature_2m"))
     feels = _num(current.get("apparent_temperature"))
     wind = _num(current.get("wind_speed_10m"))
@@ -78,11 +90,11 @@ def build_tips(data: Mapping[str, Any]) -> list[Tip]:
     else:
         block = data.get("minutely_15") or {}
         steps = zip(block.get("time") or [], block.get("precipitation") or [], strict=False)
-        for moment, amount in steps:
-            value = _num(amount)
-            if not isinstance(moment, str) or value is None:
+        for moment_text, amount in steps:
+            moment, value = _moment(moment_text), _num(amount)
+            if moment is None or value is None:
                 continue
-            minutes = int((datetime.fromisoformat(moment) - now).total_seconds() // 60)
+            minutes = int((moment - now).total_seconds() // 60)
             if 0 < minutes <= 120 and value >= 0.1:
                 tips.append(Tip("tip-precip-soon", {"kind": kind, "minutes": minutes}))
                 soon = True
@@ -90,16 +102,15 @@ def build_tips(data: Mapping[str, Any]) -> list[Tip]:
 
     today: dict[int, tuple[float | None, float]] = {}
     hourly = data.get("hourly") or {}
-    for moment, temperature, chance in zip(
+    for moment_text, temperature, chance in zip(
         hourly.get("time") or [],
         hourly.get("temperature_2m") or [],
         hourly.get("precipitation_probability") or [],
         strict=False,
     ):
-        if isinstance(moment, str):
-            parsed = datetime.fromisoformat(moment)
-            if parsed.date() == now.date():
-                today[parsed.hour] = (_num(temperature), _num(chance) or 0.0)
+        parsed = _moment(moment_text)
+        if parsed is not None and parsed.date() == now.date():
+            today[parsed.hour] = (_num(temperature), _num(chance) or 0.0)
 
     later = False
     if not soon:

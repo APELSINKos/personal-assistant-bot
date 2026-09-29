@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,26 +23,37 @@ _DAY = re.compile(r"^(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?$")
 
 
 def parse_when(text: str, now_local: datetime) -> datetime | None:
-    """'HH:MM' (today, or tomorrow if already reached), 'DD.MM HH:MM', 'DD.MM.YYYY HH:MM'."""
-    parts = text.split()
-    wall_now = now_local.replace(tzinfo=None)
+    """'HH:MM' (today, or tomorrow if already reached), 'DD.MM HH:MM', 'DD.MM.YYYY HH:MM'.
+
+    Returns a naive wall time. With an aware `now_local`, a time that cannot be placed on the
+    UTC timeline in that zone (the very edges of the calendar, e.g. 31.12.9999 23:59 west of
+    UTC) counts as unparsable too.
+    """
     try:
-        if len(parts) == 1:
-            hhmm = parse_hhmm(parts[0])
-            if hhmm is None:
-                return None
-            hours, minutes = (int(x) for x in hhmm.split(":"))
-            moment = wall_now.replace(hour=hours, minute=minutes, second=0, microsecond=0)
-            return moment + timedelta(days=1) if moment <= wall_now else moment
-        if len(parts) == 2:
-            day_match, hhmm = _DAY.match(parts[0]), parse_hhmm(parts[1])
-            if day_match is None or hhmm is None:
-                return None
-            year = int(day_match.group(3)) if day_match.group(3) else wall_now.year
-            hours, minutes = (int(x) for x in hhmm.split(":"))
-            return datetime(year, int(day_match.group(2)), int(day_match.group(1)), hours, minutes)
-    except ValueError:
+        moment = _parse_wall(text, now_local.replace(tzinfo=None))
+        if moment is not None and now_local.tzinfo is not None:
+            moment.replace(tzinfo=now_local.tzinfo, fold=0).astimezone(UTC)
+    except (ValueError, OverflowError):
         return None
+    return moment
+
+
+def _parse_wall(text: str, wall_now: datetime) -> datetime | None:
+    parts = text.split()
+    if len(parts) == 1:
+        hhmm = parse_hhmm(parts[0])
+        if hhmm is None:
+            return None
+        hours, minutes = (int(x) for x in hhmm.split(":"))
+        moment = wall_now.replace(hour=hours, minute=minutes, second=0, microsecond=0)
+        return moment + timedelta(days=1) if moment <= wall_now else moment
+    if len(parts) == 2:
+        day_match, hhmm = _DAY.match(parts[0]), parse_hhmm(parts[1])
+        if day_match is None or hhmm is None:
+            return None
+        year = int(day_match.group(3)) if day_match.group(3) else wall_now.year
+        hours, minutes = (int(x) for x in hhmm.split(":"))
+        return datetime(year, int(day_match.group(2)), int(day_match.group(1)), hours, minutes)
     return None
 
 
@@ -70,7 +81,10 @@ async def create(
     now: datetime | None = None,
 ) -> Reminder:
     cleaned = clean_text(text)
-    due_at = local_to_utc(when_local, user.timezone)
+    try:
+        due_at = local_to_utc(when_local, user.timezone)
+    except OverflowError as error:  # the edges of the calendar: nothing to schedule there
+        raise InvalidInput(field="when", reason="invalid") from error
     if due_at <= (now or utcnow()):
         raise InvalidInput(field="when", reason="past")
     if await count_pending(session, user.id) >= LIMITS.reminders:

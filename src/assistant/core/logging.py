@@ -40,3 +40,6 @@ def setup_logging(level: str, secrets: Iterable[str] = ()) -> None:
     root = logging.getLogger()
     root.handlers[:] = [handler]
     root.setLevel(level)
+    # Their INFO lines carry request URLs, i.e. the city names people type and coordinates.
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.WARNING)

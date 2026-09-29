@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from assistant.core.services.weather import Tip, build_tips, describe
+from assistant.core.services.weather import Tip, build_tips, current, describe
 
 
 def forecast(
@@ -90,3 +90,26 @@ def test_describe_codes() -> None:
     assert describe(0) == ("☀️", "wmo-clear")
     assert describe(63) == ("🌧", "wmo-rain")
     assert describe(1234) == ("🌡", "wmo-unknown")
+
+
+def test_malformed_current_time_counts_as_missing() -> None:
+    for bad in ("not a time", "2026-09-28T10:00+03:00", 1727517600):
+        assert build_tips(forecast(now=bad)) == [Tip("tip-calm")]
+
+
+def test_malformed_minutely_and_hourly_entries_are_skipped() -> None:
+    data = forecast(minutely=[0, 0, 0.6, 0.6], later_chance=80)
+    data["minutely_15"]["time"][2] = "10:30 today"
+    data["hourly"]["time"][3] = "garbage"
+    data["hourly"]["time"][4] = None
+    # The broken 10:30 step is ignored; the next one (10:45) still gives the tip.
+    assert build_tips(data)[0] == Tip("tip-precip-soon", {"kind": "rain", "minutes": 45})
+
+
+async def test_current_with_malformed_time_still_reports_the_weather() -> None:
+    class Meteo:
+        async def forecast(self, lat: float, lon: float) -> dict[str, Any]:
+            return forecast(now="yesterday")
+
+    now = await current(Meteo(), "Москва", 55.75, 37.62)
+    assert (now.temperature, now.tmax, now.tips) == (10.0, 13.0, [Tip("tip-calm")])

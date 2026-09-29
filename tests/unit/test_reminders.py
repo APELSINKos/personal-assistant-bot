@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import select
@@ -137,3 +138,20 @@ async def test_today_for_uses_user_zone(session, make_user) -> None:
         "2026-09-28T23:30:00"
     ]
     assert len((await session.scalars(select(Reminder))).all()) == 2
+
+
+@pytest.mark.parametrize(
+    ("text", "zone"),
+    [("01.01.0001 00:30", "Europe/Moscow"), ("31.12.9999 23:59", "America/New_York")],
+)
+def test_parse_when_rejects_the_edges_of_the_calendar(text: str, zone: str) -> None:
+    now_local = NOW.astimezone(ZoneInfo(zone))
+    assert reminders.parse_when(text, now_local) is None
+    assert reminders.parse_when("31.12.2030 23:59", now_local) == datetime(2030, 12, 31, 23, 59)
+
+
+async def test_create_rejects_a_moment_outside_the_calendar(session, make_user) -> None:
+    user = await make_user(tz="America/New_York")
+    with pytest.raises(InvalidInput) as error:
+        await reminders.create(session, user, "x", datetime(9999, 12, 31, 23, 59), now=NOW)
+    assert error.value.params["reason"] == "invalid"
