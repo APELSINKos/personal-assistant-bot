@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCities, useHealth, useMe, useSetCity, useUpdateMe } from "../api/queries";
 import type { City } from "../api/types";
 import { Card } from "../components/Card";
@@ -16,6 +16,50 @@ function cityLabel(city: City): string {
     if (part && !parts.includes(part)) parts.push(part);
   }
   return parts.join(", ");
+}
+
+const COMPLETE_TIME = /^\d{2}:\d{2}$/;
+
+/**
+ * A desktop time field reports every keystroke as a complete time (00:00 → 09:00 → 09:03 →
+ * 09:30), so the field keeps its own value and saves it when left, or once typing has paused.
+ */
+function MorningTime({ saved, disabled, onSave }: { saved: string; disabled: boolean; onSave: (time: string) => void }) {
+  const t = useT();
+  const [draft, setDraft] = useState(saved);
+  const [shown, setShown] = useState(saved);
+  if (saved !== shown) {
+    // The stored time changed (this field's own save, a rollback, the bot): show it.
+    setShown(saved);
+    setDraft(saved);
+  }
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const save = (value: string) => {
+    clearTimeout(timer.current);
+    if (COMPLETE_TIME.test(value) && value !== saved) onSave(value);
+  };
+  return (
+    <label className="field">
+      <span className="field__label">{t.more.morningTime}</span>
+      <input
+        className="input"
+        type="time"
+        disabled={disabled}
+        value={draft}
+        onChange={(event) => {
+          const value = event.target.value;
+          setDraft(value);
+          clearTimeout(timer.current);
+          timer.current = setTimeout(() => save(value), 800);
+        }}
+        onBlur={() => {
+          save(draft);
+          if (!COMPLETE_TIME.test(draft)) setDraft(saved);
+        }}
+      />
+    </label>
+  );
 }
 
 export function MoreScreen() {
@@ -59,6 +103,9 @@ export function MoreScreen() {
         {/* Both the live query and the debounced one must be long enough — otherwise, right
             after picking a city (which clears `query`), the stale suggestions would linger
             for up to the debounce delay while `search` catches up. */}
+        {query.trim().length >= 2 && search.trim().length >= 2 && cities.isError && !cities.data && (
+          <p className="muted">{t.errors.upstream_unavailable}</p>
+        )}
         {query.trim().length >= 2 && search.trim().length >= 2 && cities.data && (
           cities.data.length === 0 ? (
             <p className="muted">{t.more.noCities}</p>
@@ -90,18 +137,11 @@ export function MoreScreen() {
             onChange={(event) => update.mutate({ morning_enabled: event.target.checked })}
           />
         </label>
-        <label className="field">
-          <span className="field__label">{t.more.morningTime}</span>
-          <input
-            className="input"
-            type="time"
-            disabled={!profile.morning.enabled}
-            value={profile.morning.time}
-            onChange={(event) => {
-              if (/^\d{2}:\d{2}$/.test(event.target.value)) update.mutate({ morning_time: event.target.value });
-            }}
-          />
-        </label>
+        <MorningTime
+          saved={profile.morning.time}
+          disabled={!profile.morning.enabled}
+          onSave={(time) => update.mutate({ morning_time: time })}
+        />
       </Card>
 
       <Card title={t.more.language} index={2}>

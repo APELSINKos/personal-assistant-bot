@@ -5,12 +5,12 @@ import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Toasts } from "../components/Toasts";
 import { LangProvider } from "../i18n";
-import { habit, note } from "../test/fixtures";
+import { habit, me, note } from "../test/fixtures";
 import { installTelegram } from "../test/fakeTelegram";
 import { mockApi } from "../test/mockApi";
-import type { Habit, Note } from "./types";
+import type { Habit, Me, Note } from "./types";
 import {
-  createQueryClient, keys, useDeleteNote, useHabits, useNotes, useSetCity, useSetMark,
+  createQueryClient, keys, useDeleteNote, useHabits, useNotes, useSetCity, useSetMark, useUpdateMe,
 } from "./queries";
 
 // Every mutation goes through `api()`, which needs a session (`initData()` non-null) before it
@@ -236,5 +236,37 @@ describe("useSetCity", () => {
     expect(invalidatedKeys).toContainEqual(keys.habits);
     expect(invalidatedKeys).toContainEqual(keys.today);
     expect(invalidatedKeys).toContainEqual(keys.reminders);
+  });
+});
+
+describe("useUpdateMe", () => {
+  it("sends quick changes one at a time and keeps them all on screen meanwhile", async () => {
+    const client = createQueryClient();
+    client.setQueryData(keys.me, me);
+    const { pending, resolveAt } = controllableFetch();
+    const { result } = renderHook(() => useUpdateMe(), { wrapper: wrapperFor(client) });
+
+    act(() => {
+      result.current.mutate({ morning_enabled: false });
+      result.current.mutate({ language: "en" });
+    });
+    await waitFor(() => expect(client.getQueryData<Me>(keys.me)?.language_setting).toBe("en"));
+    expect(client.getQueryData<Me>(keys.me)?.morning.enabled).toBe(false);
+    expect(pending).toHaveLength(1); // the second PATCH waits for the first
+    expect(pending[0]).toMatchObject({ method: "PATCH", body: { morning_enabled: false } });
+
+    // The first answer knows nothing of the language yet: it must not undo it on screen.
+    act(() => {
+      resolveAt(0, 200, { ...me, morning: { ...me.morning, enabled: false } });
+    });
+    await waitFor(() => expect(pending).toHaveLength(2));
+    expect(pending[1]).toMatchObject({ method: "PATCH", body: { language: "en" } });
+    expect(client.getQueryData<Me>(keys.me)?.language_setting).toBe("en");
+
+    const last: Me = { ...me, language: "en", language_setting: "en", morning: { ...me.morning, enabled: false } };
+    act(() => {
+      resolveAt(1, 200, last);
+    });
+    await waitFor(() => expect(client.getQueryData<Me>(keys.me)).toEqual(last));
   });
 });

@@ -7,7 +7,10 @@ export interface ApiCall {
 }
 
 type Reply = { status?: number; body?: unknown };
-type Handler = (request: { method: string; path: string; body: unknown }) => Reply | undefined;
+// A handler may answer later: return a promise and resolve it when the test says so.
+type Handler = (
+  request: { method: string; path: string; body: unknown },
+) => Reply | undefined | Promise<Reply | undefined>;
 
 // A plain route value is either the JSON body itself, or a `{ status?, body? }` shape
 // describing a non-200 response (including a status-only reply, e.g. `{ status: 204 }`).
@@ -38,7 +41,7 @@ export function mockApi(routes: Record<string, unknown>) {
       });
     }
     const reply: Reply = typeof entry === "function"
-      ? ((entry as Handler)({ method, path, body }) ?? {})
+      ? ((await (entry as Handler)({ method, path, body })) ?? {})
       : isReplyShape(entry)
         ? entry
         : { body: entry };

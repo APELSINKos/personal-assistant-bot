@@ -195,15 +195,45 @@ export function useSetMark() {
   });
 }
 
+const ME_UPDATE_KEY = ["me-update"];
+
+/**
+ * Settings change on screen at once and are rolled back if the server refuses. `scope` sends
+ * the PATCHes one at a time in the order they were made; an answer is written to the cache only
+ * by the last one in flight, as an earlier answer would undo the later changes on screen.
+ */
 export function useUpdateMe() {
   const client = useQueryClient();
   return useMutation({
+    mutationKey: ME_UPDATE_KEY,
+    scope: { id: "me-update" },
     mutationFn: (body: { language?: "auto" | "ru" | "en"; morning_enabled?: boolean; morning_time?: string }) =>
       api<Me>("/me", { method: "PATCH", body }),
+    onMutate: async (body) => {
+      await client.cancelQueries({ queryKey: keys.me });
+      const previous = client.getQueryData<Me>(keys.me);
+      // Only the setting: which language "auto" means is the server's answer to give.
+      client.setQueryData<Me>(keys.me, (me) => me && {
+        ...me,
+        language_setting: body.language ?? me.language_setting,
+        morning: {
+          enabled: body.morning_enabled ?? me.morning.enabled,
+          time: body.morning_time ?? me.morning.time,
+        },
+      });
+      return { previous };
+    },
+    onError: (_error, _body, context) => client.setQueryData(keys.me, context?.previous),
     onSuccess: (me) => {
-      client.setQueryData(keys.me, me);
+      if (client.isMutating({ mutationKey: ME_UPDATE_KEY }) === 1) client.setQueryData(keys.me, me);
       haptic("success");
       return client.invalidateQueries({ queryKey: keys.today });
+    },
+    onSettled: (_me, error) => {
+      // After a refusal only the server knows which of several quick changes were kept.
+      if (error && client.isMutating({ mutationKey: ME_UPDATE_KEY }) === 1) {
+        return client.invalidateQueries({ queryKey: keys.me });
+      }
     },
   });
 }

@@ -36,4 +36,13 @@ describe("mockApi", () => {
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toEqual({ id: 5 });
   });
+
+  it("lets a function handler answer later", async () => {
+    let answer!: () => void;
+    mockApi({ "PATCH /me": () => new Promise((resolve) => (answer = () => resolve({ status: 503 }))) });
+    const response = fetch("/api/me", { method: "PATCH", body: "{}" });
+    await Promise.resolve();
+    answer();
+    expect((await response).status).toBe(503);
+  });
 });
