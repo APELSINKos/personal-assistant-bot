@@ -5,7 +5,7 @@ from __future__ import annotations
 import secrets
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from aiogram import Bot, F, Router
@@ -16,6 +16,7 @@ from assistant.bot import replies, texts
 from assistant.bot.context import Ctx
 from assistant.bot.keyboards import (
     PAGE_SIZE,
+    FireCb,
     ReminderCb,
     cancel_menu,
     card_markup,
@@ -28,7 +29,7 @@ from assistant.bot.keyboards import (
 from assistant.bot.sections import section
 from assistant.bot.states import ReminderForm
 from assistant.core.config import LIMITS
-from assistant.core.errors import InvalidInput, LimitReached
+from assistant.core.errors import InvalidInput, LimitReached, NotFound
 from assistant.core.i18n import Translator
 from assistant.core.models import Reminder, ReminderStatus, Repeat, User
 from assistant.core.services import phrases, reminders
@@ -364,6 +365,52 @@ async def on_card_cancel(
     await replies.send(bot, query, ctx.t("cancelled"), main_menu(ctx.t))
 
 
+FIRED_TTL = timedelta(days=7)
+
+
+def _moment_label(moment: datetime, ctx: Ctx, now: datetime) -> str:
+    tz = ctx.user.timezone
+    if to_local(moment, tz).date() == to_local(now, tz).date():
+        return texts.local_time(moment, tz)
+    return texts.short_moment(moment, tz, ctx.lang, now)
+
+
+async def on_fired(query: CallbackQuery, callback_data: FireCb, ctx: Ctx, bot: Bot) -> None:
+    """«+10 мин / +1 ч / Завтра / ✓ Готово» under a delivered reminder."""
+    now = clock()
+    fired_at = datetime.fromtimestamp(callback_data.at * 60, UTC)
+    shown_text = getattr(query.message, "text", None) or ""
+
+    async def gone() -> None:
+        await replies.answer_quietly(query, ctx.t("already-deleted"))
+        await replies.drop_buttons(bot, query)
+
+    if now - fired_at > FIRED_TTL:
+        await gone()
+        return
+    if callback_data.action == "done":
+        if not await reminders.done(ctx.session, ctx.user.id, callback_data.id):
+            await gone()
+            return
+        result = ctx.t("fired-done")
+    elif callback_data.action in reminders.SNOOZE_KINDS:
+        until = reminders.snooze_until(callback_data.action, fired_at, ctx.user.timezone, now)
+        try:
+            await reminders.snooze(ctx.session, ctx.user, callback_data.id, until, now)
+        except NotFound:
+            await gone()
+            return
+        except LimitReached:
+            await query.answer(ctx.t("reminders-limit", limit=LIMITS.reminders), show_alert=True)
+            return
+        result = ctx.t("fired-snoozed", when=_moment_label(until, ctx, now))
+    else:
+        await gone()
+        return
+    await replies.answer_quietly(query)
+    await replies.edit(bot, query, f"{shown_text}\n\n{result}", None)
+
+
 def create_router() -> Router:
     router = Router(name="reminders")
     router.callback_query.register(on_page, ReminderCb.filter(F.action == "page"))
@@ -380,4 +427,5 @@ def create_router() -> Router:
     router.message.register(got_reply_while_confirm, ReminderForm.confirm, F.text)
     router.message.register(got_time, ReminderForm.time, F.text)
     router.message.register(phrase_anywhere, StateFilter(None), F.text.func(looks_like_reminder))
+    router.callback_query.register(on_fired, FireCb.filter())
     return router
