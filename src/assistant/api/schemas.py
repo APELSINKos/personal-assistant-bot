@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -53,3 +54,67 @@ class CityIn(BaseModel):
     lat: float = Field(ge=-90, le=90)
     lon: float = Field(ge=-180, le=180)
     timezone: str = Field(min_length=1, max_length=64)
+
+
+class WeatherOut(BaseModel):
+    city: str
+    temperature: float | None
+    feels_like: float | None
+    wind: float | None
+    code: int
+    emoji: str
+    description: str
+    tmin: float | None
+    tmax: float | None
+    tips: list[str]
+
+
+class RateOut(BaseModel):
+    value: float
+    change: float
+
+
+class RatesOut(BaseModel):
+    date: date
+    usd: RateOut
+    eur: RateOut
+
+
+class HabitOut(BaseModel):
+    id: int
+    name: str
+    created_on: date
+    done_today: bool | None
+    streak: int
+    done_days: int
+    total_days: int
+    last_days: list[bool | None]
+
+
+class TodayReminder(BaseModel):
+    id: int
+    text: str
+    time: str
+    due_at: datetime
+
+
+class TodayHabits(BaseModel):
+    done: int
+    total: int
+    items: list[HabitOut]
+
+
+class BestStreak(BaseModel):
+    name: str
+    days: int
+
+
+class TodayOut(BaseModel):
+    date: date
+    part_of_day: Literal["morning", "day", "evening", "night"]
+    weather: WeatherOut | None
+    reminders_today: list[TodayReminder]
+    habits: TodayHabits
+    notes_count: int
+    rates: RatesOut | None
+    best_streak: BestStreak | None

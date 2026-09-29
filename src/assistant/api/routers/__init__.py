@@ -4,6 +4,6 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from assistant.api.routers import health, me
+from assistant.api.routers import health, me, today
 
-ALL: list[APIRouter] = [health.router, me.router]
+ALL: list[APIRouter] = [health.router, me.router, today.router]
