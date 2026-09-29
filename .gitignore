@@ -1,8 +1,10 @@
 # Secrets - never commit
 .env
 
-# Local database and logs
-bot.db
+# Local databases (v1 bot.db, v2 assistant.db, test copies) and logs
+*.db
+*.db-wal
+*.db-shm
 *.log
 
 # Python
@@ -23,3 +25,13 @@ __pycache__/
 # Private keys - never commit
 *.pem
 *.key
+
+# v2
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+node_modules/
+webapp/dist/

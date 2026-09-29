@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main, v2]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.19"
+          python-version: ${{ matrix.python }}
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run pytest --cov --cov-report=term-missing
+      - name: Migrations are in sync with models
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./ci.db
+          BOT_TOKEN: "123456:CI-ONLY"
+        run: uv run alembic upgrade head && uv run alembic check

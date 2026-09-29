@@ -1,0 +1,15 @@
+# Nightly SQLite backup; started by assistant-backup.timer.
+[Unit]
+Description=Personal Assistant database backup
+
+[Service]
+Type=oneshot
+User=assistant
+Group=assistant
+ExecStart=/usr/local/sbin/assistant-backup
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/assistant /var/backups/assistant
