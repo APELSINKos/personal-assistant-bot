@@ -21,4 +21,6 @@ if [[ $(sqlite3 "$tmp" "PRAGMA integrity_check;") != "ok" ]]; then
 fi
 mv -f "$tmp" "$target"
 echo "backup written: $target"
-ls -1t "$dir"/assistant-*.db | tail -n +$((keep + 1)) | xargs -r rm --
+# Newest first by modification time; NUL-separated, so any file name is handled safely.
+find "$dir" -maxdepth 1 -name 'assistant-*.db' -printf '%T@ %p\0' |
+  sort -zrn | tail -zn +$((keep + 1)) | cut -zd' ' -f2- | xargs -0r rm --

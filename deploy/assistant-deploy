@@ -88,12 +88,21 @@ start_and_check() {
   healthy "$(systemctl show -p InvocationID --value "$SERVICE")"
 }
 
+# Keeps the newest $KEEP_SNAPSHOTS pre-deploy snapshots (by modification time). Runs as the
+# app user, like everything else that touches its files, and is NUL-safe for any file name.
+prune_snapshots() {
+  # Single quotes on purpose: $1 and $2 are the inner bash's arguments.
+  as_app bash -c 'find "$1" -maxdepth 1 -name "pre-deploy-*.db" -printf "%T@ %p\0" |
+    sort -zrn | tail -zn +"$(($2 + 1))" | cut -zd" " -f2- | xargs -0r rm --' \
+    _ "$SNAPSHOTS" "$KEEP_SNAPSHOTS"
+}
+
 snapshot=""
 take_snapshot() {
   [[ -f $DB ]] || return 0
   snapshot="$SNAPSHOTS/pre-deploy-${sha:0:12}.db"
   as_app sqlite3 "$DB" ".backup '$snapshot'" &&
-    ls -1t "$SNAPSHOTS"/pre-deploy-*.db | tail -n +$((KEEP_SNAPSHOTS + 1)) | xargs -r rm --
+    prune_snapshots
 }
 
 restore_snapshot() {
