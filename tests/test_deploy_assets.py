@@ -67,6 +67,18 @@ def test_caddy_serves_the_app_with_the_spec_headers() -> None:
     assert "X-Frame-Options" not in text
 
 
+def test_caddy_drops_the_server_header_on_errors_too() -> None:
+    text = (DEPLOY / "Caddyfile").read_text(encoding="utf-8")
+    # The site-wide `header -Server` is deferred and never applied when a handler errors.
+    block = re.search(r"\n\thandle_errors \{\n(.*?)\n\t\}\n", text, re.DOTALL)
+    assert block is not None
+    assert block.group(1).splitlines() == [
+        "\t\theader -Server",
+        '\t\trespond "{err.status_code} {err.status_text}"',
+    ]
+    assert text.index("{$SITE_HOST} {") < block.start() < text.rindex("\n}")
+
+
 def test_caddy_reads_the_host_from_its_own_environment_file() -> None:
     lines = (DEPLOY / "caddy-assistant.conf").read_text(encoding="utf-8").splitlines()
     assert "EnvironmentFile=/etc/caddy/assistant.env" in lines
@@ -86,6 +98,41 @@ def test_deploy_builds_the_webapp_and_checks_the_api() -> None:
         "dist.previous",
     ):
         assert expected in text, expected
+
+
+def test_deploy_says_which_commit_a_failed_rollback_left() -> None:
+    text = (DEPLOY / "assistant-deploy").read_text(encoding="utf-8")
+    # The bot comes up even when the API does not, so "the services are down" may be untrue.
+    message = "ROLLBACK FAILED: $previous did not come up healthy, manual attention needed"
+    assert text.count(f'echo "{message}" >&2') == 2
+    assert "ROLLBACK FAILED: the services are down" not in text
+    setup = (DEPLOY / "server-setup.md").read_text(encoding="utf-8")
+    assert "| `4` | the rollback did not come up healthy — manual attention needed |" in setup
+
+
+def test_runbook_checks_what_it_installs_before_it_goes_live() -> None:
+    setup = (DEPLOY / "server-setup.md").read_text(encoding="utf-8")
+    fstab = (
+        "[ ! -f /swapfile ] || grep -q '^/swapfile ' /etc/fstab || "
+        "echo '/swapfile none swap sw 0 0' >> /etc/fstab"
+    )
+    assert fstab in setup
+    assert "show assistant-deploy > /usr/local/sbin/assistant-deploy\n" not in setup
+    for temporary, check, target in (
+        (
+            'new="/usr/local/sbin/$script.new"',
+            'bash -n "$new"',
+            'mv "$new" "/usr/local/sbin/$script"',
+        ),
+        (
+            "> /etc/sudoers.d/assistant-deploy.new",
+            "visudo -cf /etc/sudoers.d/assistant-deploy.new",
+            "mv /etc/sudoers.d/assistant-deploy.new /etc/sudoers.d/assistant-deploy",
+        ),
+    ):
+        assert setup.index(temporary) < setup.index(check) < setup.index(target), check
+    # A hand-run `caddy validate` needs the host name the Caddyfile reads from the environment.
+    assert "set -a; . /etc/caddy/assistant.env; set +a" in setup
 
 
 def test_timer_runs_nightly() -> None:

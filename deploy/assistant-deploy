@@ -19,7 +19,8 @@
 #               origin/<branch> failed, or the sha is not on origin/<branch>; nothing was
 #               stopped;
 #             3 another deploy is already running;
-#             4 the services are down and the rollback itself failed — manual attention needed.
+#             4 the rollback did not come up healthy (or could not even restore the database)
+#               — manual attention needed.
 set -euo pipefail
 
 APP=/opt/assistant/app
@@ -204,7 +205,7 @@ give_up_unchanged() {
     echo "$previous is running"
     exit 1
   fi
-  echo "ROLLBACK FAILED: the services are down, manual attention needed" >&2
+  echo "ROLLBACK FAILED: $previous did not come up healthy, manual attention needed" >&2
   exit 4
 }
 
@@ -279,5 +280,5 @@ if build "$previous" && start_and_check "$previous"; then
   echo "rolled back to $previous"
   exit 1
 fi
-echo "ROLLBACK FAILED: the services are down, manual attention needed" >&2
+echo "ROLLBACK FAILED: $previous did not come up healthy, manual attention needed" >&2
 exit 4

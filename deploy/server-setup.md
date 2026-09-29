@@ -47,7 +47,7 @@ apt-get update -qq && apt-get install -y -qq nodejs caddy
 if [ -z "$(swapon --show --noheadings)" ]; then
   fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile
 fi
-grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+[ ! -f /swapfile ] || grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
 ufw allow 80/tcp >/dev/null && ufw allow 443/tcp >/dev/null
 node --version && caddy version && swapon --show --noheadings
 EOF
@@ -122,9 +122,14 @@ set -euo pipefail
 cd /opt/assistant/app
 runuser -u assistant -- git fetch --quiet origin main
 show() { runuser -u assistant -- git show "origin/main:deploy/$1"; }
-show assistant-deploy > /usr/local/sbin/assistant-deploy
-show assistant-backup > /usr/local/sbin/assistant-backup
-chmod 0755 /usr/local/sbin/assistant-deploy /usr/local/sbin/assistant-backup
+# Each script is checked before it replaces the one in use (the rename is atomic).
+for script in assistant-deploy assistant-backup; do
+  new="/usr/local/sbin/$script.new"
+  show "$script" > "$new"
+  bash -n "$new"
+  chmod 0755 "$new"
+  mv "$new" "/usr/local/sbin/$script"
+done
 for unit in assistant-bot.service assistant-api.service assistant-backup.service assistant-backup.timer; do
   show "$unit" > "/etc/systemd/system/$unit.new"
   mv "/etc/systemd/system/$unit.new" "/etc/systemd/system/$unit"
@@ -197,7 +202,13 @@ Expected: the five security headers from the Caddyfile and no `Server`
 line. Later changes to the Caddyfile on `main` need only `caddy validate`
 followed by `systemctl reload caddy`; the `systemctl restart caddy` above is
 needed only for this first install, because the drop-in changes the unit's
-environment.
+environment. The Caddyfile takes its host name from `SITE_HOST`, which only
+the Caddy service gets (through its drop-in), so a `caddy validate` run by
+hand needs it loaded first:
+
+```bash
+ssh <server> 'sudo bash -c "set -a; . /etc/caddy/assistant.env; set +a; caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile"'
+```
 
 ## 5. Deploy user
 
@@ -207,10 +218,12 @@ and allow the `deploy` account through SSH:
 ```bash
 ssh <server> 'sudo bash -s' <<'EOF'
 set -euo pipefail
+# sudo skips files whose name contains a dot, so the rule is checked before it takes effect.
 runuser -u assistant -- git -C /opt/assistant/app show origin/main:deploy/sudoers-assistant-deploy \
-  > /etc/sudoers.d/assistant-deploy
-chmod 0440 /etc/sudoers.d/assistant-deploy
-visudo -cf /etc/sudoers.d/assistant-deploy
+  > /etc/sudoers.d/assistant-deploy.new
+chmod 0440 /etc/sudoers.d/assistant-deploy.new
+visudo -cf /etc/sudoers.d/assistant-deploy.new
+mv /etc/sudoers.d/assistant-deploy.new /etc/sudoers.d/assistant-deploy
 sed -i 's/^AllowUsers ubuntu$/AllowUsers ubuntu deploy/' /etc/ssh/sshd_config.d/10-hardening.conf
 sshd -t && systemctl reload ssh
 EOF
@@ -291,7 +304,7 @@ Exit codes:
 | `1` | the deploy failed; the previously running commit is still up (the web app did not build) or up again (rolled back) |
 | `2` | refused — bad argument, invalid branch name, not root, the git fetch of `origin/main` failed, or the sha is not on `origin/main`; nothing was stopped |
 | `3` | another deploy is already running |
-| `4` | the services are down and the rollback itself failed — manual attention needed |
+| `4` | the rollback did not come up healthy — manual attention needed |
 
 The web app is built in a scratch worktree (`/opt/assistant/build`) before
 anything is stopped, so the bot keeps running during the build, and the

@@ -17,6 +17,13 @@
 	# apart so the block above stays immediate and /api/docs below can replace the CSP.
 	header -Server
 
+	# That deferred deletion is skipped when a handler fails (a missing file, the API down):
+	# error responses need their own.
+	handle_errors {
+		header -Server
+		respond "{err.status_code} {err.status_text}"
+	}
+
 	# Swagger UI loads its script and styles from a CDN and starts with an inline script.
 	handle /api/docs* {
 		header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https://fastapi.tiangolo.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
