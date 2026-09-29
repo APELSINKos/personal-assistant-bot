@@ -226,3 +226,11 @@ time-saved = ✅ The digest will arrive at { $time }
 ## Delivery
 reminder-fire = ⏰ Reminder: { $text }
 reminder-fire-late = ⏰ Reminder: { $text } (was due at { $when })
+
+## Repeats
+repeat-daily = every day at { $time }
+repeat-weekdays = on weekdays at { $time }
+repeat-weekends = on weekends at { $time }
+repeat-weekly = { $days } at { $time }
+repeat-biweekly = every other week: { $days } at { $time }
+repeat-monthly = monthly on day { $day } at { $time }

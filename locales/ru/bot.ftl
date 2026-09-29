@@ -238,3 +238,11 @@ time-saved = ✅ Сводка будет приходить в { $time }
 ## Delivery
 reminder-fire = ⏰ Напоминание: { $text }
 reminder-fire-late = ⏰ Напоминание: { $text } (было на { $when })
+
+## Repeats
+repeat-daily = каждый день в { $time }
+repeat-weekdays = по будням в { $time }
+repeat-weekends = по выходным в { $time }
+repeat-weekly = { $days } в { $time }
+repeat-biweekly = раз в 2 недели: { $days } в { $time }
+repeat-monthly = каждый месяц { $day }-го в { $time }

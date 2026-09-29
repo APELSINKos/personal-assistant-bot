@@ -6,7 +6,7 @@ from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
-from babel.dates import format_date
+from babel.dates import format_date, get_day_names
 from babel.numbers import format_decimal
 from fluent.runtime import FluentLocalization, FluentResourceLoader
 
@@ -64,3 +64,8 @@ def format_short_day(day: date, lang: str) -> str:
 def format_number(value: float, lang: str, digits: int = 2) -> str:
     pattern = "#,##0." + "0" * digits if digits else "#,##0"
     return str(format_decimal(value, format=pattern, locale=lang))
+
+
+def weekday_short(index: int, lang: str) -> str:
+    """0 = Monday: «пн» / «Mon»."""
+    return str(get_day_names("abbreviated", locale=lang)[index])
