@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import lru_cache
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,7 +40,8 @@ class Settings(BaseSettings):
     scheduler_interval: float = 20.0
     api_host: str = "127.0.0.1"
     api_port: int = 8000
-    api_rate_limit: int = 120
+    # Requests per minute per user; zero would refuse every request.
+    api_rate_limit: int = Field(120, ge=1)
 
 
 @lru_cache(maxsize=1)

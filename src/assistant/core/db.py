@@ -18,7 +18,8 @@ _PRAGMAS = ("journal_mode=WAL", "busy_timeout=5000", "synchronous=NORMAL")
 def create_engine(url: str, *, foreign_keys: bool = True) -> AsyncEngine:
     """foreign_keys=False is for migrations only: a batch table rebuild drops the old table,
     and with foreign keys on, that DROP would fire ON DELETE CASCADE on every child table."""
-    engine = create_async_engine(url)
+    # hide_parameters: note texts and names must never reach a traceback in the logs.
+    engine = create_async_engine(url, hide_parameters=True)
     if url.startswith("sqlite"):
         pragmas = (*_PRAGMAS, "foreign_keys=ON" if foreign_keys else "foreign_keys=OFF")
 

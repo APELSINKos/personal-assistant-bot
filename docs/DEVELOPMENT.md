@@ -24,7 +24,7 @@ uv run python -m assistant.bot   # запустить
 | `DEFAULT_CITY`, `DEFAULT_LAT`, `DEFAULT_LON`, `DEFAULT_TIMEZONE` | Москва | город новых пользователей |
 | `DEFAULT_MORNING_TIME` | `08:00` | время сводки новых пользователей |
 | `API_HOST`, `API_PORT` | `127.0.0.1`, `8000` | где слушает API |
-| `API_RATE_LIMIT` | `120` | запросов в минуту на пользователя |
+| `API_RATE_LIMIT` | `120` | запросов в минуту на пользователя (не меньше 1) |
 
 ## Mini App
 
