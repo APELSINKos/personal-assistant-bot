@@ -28,6 +28,7 @@ export const en: Dict = {
     freeDay: "A free day",
     habits: (done: number, total: number) => `Habits · ${done} of ${total}`,
     noHabits: "No habits yet — add the first one on the Habits tab",
+    bestStreak: (name: string, days: number) => `🔥 Best streak: “${name}” — ${days} ${plural(days, "day", "days")}`,
     notes: (count: number) => `${count} ${plural(count, "note", "notes")}`,
     pull: "Pull to refresh",
     refreshing: "Refreshing…",

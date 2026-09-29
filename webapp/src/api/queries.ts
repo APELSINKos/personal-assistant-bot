@@ -71,10 +71,12 @@ function useRefresh() {
 }
 
 /**
- * Removes an item from a cached list at once; puts the list back if the request fails.
- * A per-list mutation key lets `onSettled` check whether this is the *last* in-flight delete for
- * that list — refetching while a sibling delete is still in flight would overwrite the
- * optimistic cache with a server list that doesn't yet reflect it, resurrecting the row.
+ * Removes an item from a cached list at once; puts the list back if the request fails — unless
+ * it failed with 404: the item is already gone, and putting it back would only flash it until
+ * the refetch removes it again. A per-list mutation key lets `onSettled` check whether this is
+ * the *last* in-flight delete for that list — refetching while a sibling delete is still in
+ * flight would overwrite the optimistic cache with a server list that doesn't yet reflect it,
+ * resurrecting the row.
  */
 function useOptimisticRemove<T extends { id: number }>(list: readonly unknown[], path: (id: number) => string) {
   const client = useQueryClient();
@@ -89,7 +91,9 @@ function useOptimisticRemove<T extends { id: number }>(list: readonly unknown[],
       client.setQueryData<T[]>(list, (items) => items?.filter((item) => item.id !== id));
       return { previous };
     },
-    onError: (_error, _id, context) => client.setQueryData(list, context?.previous),
+    onError: (error, _id, context) => {
+      if (!(error instanceof ApiError && error.status === 404)) client.setQueryData(list, context?.previous);
+    },
     onSuccess: () => haptic("success"),
     onSettled: () => {
       if (client.isMutating({ mutationKey }) === 1) return refresh(list);

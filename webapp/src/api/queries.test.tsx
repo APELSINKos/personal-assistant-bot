@@ -82,11 +82,36 @@ describe("optimistic mutation rollback", () => {
     expect(pending).toHaveLength(1);
 
     act(() => {
-      resolveAt(0, 404, { status: 404, code: "not_found", title: "Not found" });
+      resolveAt(0, 503, { status: 503, code: "upstream_unavailable", title: "Upstream unavailable" });
     });
 
-    expect(await screen.findByText("Этого уже нет")).toBeInTheDocument();
+    expect(await screen.findByText("Сервис временно недоступен")).toBeInTheDocument();
     await waitFor(() => expect(client.getQueryData<Note[]>(keys.notes)).toEqual([note]));
+  });
+
+  it("does not bring back a row that is already gone on the server", async () => {
+    const client = createQueryClient();
+    client.setQueryData(keys.notes, [note]);
+    const { pending, resolveAt } = controllableFetch();
+    const { result } = renderHook(() => ({ del: useDeleteNote(), notes: useNotes() }), {
+      wrapper: wrapperFor(client),
+    });
+
+    act(() => {
+      result.current.del.mutate(note.id);
+    });
+    await waitFor(() => expect(client.getQueryData<Note[]>(keys.notes)).toEqual([]));
+    act(() => {
+      resolveAt(0, 404, { status: 404, code: "not_found", title: "Not found" });
+    });
+    await waitFor(() => expect(pending).toHaveLength(2)); // the list is asked for again
+    expect(pending[1]).toMatchObject({ method: "GET", path: "/notes" });
+    expect(client.getQueryData<Note[]>(keys.notes)).toEqual([]); // not restored meanwhile
+    act(() => {
+      resolveAt(1, 200, []);
+    });
+    await waitFor(() => expect(result.current.notes.isFetching).toBe(false));
+    expect(client.getQueryData<Note[]>(keys.notes)).toEqual([]);
   });
 
   it("rolls back a failed mark and shows a translated error toast", async () => {

@@ -251,6 +251,12 @@ a {
   transform: scale(0.88);
 }
 
+.toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+  transform: none;
+}
+
 .toggle--done {
   border-color: var(--accent);
   background: var(--accent);

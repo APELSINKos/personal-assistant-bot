@@ -21,8 +21,13 @@ describe("Notes", () => {
   it("test_deleting_a_note_that_is_already_gone", async () => {
     installTelegram();
     let listed = [note];
+    let answerRefetch: (() => void) | undefined;
     mockApi({
-      "GET /notes": () => ({ body: listed }),
+      "GET /notes": () => {
+        if (listed.length > 0) return { body: listed };
+        // The list asked for after the delete answers late; meanwhile the row must stay gone.
+        return new Promise((resolve) => (answerRefetch = () => resolve({ body: listed })));
+      },
       "DELETE /notes/11": () => {
         listed = []; // it was deleted in the bot a moment ago
         return { status: 404, body: { status: 404, code: "not_found", title: "Not found" } };
@@ -30,8 +35,24 @@ describe("Notes", () => {
     });
     renderWithApp(<><NotesScreen /><Toasts /></>, { path: "/notes" });
     fireEvent.click(await screen.findByRole("button", { name: "Удалить заметку" }));
-    expect(await screen.findByText("Этого уже нет")).toBeInTheDocument();
-    expect(await screen.findByText(/Заметок пока нет/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("Купить хлеб")).not.toBeInTheDocument());
+    // From here on the row must never come back, not even for a frame.
+    let reappeared = false;
+    const watcher = new MutationObserver(() => {
+      if (screen.queryByText("Купить хлеб")) reappeared = true;
+    });
+    watcher.observe(document.body, { childList: true, subtree: true, characterData: true });
+    try {
+      expect(await screen.findByText("Этого уже нет")).toBeInTheDocument();
+      await waitFor(() => expect(answerRefetch).toBeDefined());
+      await new Promise((resolve) => setTimeout(resolve, 20)); // let every pending render land
+      expect(screen.queryByText("Купить хлеб")).not.toBeInTheDocument();
+      act(() => answerRefetch?.());
+      expect(await screen.findByText(/Заметок пока нет/)).toBeInTheDocument();
+    } finally {
+      watcher.disconnect();
+    }
+    expect(reappeared).toBe(false);
   });
 });
 

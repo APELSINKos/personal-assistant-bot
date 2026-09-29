@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Toasts } from "../components/Toasts";
 import { installTelegram } from "../test/fakeTelegram";
@@ -29,6 +29,22 @@ describe("Habits", () => {
     await waitFor(() =>
       expect(calls).toContainEqual({ method: "PUT", path: "/habits/7/marks/2026-09-29", body: { done: true } }),
     );
+  });
+
+  it("waits for the city's zone before a habit can be marked", async () => {
+    installTelegram();
+    let answerMe!: (reply: unknown) => void;
+    const { calls } = mockApi({
+      "GET /me": () => new Promise((resolve) => (answerMe = resolve)),
+      "GET /habits": [habit],
+    });
+    renderWithApp(<HabitsScreen />);
+    const toggle = await screen.findByRole("button", { name: /Спорт: без отметки/ });
+    expect(toggle).toBeDisabled(); // "today" on the device may be another day than in the city
+    fireEvent.click(toggle);
+    act(() => answerMe({ body: me }));
+    await waitFor(() => expect(toggle).toBeEnabled());
+    expect(calls.filter((call) => call.method === "PUT")).toEqual([]);
   });
 
   it("deletes a habit after confirming with its name", async () => {

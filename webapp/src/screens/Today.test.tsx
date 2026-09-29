@@ -22,6 +22,19 @@ describe("Today", () => {
     expect(screen.getByText(/🔥 5 дней/)).toBeInTheDocument();
     expect(screen.getByText(/USD 84,20 ₽/)).toBeInTheDocument();
     expect(screen.getByText("📝 4 заметки")).toBeInTheDocument();
+    expect(screen.getByText("🔥 Лучшая серия: «Спорт» — 5 дней")).toBeInTheDocument();
+  });
+
+  it("names the best streak in English, and only when there is one", async () => {
+    installTelegram();
+    mockApi({ "GET /today": { ...today, best_streak: { name: "Sport", days: 1 } } });
+    const { unmount } = renderWithApp(<TodayScreen />, { lang: "en" });
+    expect(await screen.findByText("🔥 Best streak: “Sport” — 1 day")).toBeInTheDocument();
+    unmount();
+    mockApi({ "GET /today": { ...today, best_streak: null } });
+    renderWithApp(<TodayScreen />);
+    expect(await screen.findByText("Привычки · 0 из 1")).toBeInTheDocument();
+    expect(screen.queryByText(/Лучшая серия/)).not.toBeInTheDocument();
   });
 
   it("marks a habit with one tap", async () => {

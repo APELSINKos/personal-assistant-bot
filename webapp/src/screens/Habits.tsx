@@ -1,5 +1,5 @@
 import { Trash2 } from "lucide-react";
-import { useDeleteHabit, useHabits, useSetMark } from "../api/queries";
+import { useDeleteHabit, useHabits, useMe, useSetMark } from "../api/queries";
 import type { Habit } from "../api/types";
 import { Card } from "../components/Card";
 import { Fab } from "../components/Fab";
@@ -7,12 +7,12 @@ import { HabitDots, HabitToggle, nextMark } from "../components/HabitBits";
 import { Empty, ErrorState, Loader } from "../components/States";
 import { useT } from "../i18n";
 import { localTodayIso } from "../lib/format";
-import { useCityZone } from "../lib/zone";
 import { confirmAction } from "../telegram";
 
 export function HabitsScreen() {
   const t = useT();
-  const zone = useCityZone();
+  // "Today" is the city's today; until /me names the city's zone, a mark could hit another day.
+  const zone = useMe().data?.city.timezone;
   const habits = useHabits();
   const setMark = useSetMark();
   const remove = useDeleteHabit();
@@ -41,9 +41,10 @@ export function HabitsScreen() {
             <div className="row">
               <HabitToggle
                 habit={habit}
-                onToggle={() =>
-                  setMark.mutate({ id: habit.id, day: localTodayIso(zone), done: nextMark(habit.done_today) })
-                }
+                disabled={zone === undefined}
+                onToggle={() => {
+                  if (zone) setMark.mutate({ id: habit.id, day: localTodayIso(zone), done: nextMark(habit.done_today) });
+                }}
               />
               <button
                 type="button"
