@@ -147,6 +147,7 @@ class Reminder(Base):
 
 @event.listens_for(Reminder, "before_insert")
 def _occurrence_defaults_to_due(_mapper: object, _connection: object, target: Reminder) -> None:
+    # ORM inserts only (session.add(...)); a Core insert (e.g. raw SQL) must set it itself.
     if target.occurrence_at is None:
         target.occurrence_at = target.due_at
 
