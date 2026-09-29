@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import secrets
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Any
 
 from aiogram import Bot, F, Router
@@ -28,7 +30,7 @@ from assistant.bot.states import ReminderForm
 from assistant.core.config import LIMITS
 from assistant.core.errors import InvalidInput, LimitReached
 from assistant.core.i18n import Translator
-from assistant.core.models import Reminder, ReminderStatus, User
+from assistant.core.models import Reminder, ReminderStatus, Repeat, User
 from assistant.core.services import phrases, reminders
 from assistant.core.services.phrases import Parsed
 from assistant.core.services.recurrence import describe
@@ -37,6 +39,8 @@ from assistant.core.timeutil import to_local, utcnow
 # Replaced in tests to freeze time.
 clock: Callable[[], datetime] = utcnow
 Send = Callable[[str, Any], Awaitable[Any]]
+# A card (or a time prompt) older than this is treated as gone, whether or not it was pressed.
+CARD_TTL = timedelta(hours=24)
 
 
 def looks_like_reminder(text: str | None) -> bool:
@@ -147,11 +151,17 @@ async def on_add(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
 
 
 async def _ask_time(send: Send, ctx: Ctx, parsed: Parsed, local_now: datetime) -> None:
+    card = secrets.randbelow(10**9) + 1
     await ctx.state.set_state(ReminderForm.time)
     await ctx.state.set_data(
-        {"parsed": phrases.dump(parsed), "at": local_now.isoformat(), "hint": "hint-reminder-time"}
+        {
+            "parsed": phrases.dump(parsed),
+            "at": local_now.isoformat(),
+            "card": card,
+            "hint": "hint-reminder-time",
+        }
     )
-    await send(ctx.t("reminder-ask-time"), time_choices(ctx.t))
+    await send(ctx.t("reminder-ask-time"), time_choices(ctx.t, card))
 
 
 async def _offer(send: Send, ctx: Ctx, parsed: Parsed, local_now: datetime) -> None:
@@ -161,6 +171,13 @@ async def _offer(send: Send, ctx: Ctx, parsed: Parsed, local_now: datetime) -> N
         await ctx.state.set_data({"hint": "hint-reminder-phrase"})
         await send(ctx.t("reminder-need-text"), None)
         return
+    try:
+        reminders.clean_text(parsed.text)
+    except InvalidInput:
+        await ctx.state.set_state(ReminderForm.text)
+        await ctx.state.set_data({"hint": "hint-reminder-phrase"})
+        await send(ctx.t("reminder-long-text", limit=LIMITS.reminder_length), None)
+        return
     if parsed.needs_time:
         await _ask_time(send, ctx, parsed, local_now)
         return
@@ -169,9 +186,17 @@ async def _offer(send: Send, ctx: Ctx, parsed: Parsed, local_now: datetime) -> N
         await send(ctx.t("reminder-past"), None)
         await _ask_time(send, ctx, parsed, local_now)
         return
+    card = secrets.randbelow(10**9) + 1
     await ctx.state.set_state(ReminderForm.confirm)
-    await ctx.state.set_data({"parsed": phrases.dump(parsed), "at": local_now.isoformat()})
-    await send(texts.card_text(parsed, local_now, ctx.t), card_markup(ctx.t))
+    await ctx.state.set_data(
+        {
+            "parsed": phrases.dump(parsed),
+            "at": local_now.isoformat(),
+            "card": card,
+            "hint": "reminder-use-card",
+        }
+    )
+    await send(texts.card_text(parsed, local_now, ctx.t), card_markup(ctx.t, card))
 
 
 def _answer(message: Message) -> Send:
@@ -198,77 +223,137 @@ async def got_phrase(message: Message, ctx: Ctx) -> None:
     await _offer(_answer(message), ctx, parsed, local_now)
 
 
-async def _stored(ctx: Ctx) -> Parsed | None:
+async def got_reply_while_confirm(message: Message, ctx: Ctx) -> None:
+    """A card is open: a new phrase replaces it; anything else just points back to it."""
+    local_now = _local_now(ctx)
+    parsed = phrases.parse(message.text or "", local_now)
+    if parsed is not None:
+        await _offer(_answer(message), ctx, parsed, local_now)
+        return
+    await message.answer(ctx.t("reminder-use-card"))
+
+
+@dataclass
+class _Draft:
+    """A phrase waiting for a time, or a confirmation card: what it says and whose it is."""
+
+    parsed: Parsed
+    at: datetime
+    card: int
+
+
+async def _draft(ctx: Ctx) -> _Draft | None:
     data = await ctx.state.get_data()
-    raw = data.get("parsed")
-    return phrases.load(raw) if isinstance(raw, dict) else None
+    raw, at, card = data.get("parsed"), data.get("at"), data.get("card")
+    if not isinstance(raw, dict) or not isinstance(at, str) or not isinstance(card, int):
+        return None
+    return _Draft(parsed=phrases.load(raw), at=datetime.fromisoformat(at), card=card)
+
+
+async def _verified(
+    query: CallbackQuery, callback_data: ReminderCb, ctx: Ctx, bot: Bot
+) -> _Draft | None:
+    """The draft behind a pressed card button, if the button still belongs to it.
+
+    On a mismatch or an expired draft the button is already answered and its keyboard
+    dropped. An expired draft also clears the state (nothing usable is left there); a
+    mismatched one does not, since a newer draft may still be alive under it.
+    """
+    draft = await _draft(ctx)
+    expired = draft is not None and clock() - draft.at > CARD_TTL
+    if draft is None or expired or draft.card != callback_data.id:
+        await replies.answer_quietly(query, ctx.t("already-deleted"))
+        await replies.drop_buttons(bot, query)
+        if draft is None or expired:
+            await ctx.state.clear()
+        return None
+    return draft
 
 
 async def got_time(message: Message, ctx: Ctx) -> None:
-    base = await _stored(ctx)
+    draft = await _draft(ctx)
     local_now = _local_now(ctx)
     text = (message.text or "").strip()
     answer = phrases.parse(text, local_now) or phrases.parse(f"в {text}", local_now)
-    if base is None or answer is None or phrases.merge(base, answer).needs_time:
-        await message.answer(ctx.t("reminder-ask-time"), reply_markup=time_choices(ctx.t))
-        return
-    await _offer(_answer(message), ctx, phrases.merge(base, answer), local_now)
+    if draft is not None and answer is not None:
+        merged = phrases.merge(draft.parsed, answer)
+        if not merged.needs_time:
+            await _offer(_answer(message), ctx, merged, local_now)
+            return
+    parsed = draft.parsed if draft is not None else Parsed(text="")
+    await _ask_time(_answer(message), ctx, parsed, local_now)
 
 
 async def on_time_choice(
     query: CallbackQuery, callback_data: ReminderCb, ctx: Ctx, bot: Bot
 ) -> None:
-    base = await _stored(ctx)
-    if base is None:
-        await replies.answer_quietly(query, ctx.t("already-deleted"))
+    draft = await _verified(query, callback_data, ctx, bot)
+    if draft is None:
         return
     await query.answer()
     await replies.drop_buttons(bot, query)
-    await _offer(_send_to(bot, query), ctx, base.with_time(callback_data.value), _local_now(ctx))
+    parsed = draft.parsed.with_time(callback_data.value)
+    await _offer(_send_to(bot, query), ctx, parsed, _local_now(ctx))
 
 
-async def on_create(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
-    data = await ctx.state.get_data()
-    raw, at = data.get("parsed"), data.get("at")
-    if not isinstance(raw, dict) or not isinstance(at, str):
-        await replies.answer_quietly(query, ctx.t("already-deleted"))
-        await replies.drop_buttons(bot, query)
+async def on_create(query: CallbackQuery, callback_data: ReminderCb, ctx: Ctx, bot: Bot) -> None:
+    draft = await _verified(query, callback_data, ctx, bot)
+    if draft is None:
         return
-    parsed, card_now = phrases.load(raw), datetime.fromisoformat(at)
+    # Read, then clear right away: it narrows a double tap on ✅ to a single creation.
+    # A failure path below sets the state it needs again.
+    await ctx.state.clear()
+    parsed, card_now = draft.parsed, draft.at
     send = _send_to(bot, query)
     try:
-        # The card's own "now": «через 20 минут» means what the card showed.
-        reminder = await reminders.create_from(ctx.session, ctx.user, parsed, card_now)
+        if parsed.repeat is not Repeat.NONE:
+            # The first firing is counted from the press, never from when the card was shown.
+            reminder = await reminders.create_from(ctx.session, ctx.user, parsed, clock())
+        else:
+            # The card's own "now" for the wall time: «через 20 минут» means what the card
+            # showed. The past check itself still runs against the real clock.
+            when = parsed.when(card_now)
+            if when is None:
+                raise InvalidInput(field="when", reason="needs_time")
+            reminder = await reminders.create(ctx.session, ctx.user, parsed.text, when, clock())
     except LimitReached:
-        await ctx.state.clear()
         await replies.answer_quietly(query)
         await replies.drop_buttons(bot, query)
         await send(ctx.t("reminders-limit", limit=LIMITS.reminders), main_menu(ctx.t))
         return
-    except InvalidInput:
+    except InvalidInput as error:
         await replies.answer_quietly(query)
         await replies.drop_buttons(bot, query)
-        await send(ctx.t("reminder-past"), None)
+        if error.params.get("field") == "text":
+            await send(ctx.t("reminder-long-text", limit=LIMITS.reminder_length), None)
+            await ctx.state.set_state(ReminderForm.text)
+            await ctx.state.set_data({"hint": "hint-reminder-phrase"})
+            return
+        if error.params.get("reason") == "past":
+            await send(ctx.t("reminder-past"), None)
         await _ask_time(send, ctx, parsed, _local_now(ctx))
         return
-    await ctx.state.clear()
     await replies.answer_quietly(query)
     await replies.drop_buttons(bot, query)
-    await send(texts.saved_text(reminder, ctx.user.timezone, card_now, ctx.t), main_menu(ctx.t))
+    saved = texts.saved_text(reminder, ctx.user.timezone, _local_now(ctx), ctx.t)
+    await send(saved, main_menu(ctx.t))
 
 
-async def on_retime(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
-    base = await _stored(ctx)
-    if base is None:
-        await replies.answer_quietly(query, ctx.t("already-deleted"))
-        await replies.drop_buttons(bot, query)
+async def on_retime(query: CallbackQuery, callback_data: ReminderCb, ctx: Ctx, bot: Bot) -> None:
+    draft = await _verified(query, callback_data, ctx, bot)
+    if draft is None:
         return
     await query.answer()
     await replies.drop_buttons(bot, query)
-    await _ask_time(_send_to(bot, query), ctx, base, _local_now(ctx))
+    await _ask_time(_send_to(bot, query), ctx, draft.parsed, _local_now(ctx))
 
 
-async def on_card_cancel(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
+async def on_card_cancel(
+    query: CallbackQuery, callback_data: ReminderCb, ctx: Ctx, bot: Bot
+) -> None:
+    draft = await _verified(query, callback_data, ctx, bot)
+    if draft is None:
+        return
     await ctx.state.clear()
     await replies.answer_quietly(query)
     await replies.drop_buttons(bot, query)
@@ -288,7 +373,7 @@ def create_router() -> Router:
         on_time_choice, ReminderForm.time, ReminderCb.filter(F.action == "t")
     )
     router.message.register(got_phrase, ReminderForm.text, F.text)
-    router.message.register(got_phrase, ReminderForm.confirm, F.text)  # a new phrase, a new card
+    router.message.register(got_reply_while_confirm, ReminderForm.confirm, F.text)
     router.message.register(got_time, ReminderForm.time, F.text)
     router.message.register(phrase_anywhere, StateFilter(None), F.text.func(looks_like_reminder))
     return router

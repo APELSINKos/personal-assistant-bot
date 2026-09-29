@@ -196,6 +196,8 @@ def day_label(day: date, today: date, t: Translator) -> str:
         return t("day-tomorrow")
     if offset == 2:
         return t("day-after-tomorrow")
+    if day.year != today.year:
+        return str(format_date(day, "EEE, d MMM y", locale=t.lang))
     return format_short_day(day, t.lang)
 
 

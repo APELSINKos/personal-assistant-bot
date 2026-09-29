@@ -174,8 +174,10 @@ reminder-ask-phrase =
 hint-reminder-phrase = Напиши, о чём и когда напомнить, например «завтра в 9 купить молоко».
 reminder-not-understood = 🤔 Не нашёл, когда напомнить. { reminder-ask-phrase }
 reminder-need-text = ✍️ О чём напомнить? Напиши фразу целиком, например «завтра в 9 купить молоко».
+reminder-long-text = ✍️ Слишком длинно — до { $limit } символов. Напиши фразу короче.
 reminder-ask-time = 🕘 Во сколько? Выбери или напиши, например 18:30 или «завтра в 10».
 hint-reminder-time = Напиши время, например 18:30 или «завтра в 10».
+reminder-use-card = Нажми «✅ Создать» под карточкой — или напиши новую фразу.
 reminder-card = ⏰ { $when }, { $time } — { $text }
 reminder-card-repeat =
     ↻ { $rule } — { $text }

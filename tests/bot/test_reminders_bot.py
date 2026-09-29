@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from aiogram.methods import AnswerCallbackQuery, SendMessage
@@ -31,12 +31,23 @@ def last_markup_texts(fake) -> list[str]:
     return [button.text for row in markup.inline_keyboard for button in row]
 
 
+def button_data(fake, text: str) -> str:
+    """The callback data of the newest sent button with this text."""
+    for sent in reversed(fake.of(SendMessage)):
+        markup = sent.reply_markup
+        for row in getattr(markup, "inline_keyboard", None) or []:
+            for button in row:
+                if button.text == text:
+                    return button.callback_data
+    raise AssertionError(f"no button {text!r}")
+
+
 async def test_a_phrase_anywhere_shows_a_card_and_creates(feed, fake, session) -> None:
     await feed(message_update("завтра в 9 купить молоко"))
     assert fake.sent_texts()[-1] == "⏰ Завтра, 09:00 — купить молоко"
     assert last_markup_texts(fake) == ["✅ Создать", "🕘 Другое время", "✖️ Отмена"]
     assert await all_reminders(session) == []
-    await feed(callback_update(ReminderCb(action="ok").pack()))
+    await feed(callback_update(button_data(fake, "✅ Создать")))
     assert fake.sent_texts()[-1] == "✅ Напомню 29 сентября в 09:00: купить молоко"
     (stored,) = await all_reminders(session)
     assert stored.due_at == datetime(2026, 9, 29, 6, 0, tzinfo=UTC)
@@ -54,10 +65,10 @@ async def test_casual_message_never_creates_without_a_press(feed, fake, session)
 async def test_missing_time_from_a_button(feed, fake, session) -> None:
     await feed(message_update("завтра позвонить маме"))
     assert fake.sent_texts()[-1] == ASK_TIME
-    assert last_markup_texts(fake) == ["09:00", "12:00", "18:00"]
-    await feed(callback_update(ReminderCb(action="t", value="18:00").pack()))
+    assert last_markup_texts(fake) == ["09:00", "12:00", "18:00", "✖️ Отмена"]
+    await feed(callback_update(button_data(fake, "18:00")))
     assert fake.sent_texts()[-1] == "⏰ Завтра, 18:00 — позвонить маме"
-    await feed(callback_update(ReminderCb(action="ok").pack()))
+    await feed(callback_update(button_data(fake, "✅ Создать")))
     (stored,) = await all_reminders(session)
     assert stored.due_at == datetime(2026, 9, 29, 15, 0, tzinfo=UTC)
 
@@ -65,7 +76,7 @@ async def test_missing_time_from_a_button(feed, fake, session) -> None:
 async def test_a_repeat_card_and_the_list(feed, fake, session) -> None:
     await feed(message_update("по будням в 7:30 зарядка"))
     assert fake.sent_texts()[-1] == "↻ по будням в 07:30 — зарядка\nПервый раз: Завтра, 07:30"
-    await feed(callback_update(ReminderCb(action="ok").pack()))
+    await feed(callback_update(button_data(fake, "✅ Создать")))
     assert fake.sent_texts()[-1] == "✅ Буду напоминать по будням в 07:30: зарядка"
     (stored,) = await all_reminders(session)
     assert stored.repeat is Repeat.WEEKLY and stored.weekdays == 31
@@ -77,14 +88,14 @@ async def test_a_repeat_card_and_the_list(feed, fake, session) -> None:
 
 async def test_another_time_and_cancel(feed, fake, session) -> None:
     await feed(message_update("завтра в 9 купить молоко"))
-    await feed(callback_update(ReminderCb(action="retime").pack()))
+    await feed(callback_update(button_data(fake, "🕘 Другое время")))
     assert fake.sent_texts()[-1] == ASK_TIME
     await feed(message_update("послезавтра в 10"))
     assert fake.sent_texts()[-1] == "⏰ Послезавтра, 10:00 — купить молоко"
-    await feed(callback_update(ReminderCb(action="no").pack()))
+    await feed(callback_update(button_data(fake, "✖️ Отмена")))
     assert fake.sent_texts()[-1] == "Отменено."
     assert await all_reminders(session) == []
-    await feed(callback_update(ReminderCb(action="ok").pack()))  # the card is gone
+    await feed(callback_update(button_data(fake, "✅ Создать")))  # the card is gone
     assert fake.of(AnswerCallbackQuery)[-1].text == "Этого уже нет."
     assert await all_reminders(session) == []
 
@@ -114,7 +125,7 @@ async def test_a_phrase_without_text_asks_what(feed, fake) -> None:
 
 async def test_deleting_a_repeat_asks_first(feed, fake, session, make_user) -> None:
     await feed(message_update("каждый день в 21 таблетки"))
-    await feed(callback_update(ReminderCb(action="ok").pack()))
+    await feed(callback_update(button_data(fake, "✅ Создать")))
     (series,) = await all_reminders(session)
     await feed(callback_update(ReminderCb(action="delask", id=series.id).pack()))
     assert fake.sent_texts()[-1] == "Удалить повтор «таблетки» целиком?"
@@ -135,6 +146,94 @@ async def test_cancel_by_button_double_tap_and_foreign(feed, fake, session, make
     assert [a.text for a in fake.of(AnswerCallbackQuery)[-2:]] == ["🗑 Удалено", "Этого уже нет."]
     await session.refresh(reminder)
     assert reminder.status == ReminderStatus.CANCELLED
+
+
+async def test_an_old_card_is_gone(feed, fake, session, monkeypatch) -> None:
+    await feed(message_update("завтра в 9 купить молоко"))
+    ok = button_data(fake, "✅ Создать")
+    monkeypatch.setattr(reminders_router, "clock", lambda: NOW + timedelta(hours=25))
+    await feed(callback_update(ok))
+    assert fake.of(AnswerCallbackQuery)[-1].text == "Этого уже нет."
+    assert await all_reminders(session) == []
+
+
+async def test_a_card_pressed_after_its_time_asks_again(feed, fake, session, monkeypatch) -> None:
+    await feed(message_update("через 20 минут чай"))
+    ok = button_data(fake, "✅ Создать")
+    monkeypatch.setattr(reminders_router, "clock", lambda: NOW + timedelta(minutes=30))
+    await feed(callback_update(ok))
+    assert fake.sent_texts()[-2:] == ["Это время уже прошло. Укажи момент в будущем:", ASK_TIME]
+    assert await all_reminders(session) == []
+
+
+async def test_a_repeat_card_pressed_later_starts_from_the_press(
+    feed, fake, session, monkeypatch
+) -> None:
+    await feed(message_update("каждый день в 21 таблетки"))
+    ok = button_data(fake, "✅ Создать")
+    monkeypatch.setattr(reminders_router, "clock", lambda: NOW + timedelta(hours=7))
+    await feed(callback_update(ok))
+    (stored,) = await all_reminders(session)
+    assert stored.due_at == datetime(2026, 9, 29, 18, 0, tzinfo=UTC)
+    assert stored.anchor_date == date(2026, 9, 29)
+
+
+async def test_an_older_card_cannot_create_a_newer_one(feed, fake, session) -> None:
+    await feed(message_update("завтра в 9 купить молоко"))
+    old_ok = button_data(fake, "✅ Создать")
+    await feed(message_update("через 20 минут чай"))
+    await feed(callback_update(old_ok))
+    assert fake.of(AnswerCallbackQuery)[-1].text == "Этого уже нет."
+    assert await all_reminders(session) == []
+    await feed(callback_update(button_data(fake, "✅ Создать")))
+    (stored,) = await all_reminders(session)
+    assert stored.text == "чай"
+
+
+async def test_a_long_text_is_refused_before_the_card(feed, fake) -> None:
+    await feed(message_update("завтра в 9 " + "x" * 250))
+    assert fake.sent_texts()[-1] == "✍️ Слишком длинно — до 200 символов. Напиши фразу короче."
+    assert not any(
+        button.text == "✅ Создать"
+        for sent in fake.of(SendMessage)
+        for row in getattr(sent.reply_markup, "inline_keyboard", None) or []
+        for button in row
+    )
+
+
+async def test_the_limit_on_create(feed, fake, session, make_user) -> None:
+    user = await make_user()
+    for i in range(20):
+        await reminders.create(session, user, f"r{i}", datetime(2026, 9, 29, 9, i), now=NOW)
+    await session.commit()
+    await feed(message_update("завтра в 9 купить молоко"))
+    await feed(callback_update(button_data(fake, "✅ Создать")))
+    assert fake.sent_texts()[-1] == "Достигнут лимит — 20 напоминаний. Удали лишние."
+    assert len(await all_reminders(session)) == 20
+
+
+async def test_the_english_card(feed, fake) -> None:
+    await feed(message_update("tomorrow at 9 buy milk", lang="en"))
+    assert fake.sent_texts()[-1] == "⏰ Tomorrow, 09:00 — buy milk"
+
+
+async def test_a_reply_while_a_card_is_open_points_to_it(feed, fake) -> None:
+    await feed(message_update("завтра в 9 купить молоко"))
+    await feed(message_update("ок"))
+    assert fake.sent_texts()[-1] == "Нажми «✅ Создать» под карточкой — или напиши новую фразу."
+
+
+async def test_the_time_prompt_can_be_cancelled(feed, fake) -> None:
+    await feed(message_update("завтра позвонить маме"))
+    await feed(callback_update(button_data(fake, "✖️ Отмена")))
+    assert fake.sent_texts()[-1] == "Отменено."
+    await feed(message_update("привет"))
+    assert fake.sent_texts()[-1].startswith("🤔 Не понял.")
+
+
+async def test_a_date_next_year_shows_the_year(feed, fake) -> None:
+    await feed(message_update("29.02 в 10 тест"))
+    assert fake.sent_texts()[-1] == "⏰ вт, 29 февр. 2028, 10:00 — тест"
 
 
 def test_looks_like_reminder() -> None:

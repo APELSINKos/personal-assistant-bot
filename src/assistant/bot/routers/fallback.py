@@ -17,7 +17,12 @@ async def unknown(message: Message, ctx: Ctx) -> None:
 
 async def need_text(message: Message, ctx: Ctx) -> None:
     hint_key = (await ctx.state.get_data()).get("hint")
-    await message.answer(ctx.t("need-text", hint=ctx.t(hint_key) if hint_key else ""))
+    hint = ctx.t(hint_key) if hint_key else ""
+    if hint == hint_key:
+        # A stale hint key left by an old release (the translator echoes an unknown key
+        # back unchanged): nothing sensible to show.
+        hint = ""
+    await message.answer(ctx.t("need-text", hint=hint))
 
 
 async def orphan_state(message: Message, ctx: Ctx) -> None:

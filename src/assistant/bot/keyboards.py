@@ -128,9 +128,12 @@ def app_markup(t: Translator, url: str | None) -> InlineKeyboardMarkup | None:
     return InlineKeyboardMarkup(inline_keyboard=[[button]])
 
 
-def card_markup(t: Translator) -> InlineKeyboardMarkup:
+def card_markup(t: Translator, card: int) -> InlineKeyboardMarkup:
+    """`card` ties every button to the draft that was current when it was sent."""
+
     def button(key: str, action: str) -> InlineKeyboardButton:
-        return InlineKeyboardButton(text=t(key), callback_data=ReminderCb(action=action).pack())
+        data = ReminderCb(action=action, id=card).pack()
+        return InlineKeyboardButton(text=t(key), callback_data=data)
 
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -140,12 +143,17 @@ def card_markup(t: Translator) -> InlineKeyboardMarkup:
     )
 
 
-def time_choices(t: Translator) -> InlineKeyboardMarkup:
+def time_choices(t: Translator, card: int) -> InlineKeyboardMarkup:
     row = [
-        InlineKeyboardButton(text=hhmm, callback_data=ReminderCb(action="t", value=hhmm).pack())
+        InlineKeyboardButton(
+            text=hhmm, callback_data=ReminderCb(action="t", id=card, value=hhmm).pack()
+        )
         for hhmm in ("09:00", "12:00", "18:00")
     ]
-    return InlineKeyboardMarkup(inline_keyboard=[row])
+    cancel = InlineKeyboardButton(
+        text=t("button-card-cancel"), callback_data=ReminderCb(action="no", id=card).pack()
+    )
+    return InlineKeyboardMarkup(inline_keyboard=[row, [cancel]])
 
 
 def fired_markup(t: Translator, reminder_id: int, fired_at: datetime) -> InlineKeyboardMarkup:

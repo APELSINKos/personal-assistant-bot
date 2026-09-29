@@ -163,8 +163,10 @@ reminder-ask-phrase =
 hint-reminder-phrase = Tell me what and when, e.g. “tomorrow at 9 buy milk”.
 reminder-not-understood = 🤔 I couldn't find when to remind you. { reminder-ask-phrase }
 reminder-need-text = ✍️ What should I remind you about? Send the whole phrase, e.g. “tomorrow at 9 buy milk”.
+reminder-long-text = ✍️ Too long — up to { $limit } characters. Write a shorter phrase.
 reminder-ask-time = 🕘 At what time? Pick one or send it, e.g. 18:30 or “tomorrow at 10”.
 hint-reminder-time = Send a time, e.g. 18:30 or “tomorrow at 10”.
+reminder-use-card = Tap “✅ Create” under the card — or write a new phrase.
 reminder-card = ⏰ { $when }, { $time } — { $text }
 reminder-card-repeat =
     ↻ { $rule } — { $text }
