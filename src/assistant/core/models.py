@@ -80,7 +80,9 @@ class User(Base):
 
 class Note(Base):
     __tablename__ = "notes"
-    __table_args__ = (Index("ix_notes_user", "user_id", "id"),)
+    # AUTOINCREMENT: ids of deleted rows are never handed out again, so an old inline button
+    # (which carries the id) can never act on a newer item. Same for reminders and habits.
+    __table_args__ = (Index("ix_notes_user", "user_id", "id"), {"sqlite_autoincrement": True})
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"))
@@ -94,6 +96,7 @@ class Reminder(Base):
     __table_args__ = (
         Index("ix_reminders_queue", "status", "next_attempt_at"),
         Index("ix_reminders_user", "user_id", "status", "due_at"),
+        {"sqlite_autoincrement": True},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -112,7 +115,7 @@ class Reminder(Base):
 
 class Habit(Base):
     __tablename__ = "habits"
-    __table_args__ = (Index("ix_habits_user", "user_id"),)
+    __table_args__ = (Index("ix_habits_user", "user_id"), {"sqlite_autoincrement": True})
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"))

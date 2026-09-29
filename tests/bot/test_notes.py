@@ -64,3 +64,19 @@ async def test_delete_double_tap_and_foreign_id(feed, fake, session, make_user) 
     await feed(callback_update(data))  # the second tap on the same button
     assert fake.of(AnswerCallbackQuery)[-1].text == "Этого уже нет."
     assert fake.of(EditMessageText)[-1].text.startswith("📝 Заметок пока нет")
+
+
+async def test_old_delete_button_never_hits_a_newer_note(feed, fake, session, make_user) -> None:
+    await make_user()
+    first = await notes.create(session, 1, "первая")
+    await session.commit()
+    await feed(message_update("📝 Заметки"))
+    old_delete = fake.of(SendMessage)[-1].reply_markup.inline_keyboard[0][0].callback_data
+    await feed(callback_update(old_delete))
+    assert fake.of(AnswerCallbackQuery)[-1].text == "🗑 Удалено"
+    second = await notes.create(session, 1, "вторая")
+    await session.commit()
+    assert second.id != first.id  # ids of deleted notes are never reused
+    await feed(callback_update(old_delete))
+    assert fake.of(AnswerCallbackQuery)[-1].text == "Этого уже нет."
+    assert [n.text for n in await notes.all_for(session, 1)] == ["вторая"]

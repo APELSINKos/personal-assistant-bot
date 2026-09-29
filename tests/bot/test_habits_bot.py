@@ -125,3 +125,24 @@ async def test_mark_without_habits(feed, fake) -> None:
     await feed(callback_update(HabitCb(action="mark").pack()))
     answer = fake.of(AnswerCallbackQuery)[-1]
     assert answer.show_alert and answer.text == "Сначала добавь хотя бы одну привычку."
+
+
+async def test_old_buttons_never_hit_a_newer_habit(feed, fake, session, make_user) -> None:
+    user = await make_user()
+    first = await habits.create(session, user, "Спорт")
+    await session.commit()
+    await feed(callback_update(HabitCb(action="mark").pack()))
+    old_toggle = fake.of(EditMessageText)[-1].reply_markup.inline_keyboard[0][0].callback_data
+    await feed(callback_update(HabitCb(action="ask", id=first.id).pack()))
+    old_delete = fake.of(EditMessageText)[-1].reply_markup.inline_keyboard[0][0].callback_data
+    await feed(callback_update(old_delete))
+    assert fake.of(AnswerCallbackQuery)[-1].text == "🗑 Удалено"
+    second = await habits.create(session, user, "Чтение")
+    await session.commit()
+    assert second.id != first.id  # ids of deleted habits are never reused
+    await feed(callback_update(old_toggle))
+    assert fake.of(AnswerCallbackQuery)[-1].text == "Этого уже нет."
+    await feed(callback_update(old_delete))
+    assert fake.of(AnswerCallbackQuery)[-1].text == "Этого уже нет."
+    assert [h.name for h in (await session.scalars(select(Habit))).all()] == ["Чтение"]
+    assert (await session.scalars(select(HabitMark))).all() == []
