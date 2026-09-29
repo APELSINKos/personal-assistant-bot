@@ -106,11 +106,28 @@ def test_between_respects_limit_and_anchor() -> None:
     assert got == [utc(2026, 10, 1, 6), utc(2026, 10, 2, 6), utc(2026, 10, 3, 6)]
 
 
+def test_between_covers_the_full_window_regardless_of_length() -> None:
+    # Two years, well past the internal safety horizon: nothing gets silently dropped.
+    r = rule(Repeat.DAILY, anchor=date(2026, 1, 1))
+    got = between(r, utc(2026, 1, 1), utc(2028, 1, 1), MSK, limit=10_000)
+    assert len(got) == 730
+    assert got[0] == utc(2026, 1, 1, 6)
+    assert got[-1] == utc(2027, 12, 31, 6)
+
+
 def test_latest_up_to_skips_to_the_last_missed_firing() -> None:
     r = rule(Repeat.DAILY, "09:00")
     since = utc(2026, 9, 28, 6)
     assert latest_up_to(r, utc(2026, 10, 1, 12), since, MSK) == utc(2026, 10, 1, 6)
     assert latest_up_to(r, utc(2026, 9, 28, 7), since, MSK) == since
+
+
+def test_latest_up_to_works_across_a_long_span() -> None:
+    # ~500 days between `since` and `moment`, past the internal safety horizon.
+    r = rule(Repeat.DAILY, anchor=date(2026, 1, 1))
+    since = utc(2026, 1, 1, 6)
+    moment = utc(2027, 5, 17, 12)
+    assert latest_up_to(r, moment, since, MSK) == utc(2027, 5, 17, 6)
 
 
 def test_fires_on() -> None:

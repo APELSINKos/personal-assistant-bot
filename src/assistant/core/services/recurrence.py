@@ -83,11 +83,15 @@ def fires_on(rule: Rule, day: date) -> bool:
     return False
 
 
-def local_days(rule: Rule, start: date) -> Iterator[date]:
-    """Local dates the rule fires on, from `start` (or the anchor, if later) onwards."""
+def local_days(rule: Rule, start: date, end: date | None = None) -> Iterator[date]:
+    """Local dates the rule fires on, from `start` (or the anchor, if later) onwards.
+
+    Walks up to `end` when given. Otherwise walks up to `start + _HORIZON`, a bound that
+    exists only to protect `next_after` from a rule that (in theory) never fires again.
+    """
     day = max(start, rule.anchor_date)
-    end = day + _HORIZON
-    while day <= end:
+    last = end if end is not None else day + _HORIZON
+    while day <= last:
         if fires_on(rule, day):
             yield day
         day += timedelta(days=1)
@@ -110,11 +114,14 @@ def next_after(rule: Rule, after: datetime, tz: str) -> datetime:
 def between(
     rule: Rule, start: datetime, end: datetime, tz: str, limit: int = 500
 ) -> list[datetime]:
-    """Firings in [start, end), at most `limit` of them."""
+    """Firings in [start, end), at most `limit` of them.
+
+    Walks the whole window regardless of its length; only `limit` can shorten the result.
+    """
     found: list[datetime] = []
     last_day = to_local(end, tz).date()
-    for day in local_days(rule, to_local(start, tz).date() - timedelta(days=1)):
-        if day > last_day or len(found) >= limit:
+    for day in local_days(rule, to_local(start, tz).date() - timedelta(days=1), last_day):
+        if len(found) >= limit:
             break
         moment = moment_on(rule, day, tz)
         if start <= moment < end:
