@@ -70,11 +70,18 @@ function useRefresh() {
     ]);
 }
 
-/** Removes an item from a cached list at once; puts the list back if the request fails. */
+/**
+ * Removes an item from a cached list at once; puts the list back if the request fails.
+ * A per-list mutation key lets `onSettled` check whether this is the *last* in-flight delete for
+ * that list — refetching while a sibling delete is still in flight would overwrite the
+ * optimistic cache with a server list that doesn't yet reflect it, resurrecting the row.
+ */
 function useOptimisticRemove<T extends { id: number }>(list: readonly unknown[], path: (id: number) => string) {
   const client = useQueryClient();
   const refresh = useRefresh();
+  const mutationKey = ["delete", ...list];
   return useMutation({
+    mutationKey,
     mutationFn: (id: number) => api<void>(path(id), { method: "DELETE" }),
     onMutate: async (id: number) => {
       await client.cancelQueries({ queryKey: list });
@@ -84,7 +91,9 @@ function useOptimisticRemove<T extends { id: number }>(list: readonly unknown[],
     },
     onError: (_error, _id, context) => client.setQueryData(list, context?.previous),
     onSuccess: () => haptic("success"),
-    onSettled: () => refresh(list),
+    onSettled: () => {
+      if (client.isMutating({ mutationKey }) === 1) return refresh(list);
+    },
   });
 }
 
@@ -142,12 +151,23 @@ export function useCreateHabit() {
 
 export const useDeleteHabit = () => useOptimisticRemove<Habit>(keys.habits, (id) => `/habits/${id}`);
 
+const MARK_MUTATION_KEY = ["mark"];
+
+/**
+ * Two quick taps (⬜→✅→❌) must not let the first tap's refetch overwrite the second tap's
+ * optimistic state, and the two PUTs must commit in the order the user made them. `scope`
+ * serialises the actual requests (one at a time, in call order) while `onMutate` still runs
+ * immediately for both, so the cache reflects the latest tap right away; the mutation key lets
+ * `onSettled` refresh only once — when it is the last mark mutation still in flight.
+ */
 export function useSetMark() {
   const client = useQueryClient();
   const refresh = useRefresh();
   const patch = (id: number, done: boolean | null) => (habit: Habit) =>
     habit.id === id ? { ...habit, done_today: done } : habit;
   return useMutation({
+    mutationKey: MARK_MUTATION_KEY,
+    scope: { id: "habit-mark" },
     mutationFn: ({ id, day, done }: { id: number; day: string; done: boolean | null }) =>
       api<Habit>(`/habits/${id}/marks/${day}`, { method: "PUT", body: { done } }),
     onMutate: async ({ id, done }) => {
@@ -169,7 +189,9 @@ export function useSetMark() {
       client.setQueryData(keys.habits, previous?.habits);
       client.setQueryData(keys.today, previous?.today);
     },
-    onSettled: () => refresh(keys.habits),
+    onSettled: () => {
+      if (client.isMutating({ mutationKey: MARK_MUTATION_KEY }) === 1) return refresh(keys.habits);
+    },
   });
 }
 
@@ -197,9 +219,12 @@ export function useSetCity() {
     onSuccess: (me) => {
       client.setQueryData(keys.me, me);
       haptic("success");
+      // Habits' `done_today` is computed against the city's local date, so a city change can
+      // shift which day "today" is for them too.
       return Promise.all([
         client.invalidateQueries({ queryKey: keys.today }),
         client.invalidateQueries({ queryKey: keys.reminders }),
+        client.invalidateQueries({ queryKey: keys.habits }),
       ]);
     },
   });

@@ -78,6 +78,17 @@ export function telegramLanguage(): string | undefined {
   return webApp()?.initDataUnsafe.user?.language_code;
 }
 
+/**
+ * Telegram's launch parameters live in the hash (`#tgWebAppData=…&tgWebAppVersion=…`);
+ * telegram-web-app.js has already read them by the time this runs, so the hash can become
+ * the app's route instead of leaving wouter's hash router with nothing to match.
+ */
+export function normalizeLaunchHash(): void {
+  if (!window.location.hash.startsWith("#/")) {
+    window.history.replaceState(null, "", window.location.pathname + window.location.search + "#/");
+  }
+}
+
 export function colorScheme(): "light" | "dark" {
   const app = webApp();
   if (app) return app.colorScheme;

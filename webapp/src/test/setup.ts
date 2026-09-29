@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
+import { clearToasts } from "../components/toastStore";
 import { removeTelegram } from "./fakeTelegram";
 
 if (!window.matchMedia) {
@@ -20,6 +21,9 @@ if (!window.matchMedia) {
 afterEach(() => {
   cleanup();
   removeTelegram();
+  clearToasts();
+  window.history.replaceState(null, "", "/");
+  document.documentElement.removeAttribute("data-theme");
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });

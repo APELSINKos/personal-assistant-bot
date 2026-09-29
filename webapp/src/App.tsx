@@ -1,6 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { useEffect, useState, type ReactNode } from "react";
-import { matchRoute, Route, Router, Switch, useLocation, useRouter } from "wouter";
+import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
+import { matchRoute, Redirect, Route, Router, Switch, useLocation, useRouter } from "wouter";
 import { useHashLocation } from "wouter/use-hash-location";
 import { AUTH_EXPIRED_EVENT } from "./api/client";
 import { createQueryClient, useMe } from "./api/queries";
@@ -47,7 +47,9 @@ function SessionGate({ children }: { children: ReactNode }) {
 function useTheme() {
   const [scheme, setScheme] = useState(colorScheme);
   useEffect(() => onThemeChange(() => setScheme(colorScheme())), []);
-  useEffect(() => {
+  // A layout effect (not a passive one) applies the theme before the browser paints, so the
+  // reopen/outside-Telegram screen never flashes the default dark theme before the real one.
+  useLayoutEffect(() => {
     document.documentElement.dataset.theme = scheme;
     paintTelegram(scheme);
   }, [scheme]);
@@ -56,7 +58,6 @@ function useTheme() {
 function Localized({ children }: { children: ReactNode }) {
   const me = useMe();
   const lang = me.data?.language ?? fallbackLang();
-  useTheme();
   useEffect(() => {
     document.documentElement.lang = lang;
   }, [lang]);
@@ -78,6 +79,9 @@ function Shell() {
           {ROUTES.map((route) => (
             <Route key={route.path} path={route.path} component={route.component} />
           ))}
+          <Route>
+            <Redirect to="/" />
+          </Route>
         </Switch>
       </main>
       {!current?.hideNav && <BottomNav />}
@@ -88,6 +92,9 @@ function Shell() {
 
 export function App() {
   const [client] = useState(createQueryClient);
+  // Applied above the session gate so the theme (and Telegram's bar colours) are correct
+  // even on the reopen/outside-Telegram screen, before any session or `/me` data is known.
+  useTheme();
   return (
     <QueryClientProvider client={client}>
       <Router hook={useHashLocation}>

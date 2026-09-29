@@ -1,10 +1,12 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { toast } from "./components/toastStore";
+import { ROUTES } from "./routes";
 import { me } from "./test/fixtures";
 import { installTelegram } from "./test/fakeTelegram";
 import { mockApi } from "./test/mockApi";
+import { normalizeLaunchHash } from "./telegram";
 import { act } from "react";
 
 describe("App shell", () => {
@@ -51,5 +53,42 @@ describe("App shell", () => {
     expect(app.setBackgroundColor).toHaveBeenCalledWith("#f7f5f2");
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(app.ready).not.toHaveBeenCalled(); // startTelegram() runs in main.tsx, not in <App />
+  });
+
+  it("applies the theme even before the session is confirmed", async () => {
+    // The reopen screen has no `/me` data yet, but it must not flash the wrong theme.
+    const app = installTelegram({ colorScheme: "light" });
+    mockApi({ "GET /me": { status: 401, body: { status: 401, code: "expired_init_data", title: "Unauthorized" } } });
+    render(<App />);
+    await screen.findByText("Открой приложение заново");
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(app.setBackgroundColor).toHaveBeenCalledWith("#f7f5f2");
+  });
+
+  it("normalizes Telegram's launch-parameter hash so a tab is active", async () => {
+    window.history.replaceState(null, "", "/#tgWebAppData=abc&tgWebAppVersion=8.0");
+    normalizeLaunchHash();
+    installTelegram();
+    mockApi({ "GET /me": me });
+    render(<App />);
+    expect(await screen.findByRole("link", { name: "Сегодня" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("shows the BackButton on a route with a parent and navigates there on press", async () => {
+    const FakeScreen = () => <p>fake screen</p>;
+    ROUTES.push({ path: "/fake", parent: "/", component: FakeScreen });
+    try {
+      const app = installTelegram();
+      mockApi({ "GET /me": me });
+      window.history.replaceState(null, "", "/#/fake");
+      render(<App />);
+      await screen.findByText("fake screen");
+      expect(app.BackButton.show).toHaveBeenCalled();
+      const onBack = vi.mocked(app.BackButton.onClick).mock.calls.at(-1)?.[0];
+      act(() => onBack?.());
+      expect(await screen.findByRole("link", { name: "Сегодня" })).toHaveAttribute("aria-current", "page");
+    } finally {
+      ROUTES.pop();
+    }
   });
 });

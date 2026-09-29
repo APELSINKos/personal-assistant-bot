@@ -3,7 +3,7 @@ import { useT } from "../i18n";
 export function Loader() {
   const t = useT();
   return (
-    <div aria-busy="true" aria-label={t.common.loading}>
+    <div role="status" aria-busy="true" aria-label={t.common.loading}>
       <div className="skeleton" />
       <div className="skeleton" />
       <div className="skeleton" />

@@ -27,7 +27,7 @@ export function SwipeRow({
   };
 
   return (
-    <div className="swipe">
+    <div className="swipe" data-open={offset !== 0 ? "true" : "false"}>
       <button type="button" className="swipe__delete" onClick={onDelete} aria-label={deleteLabel}>
         <Trash2 size={20} aria-hidden />
       </button>

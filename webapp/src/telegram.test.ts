@@ -1,7 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { installTelegram } from "./test/fakeTelegram";
 import {
-  confirmAction, haptic, initData, paintTelegram, startTelegram, webApp,
+  confirmAction, haptic, initData, normalizeLaunchHash, paintTelegram, startTelegram, webApp,
 } from "./telegram";
 
 describe("telegram", () => {
@@ -41,5 +41,29 @@ describe("telegram", () => {
     window.Telegram = undefined;
     vi.spyOn(window, "confirm").mockReturnValue(false);
     await expect(confirmAction("Удалить?")).resolves.toBe(false);
+  });
+
+  describe("normalizeLaunchHash", () => {
+    afterEach(() => {
+      window.history.replaceState(null, "", "/");
+    });
+
+    it("turns Telegram's launch parameters into the app's root route", () => {
+      window.history.replaceState(null, "", "/#tgWebAppData=abc&tgWebAppVersion=8.0");
+      normalizeLaunchHash();
+      expect(window.location.hash).toBe("#/");
+    });
+
+    it("leaves an existing app route alone", () => {
+      window.history.replaceState(null, "", "/#/habits");
+      normalizeLaunchHash();
+      expect(window.location.hash).toBe("#/habits");
+    });
+
+    it("turns a missing hash into the root route too", () => {
+      window.history.replaceState(null, "", "/");
+      normalizeLaunchHash();
+      expect(window.location.hash).toBe("#/");
+    });
   });
 });

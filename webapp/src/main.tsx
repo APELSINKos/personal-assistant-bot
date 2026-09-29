@@ -7,8 +7,9 @@ import "./styles/app.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
-import { startTelegram } from "./telegram";
+import { normalizeLaunchHash, startTelegram } from "./telegram";
 
+normalizeLaunchHash();
 startTelegram();
 
 createRoot(document.getElementById("root") as HTMLElement).render(

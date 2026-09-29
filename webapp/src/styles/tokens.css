@@ -14,6 +14,7 @@
 
 :root,
 [data-theme="dark"] {
+  color-scheme: dark;
   --bg-base: #0a0913;
   --glow-1: #3b1f6e;
   --glow-2: #0f4a52;
@@ -26,9 +27,12 @@
   --accent-text: #7cf5c4;
   --on-accent: #0a0913;
   --error: #ff7a90;
+  /* White on #ff7a90 is only ~2.5:1; the dark background gives ~7.9:1. */
+  --on-error: #0a0913;
 }
 
 [data-theme="light"] {
+  color-scheme: light;
   --bg-base: #f7f5f2;
   --glow-1: #f3d9ff;
   --glow-2: #cdeff0;
@@ -41,4 +45,6 @@
   --accent-text: #0b7a5c;
   --on-accent: #1c1830;
   --error: #d63b5c;
+  /* White on #d63b5c is ~4.53:1, which still clears AA. */
+  --on-error: #fff;
 }

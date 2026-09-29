@@ -10,10 +10,16 @@ type Reply = { status?: number; body?: unknown };
 type Handler = (request: { method: string; path: string; body: unknown }) => Reply | undefined;
 
 // A plain route value is either the JSON body itself, or a `{ status?, body? }` shape
-// describing a non-200 response. None of the API payloads have a field literally named
-// "body", so its presence is what tells the two apart.
+// describing a non-200 response (including a status-only reply, e.g. `{ status: 204 }`).
+// It's the latter only when every key is one of "status"/"body" and "status", if present, is a
+// number — real API payloads (e.g. `/health`'s `{ status: "ok", ... }`) either have other keys
+// or a non-numeric "status", so they always fall through to being used as the body itself.
 function isReplyShape(value: unknown): value is Reply {
-  return typeof value === "object" && value !== null && !Array.isArray(value) && "body" in value;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length === 0) return false;
+  return entries.every(([key, val]) =>
+    (key === "body") || (key === "status" && typeof val === "number"));
 }
 
 export function mockApi(routes: Record<string, unknown>) {
