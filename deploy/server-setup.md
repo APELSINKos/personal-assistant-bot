@@ -3,27 +3,57 @@
 Runbook for preparing an Ubuntu 24.04 server to run the Personal Assistant bot
 and for wiring up the automated deploy described in
 [assistant-deploy](assistant-deploy) and [../.github/workflows/deploy.yml](../.github/workflows/deploy.yml).
+Besides the bot it covers the API and the Mini App behind Caddy.
 The server is referred to as `<server>` throughout — substitute the operator's
 SSH alias or hostname for it; do not write the address into this file.
+The Mini App's host name is referred to as `<site host>` — a name that
+resolves to the server's address; do not write it into this file either.
 
 ## Prerequisites
 
 - Ubuntu 24.04 with a sudo-capable account already reachable over SSH.
-- Port 22 (SSH) open. The bot makes only outbound HTTPS connections to
-  Telegram, so no other inbound port is required.
+- Ports 22 (SSH), 80 and 443 open, both in the cloud provider's firewall
+  (security group) and in ufw. Caddy serves the Mini App on 443 and uses 80
+  to obtain and renew its certificate.
 
 ## 1. Packages and uv
 
 ```bash
 ssh <server> 'sudo bash -s' <<'EOF'
 set -euo pipefail
-apt-get update -qq && apt-get install -y -qq sqlite3 git curl
+apt-get update -qq && apt-get install -y -qq sqlite3 git curl gpg
 if ! command -v uv >/dev/null; then
   curl -LsSf https://astral.sh/uv/0.12.19/install.sh |
     env UV_INSTALL_DIR=/usr/local/bin UV_NO_MODIFY_PATH=1 sh
 fi
+install -d -m 0755 /etc/apt/keyrings
+# Node.js 24 (NodeSource) builds the Mini App during deploys.
+if [ ! -f /etc/apt/sources.list.d/nodesource.list ]; then
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key |
+    gpg --dearmor --yes -o /etc/apt/keyrings/nodesource.gpg
+  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" \
+    > /etc/apt/sources.list.d/nodesource.list
+fi
+# Caddy (official repository) terminates HTTPS for the Mini App and the API.
+if [ ! -f /etc/apt/sources.list.d/caddy-stable.list ]; then
+  curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key |
+    gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt \
+    > /etc/apt/sources.list.d/caddy-stable.list
+  chmod o+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg /etc/apt/sources.list.d/caddy-stable.list
+fi
+apt-get update -qq && apt-get install -y -qq nodejs caddy
+# 1 GB of swap: headroom for the web app build next to the running services.
+if [ -z "$(swapon --show --noheadings)" ]; then
+  fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+ufw allow 80/tcp >/dev/null && ufw allow 443/tcp >/dev/null
+node --version && caddy version && swapon --show --noheadings
 EOF
 ```
+Expected: `v24.…`, `v2.11.…`, one swap line. Installing the package starts
+Caddy with its welcome page on port 80; section 4 replaces it.
 
 ## 2. Users and directories
 
@@ -51,7 +81,9 @@ only by root and the `assistant` group):
 
 - `BOT_TOKEN` — the Telegram bot token.
 - `DATABASE_URL` — `sqlite+aiosqlite:////var/lib/assistant/assistant.db`.
-- `WEBAPP_URL` — left empty until the Mini App exists.
+- `WEBAPP_URL` — `https://<site host>/` once the web front (section 4) answers
+  over HTTPS; empty until then (the bot shows the Mini App buttons only when
+  it is set).
 - `LOG_LEVEL` — `INFO`.
 
 ```bash
@@ -93,7 +125,7 @@ show() { runuser -u assistant -- git show "origin/main:deploy/$1"; }
 show assistant-deploy > /usr/local/sbin/assistant-deploy
 show assistant-backup > /usr/local/sbin/assistant-backup
 chmod 0755 /usr/local/sbin/assistant-deploy /usr/local/sbin/assistant-backup
-for unit in assistant-bot.service assistant-backup.service assistant-backup.timer; do
+for unit in assistant-bot.service assistant-api.service assistant-backup.service assistant-backup.timer; do
   show "$unit" > "/etc/systemd/system/$unit"
 done
 systemctl daemon-reload
@@ -101,13 +133,57 @@ systemctl enable --now assistant-backup.timer
 systemctl start assistant-backup.service
 journalctl -u assistant-backup -n 3 -o cat --no-pager
 systemd-analyze security assistant-bot.service | tail -1
+systemd-analyze security assistant-api.service | tail -1
 EOF
 ```
 
-Expected: the backup run prints `no database yet, nothing to back up`; the
-security summary shows an exposure level of 3.5 or lower. The bot service
-itself ([assistant-bot.service](assistant-bot.service)) is only installed
-here, not enabled or started — that happens at cutover.
+Expected: the backup run prints `no database yet, nothing to back up`; both
+security summaries show an exposure level of 3.5 or lower. The bot and API
+services ([assistant-bot.service](assistant-bot.service),
+[assistant-api.service](assistant-api.service)) are only installed here, not
+enabled or started — that happens at cutover
+(`systemctl enable --now assistant-api assistant-bot`).
+
+### Web front
+
+Caddy serves the Mini App from `/opt/assistant/app/webapp/dist` (the deploy
+script builds it there) and proxies `/api` to the API on `127.0.0.1:8000`,
+with a certificate it obtains and renews by itself. Its host name comes from
+its own environment file, so Caddy never reads `/etc/assistant/assistant.env`
+and never sees the bot token. Like the units, the Caddyfile is installed by
+hand from `origin/main` — the deploy script never changes web server
+configuration.
+
+```bash
+ssh <server> 'sudo SITE_HOST=<site host> bash -s' <<'EOF'
+set -euo pipefail
+cd /opt/assistant/app
+show() { runuser -u assistant -- git show "origin/main:deploy/$1"; }
+printf 'SITE_HOST=%s\n' "$SITE_HOST" > /etc/caddy/assistant.env
+chmod 0644 /etc/caddy/assistant.env
+install -d -m 0755 /etc/systemd/system/caddy.service.d
+show caddy-assistant.conf > /etc/systemd/system/caddy.service.d/assistant.conf
+show Caddyfile > /etc/caddy/Caddyfile.new
+caddy validate --config /etc/caddy/Caddyfile.new --adapter caddyfile
+mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
+systemctl daemon-reload
+systemctl restart caddy
+sleep 10
+curl -sS -o /dev/null -w '%{http_code} %{ssl_verify_result}\n' "https://$SITE_HOST/api/health"
+EOF
+```
+
+Expected: `Valid configuration`, then `502 0` before the API runs (the
+certificate verified; nothing behind it yet) and `200 0` once it does. The
+headers can be checked at any time:
+
+```bash
+ssh <server> 'curl -sSI https://<site host>/ | grep -iE "^(strict-transport|content-security|x-content-type|referrer|permissions|server)"'
+```
+
+Expected: the five security headers from the Caddyfile and no `Server`
+line. After a change to the Caddyfile on `main`, repeat the block above;
+`caddy validate` rejects a broken file before it replaces the working one.
 
 ## 5. Deploy user
 
@@ -198,10 +274,16 @@ Exit codes:
 | Code | Meaning |
 |---|---|
 | `0` | deployed, or skipped because the sha is older than (an ancestor of) the commit already running |
-| `1` | the deploy failed; the previously running commit is back up |
+| `1` | the deploy failed; the previously running commit is still up (the web app did not build) or up again (rolled back) |
 | `2` | refused — bad argument, invalid branch name, not root, the git fetch of `origin/main` failed, or the sha is not on `origin/main`; nothing was stopped |
 | `3` | another deploy is already running |
-| `4` | the bot is down and the rollback itself failed — manual attention needed |
+| `4` | the services are down and the rollback itself failed — manual attention needed |
+
+The web app is built in a scratch worktree (`/opt/assistant/build`) before
+anything is stopped, so the bot keeps running during the build, and the
+previous build stays in `webapp/dist.previous` until the new commit is
+healthy. A commit counts as healthy when the bot logged `Bot started` in its
+new run and `/api/health` reports that commit.
 
 By default the script refuses to move backwards: if the given sha is an
 ancestor of the commit currently running, it exits `0` without touching
@@ -260,10 +342,10 @@ by hand:
 ```bash
 ssh <server> 'sudo bash -s' <<'EOF'
 set -euo pipefail
-systemctl stop assistant-bot
+systemctl stop assistant-bot assistant-api
 install -o assistant -g assistant -m 0640 /var/backups/assistant/<snapshot>.db /var/lib/assistant/assistant.db
 rm -f /var/lib/assistant/assistant.db-wal /var/lib/assistant/assistant.db-shm
-systemctl start assistant-bot
+systemctl start assistant-api assistant-bot
 EOF
 ```
 
