@@ -1,12 +1,9 @@
-// Only the Latin and Cyrillic subsets: the app speaks English and Russian.
-import "@fontsource/manrope/latin-400.css";
-import "@fontsource/manrope/cyrillic-400.css";
-import "@fontsource/manrope/latin-600.css";
-import "@fontsource/manrope/cyrillic-600.css";
-import "@fontsource/manrope/latin-700.css";
-import "@fontsource/manrope/cyrillic-700.css";
-import "@fontsource/unbounded/latin-700.css";
-import "@fontsource/unbounded/cyrillic-700.css";
+// Whole weights: each subset is declared with its unicode-range, so a page downloads only the
+// subsets its text needs (a subset file alone has no range and would claim every character).
+import "@fontsource/manrope/400.css";
+import "@fontsource/manrope/600.css";
+import "@fontsource/manrope/700.css";
+import "@fontsource/unbounded/700.css";
 import "./styles/tokens.css";
 import "./styles/app.css";
 import { StrictMode } from "react";
