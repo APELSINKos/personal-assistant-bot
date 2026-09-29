@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-09-29
+
 Новая версия бота: отдельное ядро с правилами, база на SQLAlchemy с миграциями, aiogram 3, два языка, надёжная доставка и автоматический деплой.
 
 ### Добавлено
@@ -47,5 +49,6 @@
 
 Учебная версия, выполненная в рамках дисциплины «Тестирование, верификация и валидация ПО» (РТУ МИРЭА): погода с советами, «Мой день», напоминания, заметки, привычки, курсы ЦБ РФ и утренняя сводка на pyTelegramBotAPI. Материалы — в [docs/coursework](docs/coursework).
 
-[Unreleased]: https://github.com/APELSINKos/personal-assistant-bot/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/APELSINKos/personal-assistant-bot/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/APELSINKos/personal-assistant-bot/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/APELSINKos/personal-assistant-bot/releases/tag/v1.0.0
