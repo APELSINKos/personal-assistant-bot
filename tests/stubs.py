@@ -23,6 +23,7 @@ class StubMeteo:
         }
         self.cities: list[City] = []
         self.fail = False
+        self.searches: list[tuple[str, str]] = []
 
     async def forecast(self, lat: float, lon: float) -> dict[str, Any]:
         if self.fail:
@@ -30,6 +31,7 @@ class StubMeteo:
         return self.forecast_data
 
     async def search(self, name: str, lang: str, count: int = 5) -> list[City]:
+        self.searches.append((name, lang))
         if self.fail:
             raise UpstreamUnavailable(service="open-meteo")
         return self.cities
