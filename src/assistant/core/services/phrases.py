@@ -115,7 +115,11 @@ _EN_DAY = _EN_DAYS + "|" + _alt(_EN_WEEKDAYS)
 _EN_MON = _alt(_EN_MONTHS) + "|" + _alt(tuple(m[:3] for m in _EN_MONTHS))
 _NUM = r"\d{1,3}|" + _alt(tuple(_NUMBERS))
 
-PREFIX = re.compile(r"^\s*(?:напомни(?:ть)?(?:\s+мне)?|remind\s+me(?:\s+to)?)" + _E + r"[\s,:—-]*")
+PREFIX = re.compile(
+    r"^\s*(?:(?:please|пожалуйста)" + _E + r"[\s,]*)?"
+    r"(?:напомни(?:ть)?(?:\s+мне)?|remind\s+me(?:\s+to)?)" + _E + r"[\s,:—-]*"
+)
+POLITE = re.compile(r"^(?:please|пожалуйста)" + _E + r"[\s,]*", re.IGNORECASE)
 
 REPEATS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(_W + r"(?:каждый\s+день|ежедневно|every\s*day|daily)" + _E), "daily"),
@@ -226,11 +230,18 @@ REPEATS: list[tuple[re.Pattern[str], str]] = [
 
 RELATIVE = re.compile(
     _W + r"(?:через|in)\s+(?:(?P<half>полчаса|half\s+an\s+hour)|(?P<oneandhalf>полтора\s+часа)"
+    # hours and minutes: «через 1 час 30 минут», "in 2 hours and 15 minutes"
+    r"|(?:(?P<hn>" + _NUM + r")\s+)?(?:час(?:а|ов)?|hours?|hrs?)\s+(?:(?:и|and)\s+)?"
+    r"(?P<mn>" + _NUM + r")\s+(?:минут[уы]?|мин|minutes?|mins?)"
     r"|(?:(?P<n>" + _NUM + r")\s+)?(?P<unit>минут[уы]?|мин|час(?:а|ов)?|день|дня|дней|недел[юиь]"
     r"|minutes?|mins?|hours?|hrs?|days?|weeks?))" + _E
 )
+# With a year the date may follow «в / на» («в 10.12.2026»); without one «в 10.12» is a time.
+DATE_NUMERIC_YEAR = re.compile(
+    _W + r"(?:(?:в|во|на)\s+)?(?<![\d.:])(?P<d>\d{1,2})\.(?P<m>\d{2})\.(?P<y>\d{4}|\d{2})(?![\d.:])"
+)
 DATE_NUMERIC = re.compile(
-    r"(?<!в\s)(?<!во\s)(?<!к\s)(?<![\d.:])(?P<d>\d{1,2})\.(?P<m>\d{1,2})(?:\.(?P<y>\d{4}))?(?![\d.:])"
+    r"(?<!в\s)(?<!во\s)(?<!к\s)(?<![\d.:])(?P<d>\d{1,2})\.(?P<m>\d{2})(?![\d.:])"
 )
 DATE_RU = re.compile(
     _W + r"(?P<d>\d{1,2})\s+(?P<mon>" + _alt(_RU_MONTHS) + r")(?:\s+(?P<y>\d{4})(?:\s+года)?)?" + _E
@@ -240,19 +251,69 @@ DATE_EN = re.compile(
     r"|(?P<mon2>" + _EN_MON + r")\s+(?P<d2>\d{1,2})(?:st|nd|rd|th)?)(?:,?\s+(?P<y>\d{4}))?" + _E
 )
 DAY_WORD = re.compile(
-    _W + r"(?P<w>послезавтра|завтра|сегодня|(?:the\s+)?day\s+after\s+tomorrow|tomorrow|today)" + _E
+    _W + r"(?:на\s+)?(?P<w>послезавтра|завтра|сегодня"
+    r"|(?:the\s+)?day\s+after\s+tomorrow|tomorrow|today)" + _E
 )
+# «в следующую пятницу» / "next friday" is that day of the next Monday-based week.
 WEEKDAY_ONCE = re.compile(
-    _W + r"(?:(?:в|во)\s+(?P<ru>" + _RU_ACC + r")|on\s+(?P<en>" + _alt(_EN_WEEKDAYS) + r"))" + _E
+    _W + r"(?:(?:в|во|на)\s+(?:(?P<ru_next>следующ(?:ий|ую|ее))\s+|эт(?:от|у|о)\s+)?"
+    r"(?P<ru>" + _RU_ACC + r")"
+    r"|(?:on\s+)?(?:(?P<en_next>next)\s+|this\s+)?(?P<en>" + _alt(_EN_WEEKDAYS) + r"))" + _E
 )
+# After the number of «в N» / "at N": a hyphen suffix («9-м»), a decimal part («2.5») or a unit
+# («в 2 раза», "at 5 stars") means a quantity, not a clock time.
+_UNITS = (
+    r"раза?",
+    "км",
+    "кг",
+    "м",
+    "г",
+    "л",
+    "мл",
+    "см",
+    "мм",
+    r"метр\w*",
+    r"километр\w*",
+    r"класс\w*",
+    "лет",
+    r"год\w*",
+    r"этаж\w*",
+    r"процент\w*",
+    "минутах",
+    "часах",
+    "шагах",
+    r"руб\w*",
+    "times",
+    "percent",
+    r"stars?",
+    "km",
+    "kg",
+    r"miles?",
+    r"years?",
+    "floor",
+)
+_NOT_TIME = r"(?!-[^\W\d_]|[.,:]\d|\s*%|\s*(?:" + "|".join(_UNITS) + r")" + _E + r")"
 TIME_WORD = re.compile(_W + r"(?:в|at)\s+(?P<w>полдень|полночь|noon|midnight)" + _E)
+# «утром в 7» / «в 8 вечером» read like «в 7 утра» / «в 8 вечера» (the text has ё → е).
+_PART_OF_DAY = {"утром": "утра", "днем": "дня", "вечером": "вечера", "ночью": "ночи"}
 TIME_RU = re.compile(
-    _W + r"(?:в|во|к)\s+(?P<h>\d{1,2})(?:[:.](?P<m>\d{2}))?(?:\s*(?:ч|час(?:а|ов)?)" + _E + r")?"
-    r"(?:\s+(?P<mer>утра|дня|вечера|ночи))?" + _E
+    _W + r"(?:(?P<pre>" + _alt(tuple(_PART_OF_DAY)) + r")\s+)?"
+    r"(?:в|во|к)\s+(?P<h>\d{1,2})(?:[:.](?P<m>\d{2}))?"
+    + _NOT_TIME
+    + r"(?:\s*(?:ч|час(?:а|ов)?)"
+    + _E
+    + r")?"
+    r"(?:\s+(?P<mer>" + _alt(("утра", "дня", "вечера", "ночи", *_PART_OF_DAY)) + r"))?" + _E
 )
+_MERIDIEM = r"[ap]\.?m\.?"  # am, a.m., pm, p.m.
 TIME_EN = re.compile(
-    _W + r"(?:at\s+(?P<h>\d{1,2})(?::(?P<m>\d{2}))?\s*(?P<mer>am|pm)?"
-    r"|(?P<h2>\d{1,2})(?::(?P<m2>\d{2}))?\s*(?P<mer2>am|pm))" + _E
+    _W
+    + r"(?:at\s+(?P<h>\d{1,2})(?:[:.](?P<m>\d{2}))?"
+    + _NOT_TIME
+    + r"\s*(?P<mer>"
+    + _MERIDIEM
+    + r")?"
+    r"|(?P<h2>\d{1,2})(?::(?P<m2>\d{2}))?\s*(?P<mer2>" + _MERIDIEM + r"))" + _E
 )
 TIME_BARE = re.compile(r"(?<![\w:.])(?P<h>\d{1,2}):(?P<m>\d{2})(?![\w:])")
 LEADING_JUNK = re.compile(r"^(?:что(?:бы)?|о\s+том,?\s+что(?:бы)?|to|that)" + _E + r"\s*")
@@ -276,7 +337,7 @@ class Parsed:
 
     @property
     def needs_time(self) -> bool:
-        return self.time is None and self.delta is None
+        return self.time is None and (self.delta is None or self.repeat is not Repeat.NONE)
 
     def with_time(self, hhmm: str) -> Parsed:
         return replace(self, time=hhmm)
@@ -294,10 +355,10 @@ class Parsed:
         if self.delta_days is not None:
             return datetime.combine(wall.date() + timedelta(days=self.delta_days), clock)
         if self.day is not None:
-            moment = datetime.combine(self.day, clock)
-            if not self.day_has_year and moment <= wall:
-                moment = moment.replace(year=moment.year + 1)
-            return moment
+            day = self.day
+            if not self.day_has_year and day < wall.date():
+                day = _yearly(day.month, day.day, wall.date()) or day
+            return datetime.combine(day, clock)
         if self.weekday is not None:
             ahead = (self.weekday - wall.weekday()) % 7
             moment = datetime.combine(wall.date() + timedelta(days=ahead), clock)
@@ -321,11 +382,35 @@ class Parsed:
         if self.interval_weeks == 2:
             # Every other week counts from the first firing: find it with a weekly rule.
             weekly = replace(rule, interval_weeks=1)
-            day = wall.date()
-            while not (fires_on(weekly, day) and datetime.combine(day, rule.clock) > wall):
-                day += timedelta(days=1)
-            rule = replace(rule, anchor_date=day)
+            days = (wall.date() + timedelta(days=ahead) for ahead in range(14))
+            first = next(
+                (
+                    day
+                    for day in days
+                    if fires_on(weekly, day) and datetime.combine(day, rule.clock) > wall
+                ),
+                None,
+            )
+            if first is None:
+                return None
+            rule = replace(rule, anchor_date=first)
         return rule
+
+
+def _date(year: int, month: int, day: int) -> date | None:
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
+
+
+def _yearly(month: int, day: int, since: date) -> date | None:
+    """The first such date on or after `since` (Feb 29 waits for a leap year); None if none."""
+    for year in range(since.year, since.year + 9):
+        found = _date(year, month, day)
+        if found is not None and found >= since:
+            return found
+    return None
 
 
 def _clock(hhmm: str) -> time:
@@ -395,13 +480,14 @@ class _Text:
         )
         text = " ".join(kept.split())
         text = text.strip(" ,.;:—-–")
+        text = POLITE.sub("", text)
         text = LEADING_JUNK.sub("", text)
         return text.strip(" ,.;:—-–")
 
 
 def parse(message: str, now: datetime) -> Parsed | None:
     """None when the message has no time anchor at all — it is not a reminder."""
-    work = _Text(message)
+    work = _Text(" ".join(message.split()))
     prefix = PREFIX.match(work.low)
     if prefix is not None:
         for index in range(prefix.start(), prefix.end()):
@@ -421,6 +507,8 @@ def parse(message: str, now: datetime) -> Parsed | None:
             )
         elif kind == "monthly":
             day = next(int(v) for k, v in groups.items() if k.startswith("md") and v)
+            if not 1 <= day <= 31:
+                return None
             found.update(repeat=Repeat.MONTHLY, month_day=day)
         else:
             words = " ".join(v for k, v in groups.items() if k in ("acc", "dat", "en") and v)
@@ -430,12 +518,16 @@ def parse(message: str, now: datetime) -> Parsed | None:
                 found["interval_weeks"] = 2
         break
 
-    if (match := work.take(RELATIVE)) is not None:
+    # A repeat has no single moment: «через …» stays in its text.
+    if "repeat" not in found and (match := work.take(RELATIVE)) is not None:
         unit = match.group("unit") or ""
         if match.group("half"):
             found["delta"] = timedelta(minutes=30)
         elif match.group("oneandhalf"):
             found["delta"] = timedelta(minutes=90)
+        elif match.group("mn"):
+            hours, minutes = _number(match.group("hn")), _number(match.group("mn"))
+            found["delta"] = timedelta(hours=hours, minutes=minutes)
         elif unit.startswith(("мин", "min")):
             found["delta"] = timedelta(minutes=_number(match.group("n")))
         elif unit.startswith(("час", "hour", "hr")):
@@ -445,24 +537,29 @@ def parse(message: str, now: datetime) -> Parsed | None:
         else:
             found["delta_days"] = 7 * _number(match.group("n"))
 
-    for pattern in (DATE_RU, DATE_EN, DATE_NUMERIC):
+    for pattern in (DATE_RU, DATE_EN, DATE_NUMERIC_YEAR, DATE_NUMERIC):
         match = pattern.search(work.current)
         if match is None:
             continue
         groups = match.groupdict()
-        day_text = groups.get("d") or groups.get("d2")
+        day_number = int(groups.get("d") or groups.get("d2") or 0)
         month_word = groups.get("mon") or groups.get("mon2")
         if month_word:
             months = _RU_MONTHS if month_word in _RU_MONTHS else _EN_MONTHS
             month = next(i for i, m in enumerate(months, 1) if m.startswith(month_word[:3]))
         else:
             month = int(groups["m"])
-        year = int(groups["y"]) if groups.get("y") else now.year
-        try:
-            found["day"] = date(year, month, int(day_text or 0))
-        except ValueError:
-            continue
-        found["day_has_year"] = bool(groups.get("y"))
+        if not (1 <= month <= 12 and 1 <= day_number <= 31):
+            continue  # not a date at all, like «цена 12.50»
+        year_text = groups.get("y")
+        if year_text:
+            year = int(year_text) + (2000 if len(year_text) == 2 else 0)
+            found_day = _date(year, month, day_number)
+        else:
+            found_day = _yearly(month, day_number, date(now.year, 1, 1))
+        if found_day is None:
+            return None  # it looks like a date, but the calendar has no such day
+        found.update(day=found_day, day_has_year=bool(year_text))
         work.take(pattern)
         break
 
@@ -479,7 +576,11 @@ def parse(message: str, now: datetime) -> Parsed | None:
     if once and (match := work.take(WEEKDAY_ONCE)) is not None:
         name = match.group("ru") or match.group("en")
         names = _RU_WEEKDAYS_ACC if match.group("ru") else _EN_WEEKDAYS
-        found["weekday"] = names.index(name)
+        if match.group("ru_next") or match.group("en_next"):
+            next_monday = now.date() + timedelta(days=7 - now.weekday())
+            found["day"] = next_monday + timedelta(days=names.index(name))
+        else:
+            found["weekday"] = names.index(name)
 
     if (match := work.take(TIME_WORD)) is not None:
         found["time"] = "12:00" if match.group("w") in ("полдень", "noon") else "00:00"
@@ -491,14 +592,15 @@ def parse(message: str, now: datetime) -> Parsed | None:
             groups = match.groupdict()
             hours = int(groups.get("h") or groups.get("h2") or 0)
             minutes = int(groups.get("m") or groups.get("m2") or 0)
-            meridiem = groups.get("mer") or groups.get("mer2")
-            hhmm = _hhmm(_with_meridiem(hours, meridiem), minutes)
+            meridiem = groups.get("mer") or groups.get("mer2") or groups.get("pre") or ""
+            meridiem = _PART_OF_DAY.get(meridiem, meridiem.replace(".", ""))
+            hhmm = _hhmm(_with_meridiem(hours, meridiem or None), minutes)
             if hhmm is not None:
                 found["time"] = hhmm
                 work.take(pattern)
                 break
 
-    if not found or set(found) == {"day_has_year"}:
+    if not found:
         return None
     return Parsed(text=work.rest(), **found)
 
@@ -507,9 +609,19 @@ def merge(base: Parsed, answer: Parsed) -> Parsed:
     """`base` completed by a follow-up answer («в 18», «завтра в 10», «каждый день в 9»).
 
     What the answer says wins; the rest of `base` stays. The text is `base`'s, unless it
-    had none and the answer brings one.
+    had none and the answer brings one. A one-off answer turns a repeat into a one-off,
+    except a bare weekday («в среду») on a weekly repeat, which moves the repeat there.
     """
     fields: dict[str, Any] = {}
+    dated = answer.delta is not None or answer.delta_days is not None or answer.day is not None
+    if answer.repeat is Repeat.NONE and answer.weekday is not None and not dated:
+        if base.repeat is Repeat.WEEKLY:
+            fields["weekdays"] = 1 << answer.weekday
+            answer = replace(answer, weekday=None)
+        else:
+            dated = True
+    if answer.repeat is Repeat.NONE and dated:
+        fields.update(repeat=Repeat.NONE, weekdays=None, interval_weeks=1, month_day=None)
     if answer.repeat is not Repeat.NONE:
         fields.update(
             repeat=answer.repeat,
