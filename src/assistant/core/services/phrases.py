@@ -261,7 +261,8 @@ WEEKDAY_ONCE = re.compile(
     r"|(?:on\s+)?(?:(?P<en_next>next)\s+|this\s+)?(?P<en>" + _alt(_EN_WEEKDAYS) + r"))" + _E
 )
 # After the number of «в N» / "at N": a hyphen suffix («9-м»), a decimal part («2.5») or a unit
-# («в 2 раза», "at 5 stars") means a quantity, not a clock time.
+# («в 2 раза», "at 5 stars") means a quantity, not a clock time. Units are whole words with
+# explicit endings, so «в 7 метро» or «в 10 рубить дрова» stay times.
 _UNITS = (
     r"раза?",
     "км",
@@ -272,17 +273,17 @@ _UNITS = (
     "мл",
     "см",
     "мм",
-    r"метр\w*",
-    r"километр\w*",
-    r"класс\w*",
+    r"метр(?:а|е|у|ом|ов|ах|ами)?",
+    r"километр(?:а|е|у|ом|ов|ах|ами)?",
+    r"класс(?:а|е|у|ом|ы|ов|ах|ами)?",
     "лет",
-    r"год\w*",
-    r"этаж\w*",
-    r"процент\w*",
+    r"год(?:а|у|ом|ы|ов|ах)?",
+    r"этаж(?:а|е|у|ом|и|ей|ах)?",
+    r"процент(?:а|ы|ом|ов|ах)?",
     "минутах",
     "часах",
     "шагах",
-    r"руб\w*",
+    r"руб(?:\.|ль|ля|лю|лем|лей|лях|лями)?",
     "times",
     "percent",
     r"stars?",
