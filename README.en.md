@@ -6,13 +6,15 @@
 
 <p align="center">
   A Telegram bot that doesn't just say “+12°C” — it says “🌧 Rain in 40 minutes, take an umbrella”.<br>
-  Weather, reminders, notes, habits and exchange rates in one chat, and in the morning the bot writes first.
+  Weather, reminders, notes, habits and exchange rates — in the chat and in an app right inside Telegram, and in the morning the bot writes first.
 </p>
 
 <p align="center">
   <a href="https://github.com/APELSINKos/personal-assistant-bot/actions/workflows/ci.yml"><img src="https://github.com/APELSINKos/personal-assistant-bot/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/python-3.12%20%7C%203.13-3776AB?logo=python&logoColor=white" alt="Python 3.12 | 3.13">
   <img src="https://img.shields.io/badge/aiogram-3-26A5E4?logo=telegram&logoColor=white" alt="aiogram 3">
+  <img src="https://img.shields.io/badge/Mini_App-React_19-61DAFB?logo=react&logoColor=black" alt="Mini App: React 19">
+  <img src="https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&logoColor=white" alt="API: FastAPI">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea44f" alt="MIT"></a>
   <a href="https://t.me/ikbo63_24_bot"><img src="https://img.shields.io/badge/Telegram-open_the_bot-26A5E4?logo=telegram&logoColor=white" alt="Open in Telegram"></a>
 </p>
@@ -23,6 +25,7 @@
 
 | | |
 |---|---|
+| 📱 **Mini App** | The same inside Telegram as an app: a Today screen, one-tap habits, reminders by day, notes and settings. Theme and language follow Telegram |
 | 🌤 **Weather with tips** | Not just degrees: in how many minutes rain or snow starts, whether it gets colder by the evening, whether it's a good day for a bike ride |
 | ☀️ **Morning digest** | The bot writes at the time you choose, in your city's time zone: weather, today's plans, habits, rates |
 | 📅 **My day** | Everything important for today in one message |
@@ -49,13 +52,31 @@
 💵 84.20 ₽ · 💶 96.67 ₽
 ```
 
+## Mini App
+
+The Open button next to the message field opens the app right inside Telegram — the same account and the same data as the chat: what you add in the app shows up in the bot at once, and the other way round.
+
+| Screen | What's there |
+|---|---|
+| **Today** | A big date, weather with tips, today's plans, one-tap habit marks, rates and the best streak. Pull down to refresh |
+| **Reminders** | Grouped by day — Today, Tomorrow, then by date; a new reminder with a date and time picker in your city's time zone |
+| **Habits** | Streak, progress and a 9-day strip; marks cycle ⬜ → ✅ → ❌ as in the bot |
+| **Notes** | A list and an editor with a character counter; leaving with unsaved text asks first |
+| **More** | City search, the morning digest, language, version |
+
+Dark and light themes follow Telegram, Back and the main button are Telegram's own buttons, and actions answer with haptics. The app only works inside Telegram: every request carries Telegram's signature, and the server checks it.
+
 ## How it works
 
 ```mermaid
 flowchart LR
-    user([User]) <--> tg[Telegram Bot API]
+    user([User]) <--> tg[Telegram]
     tg <-->|long polling| bot["assistant.bot<br/>aiogram 3"]
+    tg -->|Mini App| web["webapp<br/>React + TypeScript"]
+    web -->|"HTTPS, signed initData"| caddy[Caddy]
+    caddy --> api["assistant.api<br/>FastAPI"]
     bot --> core["assistant.core<br/>rules and data"]
+    api --> core
     scheduler["Scheduler<br/>reminders, digest"] --> core
     scheduler --> tg
     core --> db[("SQLite (WAL)")]
@@ -63,33 +84,36 @@ flowchart LR
     core --> cbr[Bank of Russia]
 ```
 
-- **The core knows nothing about Telegram.** Limits, habit streaks, time parsing and weather tips live in `assistant.core` and are covered by tests. The bot only parses input and formats replies; the same core will serve the Mini App.
+- **The core knows nothing about Telegram.** Limits, habit streaks, time parsing and weather tips live in `assistant.core` and are covered by tests. The bot only parses input and formats replies, and the app's API calls the same services — so the chat and the app follow the same rules.
+- **The app is trusted only by signature.** The API accepts a request only when its initData is signed by Telegram with the bot token and is less than a day old; the user comes from the signature, and someone else's id gets 404. Errors are problem+json, at most 120 requests a minute.
 - **Time without surprises.** Every moment is stored in UTC, "today" is computed in the city's time zone, DST transitions are handled.
 - **Delivery with retries.** On 429 the bot waits exactly as long as Telegram asks; on network failures it retries after 30 s, 1 min, 5 min, 15 min, 1 h and 3 h; users who blocked the bot are left alone.
 - **Dialogs in the database.** Unfinished input survives a restart, and a menu button pressed mid-dialog simply opens that section.
-- **Automatic deploys.** After a green CI run a commit from `main` goes to the server; if the bot does not come up, the script restores the previous version and database.
+- **Automatic deploys.** After a green CI run a commit from `main` goes to the server. The app is built while the previous version keeps running; if the bot or the API does not come up, the script restores the previous code, database and app build.
 
 More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (Russian).
 
 ## Stack
 
-Python 3.12 · aiogram 3 · SQLAlchemy 2 (async) · Alembic · SQLite · httpx · Fluent + Babel · pytest · ruff · mypy · uv · GitHub Actions · systemd
+Python 3.12 · aiogram 3 · FastAPI · SQLAlchemy 2 (async) · Alembic · SQLite · httpx · Fluent + Babel · React 19 · TypeScript · Vite · TanStack Query · pytest · Vitest · ruff · ESLint · mypy · uv · Caddy · GitHub Actions · systemd
 
 ## Development
 
 ```bash
 uv sync
 uv run alembic upgrade head
-uv run python -m assistant.bot
+uv run python -m assistant.bot      # the bot
+uv run python -m assistant.api      # the app's API, 127.0.0.1:8000
+cd webapp && npm ci && npm run dev  # the app in a browser
 ```
 
-Settings come from environment variables or a `.env` file, see [.env.example](.env.example). Checks: `uv run pytest`, `uv run ruff check .`, `uv run mypy`. Details in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (Russian).
+Settings come from environment variables or a `.env` file, see [.env.example](.env.example). To open the app in an ordinary browser you need signed initData: `scripts/dev_init_data.py` prints it using a test bot's token. Checks: `uv run pytest`, `uv run ruff check .`, `uv run mypy`; for the app — `npm run lint`, `npm run typecheck`, `npm test`. Details in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (Russian).
 
 ## Roadmap
 
 - [x] **v1.0** — coursework edition
 - [x] **v2.0** — new core, two languages, reliable delivery, CI and automatic deploys
-- [ ] **v2.1** — Mini App: today, reminders, habits and notes inside Telegram
+- [x] **v2.1** — Mini App: today, reminders, habits, notes and settings inside Telegram
 - [ ] **v2.2** — smart reminders: repeats, “+10 minutes”, natural input like “tomorrow at 9 buy milk”
 - [ ] **v2.3** — habits: yearly heat map, goals, a shareable stats card
 - [ ] **v2.4** — finances: expenses, budget, exchange rate charts
