@@ -1,4 +1,8 @@
 import type { ComponentType } from "react";
+import { HabitForm } from "./screens/HabitForm";
+import { HabitsScreen } from "./screens/Habits";
+import { ReminderForm } from "./screens/ReminderForm";
+import { RemindersScreen } from "./screens/Reminders";
 import { TodayScreen } from "./screens/Today";
 
 export interface AppRoute {
@@ -16,4 +20,10 @@ export interface AppRoute {
 }
 
 /** Screens register themselves here (Tasks 8–10); the first matching path wins. */
-export const ROUTES: AppRoute[] = [{ path: "/", component: TodayScreen }];
+export const ROUTES: AppRoute[] = [
+  { path: "/", component: TodayScreen },
+  { path: "/reminders", component: RemindersScreen },
+  { path: "/reminders/new", component: ReminderForm, parent: "/reminders", hideNav: true },
+  { path: "/habits", component: HabitsScreen },
+  { path: "/habits/new", component: HabitForm, parent: "/habits", hideNav: true },
+];
