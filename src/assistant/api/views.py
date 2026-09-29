@@ -8,8 +8,10 @@ from assistant.api.schemas import (
     HabitOut,
     MeOut,
     MorningOut,
+    NoteOut,
     RateOut,
     RatesOut,
+    ReminderOut,
     TodayHabits,
     TodayOut,
     TodayReminder,
@@ -17,10 +19,11 @@ from assistant.api.schemas import (
 )
 from assistant.core.clients.cbr import Rates
 from assistant.core.i18n import Translator, resolve_language, translator
-from assistant.core.models import User
+from assistant.core.models import Note, Reminder, User
 from assistant.core.services.digest import TodayData
 from assistant.core.services.habits import HabitStats
 from assistant.core.services.weather import WeatherNow, describe
+from assistant.core.timeutil import to_local
 
 
 def user_language(user: User) -> str:
@@ -76,6 +79,23 @@ def habit_out(stats: HabitStats) -> HabitOut:
         done_days=stats.done_days,
         total_days=stats.total_days,
         last_days=list(stats.last_days),
+    )
+
+
+def note_out(note: Note) -> NoteOut:
+    return NoteOut(
+        id=note.id, text=note.text, created_at=note.created_at, updated_at=note.updated_at
+    )
+
+
+def reminder_out(reminder: Reminder, tz: str) -> ReminderOut:
+    local = to_local(reminder.due_at, tz)
+    return ReminderOut(
+        id=reminder.id,
+        text=reminder.text,
+        due_at=reminder.due_at,
+        due_local=local.strftime("%Y-%m-%dT%H:%M"),
+        status=str(reminder.status),
     )
 
 

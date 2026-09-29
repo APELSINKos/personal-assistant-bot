@@ -118,3 +118,43 @@ class TodayOut(BaseModel):
     notes_count: int
     rates: RatesOut | None
     best_streak: BestStreak | None
+
+
+class NoteIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(max_length=10_000)
+
+
+class NoteOut(BaseModel):
+    id: int
+    text: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReminderIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(max_length=1_000)
+    due_local: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$")
+
+
+class ReminderOut(BaseModel):
+    id: int
+    text: str
+    due_at: datetime
+    due_local: str
+    status: str
+
+
+class HabitIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(max_length=1_000)
+
+
+class MarkIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    done: bool | None
