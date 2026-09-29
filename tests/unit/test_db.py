@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select, text
-from sqlalchemy.exc import StatementError
+from sqlalchemy.exc import IntegrityError, StatementError
 
 from assistant.core.db import create_engine
 from assistant.core.models import Note, Reminder, ReminderStatus
@@ -43,6 +43,14 @@ async def test_naive_datetime_rejected(session, make_user) -> None:
     session.add(Reminder(user_id=user.id, text="x", due_at=naive, next_attempt_at=naive))
     with pytest.raises(StatementError):
         await session.commit()
+
+
+async def test_sql_parameters_never_reach_error_messages(session) -> None:
+    # A note for a user that does not exist fails the foreign key with the text as a parameter.
+    session.add(Note(user_id=404, text="private diary line"))
+    with pytest.raises(IntegrityError) as caught:
+        await session.commit()
+    assert "private diary line" not in str(caught.value)
 
 
 async def test_foreign_keys_can_be_switched_off_for_migrations(db_url) -> None:

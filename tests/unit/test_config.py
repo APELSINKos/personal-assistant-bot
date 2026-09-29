@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pytest
+from pydantic import ValidationError
+
 from assistant.core.config import LIMITS, Settings
 
 
@@ -16,3 +19,10 @@ def test_settings_read_token_from_env(monkeypatch) -> None:
     assert settings.bot_token.get_secret_value() == "42:abc"
     assert "42:abc" not in repr(settings)
     assert settings.webapp_url is None
+
+
+@pytest.mark.parametrize("limit", ["0", "-5"])
+def test_api_rate_limit_must_allow_requests(monkeypatch, limit) -> None:
+    monkeypatch.setenv("API_RATE_LIMIT", limit)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)

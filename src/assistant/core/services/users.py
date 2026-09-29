@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from assistant.core.config import LIMITS, get_settings
@@ -28,30 +29,36 @@ async def ensure(
 ) -> User:
     user = await session.get(User, user_id)
     if user is None:
+        # A new user's first requests (or bot updates) arrive together and all find no row;
+        # the ones that lose the race must not fail on the primary key, so skip duplicates.
         settings = get_settings()
-        user = User(
-            id=user_id,
-            first_name=first_name,
-            tg_language=tg_language,
-            language=None,
-            city=settings.default_city,
-            lat=settings.default_lat,
-            lon=settings.default_lon,
-            timezone=settings.default_timezone,
-            morning_enabled=True,
-            morning_time=settings.default_morning_time,
-            bot_blocked=False,
+        await session.execute(
+            sqlite_insert(User)
+            .values(
+                id=user_id,
+                first_name=first_name,
+                tg_language=tg_language,
+                language=None,
+                city=settings.default_city,
+                lat=settings.default_lat,
+                lon=settings.default_lon,
+                timezone=settings.default_timezone,
+                morning_enabled=True,
+                morning_time=settings.default_morning_time,
+                bot_blocked=False,
+            )
+            .on_conflict_do_nothing(index_elements=[User.id])
         )
-        session.add(user)
-    else:
-        if user.first_name != first_name:
-            user.first_name = first_name
-        # Telegram does not always send a language code; keep the last known one then.
-        if tg_language is not None and user.tg_language != tg_language:
-            user.tg_language = tg_language
-        if user.bot_blocked:
-            user.bot_blocked = False
-            await reminders.expire_stale(session, user.id, now or utcnow())
+        # Load the row as stored (ours or the winner's), never an object kept in the session.
+        user = await session.get_one(User, user_id, populate_existing=True)
+    if user.first_name != first_name:
+        user.first_name = first_name
+    # Telegram does not always send a language code; keep the last known one then.
+    if tg_language is not None and user.tg_language != tg_language:
+        user.tg_language = tg_language
+    if user.bot_blocked:
+        user.bot_blocked = False
+        await reminders.expire_stale(session, user.id, now or utcnow())
     await session.flush()
     return user
 

@@ -31,3 +31,21 @@ jobs:
           DATABASE_URL: sqlite+aiosqlite:///./ci.db
           BOT_TOKEN: "123456:CI-ONLY"
         run: uv run alembic upgrade head && uv run alembic check
+
+  webapp:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: webapp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build

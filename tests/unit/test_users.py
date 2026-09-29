@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from assistant.core.errors import InvalidInput
-from assistant.core.models import Reminder, ReminderStatus
+from assistant.core.models import Reminder, ReminderStatus, User
 from assistant.core.services import users
 
 NOW = datetime(2026, 9, 28, 12, 0, tzinfo=UTC)
@@ -21,6 +22,23 @@ async def test_ensure_creates_with_defaults(session) -> None:
         True,
     )
     assert user.language is None and user.tg_language == "ru" and not user.bot_blocked
+
+
+async def test_ensure_from_two_sessions_at_once_creates_one_user(sessionmaker) -> None:
+    both_connected = asyncio.Barrier(2)
+
+    async def first_contact(first_name: str) -> int:
+        async with sessionmaker() as db:
+            # Connect first, so that both lookups really run side by side.
+            await db.connection()
+            await both_connected.wait()
+            user = await users.ensure(db, 9, first_name, "ru")
+            await db.commit()
+            return user.id
+
+    assert await asyncio.gather(first_contact("Alex"), first_contact("Sasha")) == [9, 9]
+    async with sessionmaker() as db:
+        assert await db.scalar(select(func.count()).select_from(User)) == 1
 
 
 async def test_ensure_unblocks_and_expires_old_reminders(session, make_user) -> None:

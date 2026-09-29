@@ -1,0 +1,52 @@
+# Personal Assistant — HTTP API of the Telegram Mini App. Installed to /etc/systemd/system/.
+[Unit]
+Description=Personal Assistant API for the Telegram Mini App
+Documentation=https://github.com/APELSINKos/personal-assistant-bot
+After=network-online.target
+Wants=network-online.target
+# A checkout without the API (e.g. after a rollback to v2.0.0) must not crash-loop the enabled unit.
+ConditionPathExists=/opt/assistant/app/src/assistant/api/__main__.py
+
+[Service]
+Type=exec
+User=assistant
+Group=assistant
+WorkingDirectory=/opt/assistant/app
+EnvironmentFile=/etc/assistant/assistant.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/assistant/app/.venv/bin/python -m assistant.api
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+StateDirectory=assistant
+StateDirectoryMode=0750
+UMask=0027
+
+# Sandbox: read-only system, writable state directory only, no privileges
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+RemoveIPC=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
+[Install]
+WantedBy=multi-user.target

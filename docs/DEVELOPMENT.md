@@ -2,7 +2,7 @@
 
 ## Окружение
 
-Нужны Python 3.12 или 3.13 и [uv](https://docs.astral.sh/uv/).
+Нужны Python 3.12 или 3.13, [uv](https://docs.astral.sh/uv/) и, для приложения, Node.js 24.
 
 ```bash
 uv sync                          # зависимости и окружение .venv
@@ -19,10 +19,24 @@ uv run python -m assistant.bot   # запустить
 |---|---|---|
 | `BOT_TOKEN` | — | токен бота |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./assistant.db` | база |
-| `WEBAPP_URL` | пусто | адрес Mini App; пока пусто, кнопки приложения скрыты |
+| `WEBAPP_URL` | пусто | адрес Mini App (`https://…/`); пока пусто, кнопки приложения скрыты |
 | `LOG_LEVEL` | `INFO` | уровень журнала |
 | `DEFAULT_CITY`, `DEFAULT_LAT`, `DEFAULT_LON`, `DEFAULT_TIMEZONE` | Москва | город новых пользователей |
 | `DEFAULT_MORNING_TIME` | `08:00` | время сводки новых пользователей |
+| `API_HOST`, `API_PORT` | `127.0.0.1`, `8000` | где слушает API |
+| `API_RATE_LIMIT` | `120` | запросов в минуту на пользователя (не меньше 1) |
+
+## Mini App
+
+Вне Telegram у приложения нет подписанной initData, поэтому для разработки её подписывает скрипт токеном тестового бота из `.env`:
+
+```bash
+uv run python -m assistant.api                                   # API на 127.0.0.1:8000
+echo "VITE_DEV_INIT_DATA=$(uv run python scripts/dev_init_data.py --user-id <id>)" > webapp/.env.local
+cd webapp && npm ci && npm run dev                               # http://localhost:5173
+```
+
+Подпись действует 24 часа. `webapp/.env.local` не попадает в git, а в production-сборку переменная не входит: приложение читает её только в режиме разработки и показывает плашку «Режим разработки». Сервер разработки перенаправляет `/api` на `127.0.0.1:8000`. Описание API — на `http://127.0.0.1:8000/api/docs`.
 
 ## Проверки
 
@@ -33,7 +47,15 @@ uv run mypy
 uv run pytest
 ```
 
-CI запускает то же на Python 3.12 и 3.13 и проверяет, что миграции совпадают с моделями.
+```bash
+cd webapp
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+CI запускает Python-проверки на 3.12 и 3.13, проверки приложения на Node.js 24 и сверяет миграции с моделями.
 
 ## Миграции
 
@@ -48,7 +70,7 @@ uv run alembic upgrade head
 
 ## Тексты
 
-Новый текст добавляется ключом в оба файла: `locales/ru/bot.ftl` и `locales/en/bot.ftl`. Числа со словами («1 день», «2 дня», «5 дней») оформляются выбором Fluent по `$count`. Строк для пользователя в коде Python нет.
+Новый текст добавляется ключом в оба файла: `locales/ru/bot.ftl` и `locales/en/bot.ftl`. Числа со словами («1 день», «2 дня», «5 дней») оформляются выбором Fluent по `$count`. Строк для пользователя в коде Python нет. Строки приложения — в `webapp/src/i18n/ru.ts` и `en.ts`; английский словарь типизирован по русскому, так что пропущенный ключ не соберётся.
 
 ## Ветки и коммиты
 
