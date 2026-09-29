@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 from scripts.import_v1 import TABLES, Report, main
@@ -42,16 +43,19 @@ def make_v1(path: Path) -> Path:
         [
             (1, 111, "позвонить", "2026-09-25 18:30", 1),
             (2, 222, "встреча", "2026-09-30 09:00", 0),
-            (3, 111, "сломанная дата", "завтра", 0),
         ],
     )
     db.executemany(
         "INSERT INTO habits VALUES (?, ?, ?, ?)",
-        [(1, 111, "Спорт", "2026-09-19"), (2, 222, "Чтение", "2026-09-26")],
+        [
+            (1, 111, "Спорт", "2026-09-19"),
+            (2, 222, "Чтение", "2026-09-26"),
+            (3, 999, "Чужая", "2026-09-20"),
+        ],
     )
     db.executemany(
         "INSERT INTO habit_marks VALUES (?, ?, ?)",
-        [(1, "2026-09-19", 1), (1, "2026-09-20", 0), (5, "2026-09-20", 1)],
+        [(1, "2026-09-19", 1), (1, "2026-09-20", 0), (3, "2026-09-20", 1), (5, "2026-09-20", 1)],
     )
     db.commit()
     db.close()
@@ -82,6 +86,12 @@ def test_imports_everything_with_utc_times(tmp_path: Path, capsys) -> None:
     assert main([str(old), str(new)]) == 0
     out = capsys.readouterr().out
     assert out.rstrip().endswith("OK") and "Mars/Olympus" in out
+    # Rows whose owner is not in v1 at all are skipped with a warning; the import still passes.
+    assert "skipped notes: note 2 belongs to unknown user 999" in out
+    assert "skipped habits: habit 3 belongs to unknown user 999" in out
+    assert "skipped habit_marks: mark of unknown habit 3" in out
+    assert "skipped habit_marks: mark of unknown habit 5" in out
+    assert "DROPPED" not in out
     assert rows(
         new,
         "SELECT id, timezone, morning_enabled, morning_time, last_morning_date, "
@@ -137,8 +147,39 @@ def test_refuses_an_unmigrated_database(tmp_path: Path, capsys) -> None:
     assert main([str(tmp_path / "missing.db"), str(empty)]) == 2
 
 
+def test_bad_rows_of_existing_owners_fail_the_import(tmp_path: Path, capsys) -> None:
+    old = make_v1(tmp_path / "bot.db")
+    with closing(sqlite3.connect(old)) as db:
+        db.execute("INSERT INTO reminders VALUES (3, 111, 'сломанная дата', 'завтра', 0)")
+        db.execute("INSERT INTO notes VALUES (3, 111, 'без даты', NULL)")
+        db.execute("INSERT INTO habits VALUES (4, 222, 'Сон', 'вчера')")
+        db.executemany(
+            "INSERT INTO habit_marks VALUES (?, ?, ?)",
+            [(4, "2026-09-26", 1), (2, "26.09.2026", 1)],
+        )
+        db.commit()
+    new = make_v2(tmp_path / "v2.db")
+    assert main([str(old), str(new)]) == 1
+    out = capsys.readouterr().out
+    assert out.rstrip().endswith("MISMATCH")
+    for line in (
+        f"{'notes':<12}{3:>6}{1:>6}{1:>9}{1:>9}",
+        f"{'reminders':<12}{3:>6}{2:>6}{0:>9}{1:>9}",
+        f"{'habits':<12}{4:>6}{2:>6}{1:>9}{1:>9}",
+        f"{'habit_marks':<12}{6:>6}{2:>6}{2:>9}{2:>9}",
+        "DROPPED reminders: reminder 3 has a bad date 'завтра'",
+        "DROPPED notes: note 3 has a bad date None",
+        "DROPPED habits: habit 4 has a bad date 'вчера'",
+        "DROPPED habit_marks: mark of dropped habit 4 on '2026-09-26'",
+        "DROPPED habit_marks: mark of habit 2 has a bad day '26.09.2026'",
+    ):
+        assert line in out.splitlines()
+
+
 def test_report_detects_a_mismatch() -> None:
     counts = dict.fromkeys(TABLES, 1)
     report = Report(before=counts, after={**counts, "notes": 0})
     assert not report.ok and report.render().endswith("MISMATCH")
     assert Report(before=counts, after={**counts, "notes": 0}, skipped={"notes": 1}).ok
+    dropped = Report(before=counts, after={**counts, "notes": 0}, dropped={"notes": 1})
+    assert not dropped.ok and dropped.render().endswith("MISMATCH")

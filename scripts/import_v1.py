@@ -4,7 +4,11 @@ Usage:  uv run python scripts/import_v1.py OLD_BOT_DB NEW_ASSISTANT_DB [--force]
 
 The new database must already be migrated (`alembic upgrade head`). The script refuses to
 touch a database that already has users unless --force is given (then it is emptied first).
-Exit codes: 0 — every row imported, 1 — row counts differ, 2 — refused to run.
+Rows whose owner (the user, or the habit of a mark) is not in v1 at all are skipped with a
+warning. A row of an existing owner that cannot be read (e.g. a broken date) is dropped, and
+a dropped row always fails the import.
+Exit codes: 0 — every row imported (orphans skipped), 1 — a row was dropped or row counts
+differ, 2 — refused to run.
 """
 
 from __future__ import annotations
@@ -57,25 +61,35 @@ class Report:
     before: dict[str, int] = field(default_factory=dict)
     after: dict[str, int] = field(default_factory=dict)
     skipped: dict[str, int] = field(default_factory=dict)
+    dropped: dict[str, int] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
-        return all(
+        return not any(self.dropped.values()) and all(
             self.before.get(t, 0) - self.skipped.get(t, 0) == self.after.get(t, 0) for t in TABLES
         )
 
     def skip(self, table: str, reason: str) -> None:
+        """An orphan: its owner is not in v1 at all, so there is nothing to attach it to."""
         self.skipped[table] = self.skipped.get(table, 0) + 1
         self.warnings.append(f"skipped {table}: {reason}")
 
+    def drop(self, table: str, reason: str) -> None:
+        """A row of an existing owner that could not be imported: its data would be lost."""
+        self.dropped[table] = self.dropped.get(table, 0) + 1
+        self.errors.append(f"DROPPED {table}: {reason}")
+
     def render(self) -> str:
-        lines = [f"{'table':<12}{'v1':>6}{'v2':>6}{'skipped':>9}"]
+        lines = [f"{'table':<12}{'v1':>6}{'v2':>6}{'skipped':>9}{'dropped':>9}"]
         lines += [
-            f"{t:<12}{self.before.get(t, 0):>6}{self.after.get(t, 0):>6}{self.skipped.get(t, 0):>9}"
+            f"{t:<12}{self.before.get(t, 0):>6}{self.after.get(t, 0):>6}"
+            f"{self.skipped.get(t, 0):>9}{self.dropped.get(t, 0):>9}"
             for t in TABLES
         ]
         lines += self.warnings
+        lines += self.errors
         lines.append("OK" if self.ok else "MISMATCH")
         return "\n".join(lines)
 
@@ -124,7 +138,7 @@ def _notes(
         try:
             created = local_to_utc(datetime.strptime(created_at, V1_MINUTE), zones[user_id])
         except (TypeError, ValueError):
-            report.skip("notes", f"note {note_id} has a bad date {created_at!r}")
+            report.drop("notes", f"note {note_id} has a bad date {created_at!r}")
             continue
         session.add(
             Note(id=note_id, user_id=user_id, text=text, created_at=created, updated_at=created)
@@ -141,7 +155,7 @@ def _reminders(
         try:
             due = local_to_utc(datetime.strptime(remind_at, V1_MINUTE), zones[user_id])
         except (TypeError, ValueError):
-            report.skip("reminders", f"reminder {reminder_id} has a bad date {remind_at!r}")
+            report.drop("reminders", f"reminder {reminder_id} has a bad date {remind_at!r}")
             continue
         session.add(
             Reminder(
@@ -168,7 +182,7 @@ def _habits(
         try:
             created_on = date.fromisoformat(created_at)
         except (TypeError, ValueError):
-            report.skip("habits", f"habit {habit_id} has a bad date {created_at!r}")
+            report.drop("habits", f"habit {habit_id} has a bad date {created_at!r}")
             continue
         session.add(
             Habit(
@@ -184,16 +198,24 @@ def _habits(
 
 
 def _marks(
-    session: AsyncSession, data: Sequence[tuple[Any, ...]], habit_ids: set[int], report: Report
+    session: AsyncSession,
+    data: Sequence[tuple[Any, ...]],
+    habit_ids: set[int],
+    owned_habits: set[int],
+    report: Report,
 ) -> None:
+    """habit_ids: the imported habits; owned_habits: v1 habits whose user exists in v1."""
     for habit_id, day, done in data:
-        if habit_id not in habit_ids:
+        if habit_id not in owned_habits:
             report.skip("habit_marks", f"mark of unknown habit {habit_id}")
+            continue
+        if habit_id not in habit_ids:
+            report.drop("habit_marks", f"mark of dropped habit {habit_id} on {day!r}")
             continue
         try:
             session.add(HabitMark(habit_id=habit_id, day=date.fromisoformat(day), done=bool(done)))
         except (TypeError, ValueError):
-            report.skip("habit_marks", f"mark of habit {habit_id} has a bad day {day!r}")
+            report.drop("habit_marks", f"mark of habit {habit_id} has a bad day {day!r}")
 
 
 async def import_v1(old: Path, new: Path, *, force: bool = False) -> Report:
@@ -222,7 +244,8 @@ async def import_v1(old: Path, new: Path, *, force: bool = False) -> Report:
             _reminders(session, data["reminders"], zones, report)
             habit_ids = _habits(session, data["habits"], zones, report)
             await session.flush()
-            _marks(session, data["habit_marks"], habit_ids, report)
+            owned_habits = {row[0] for row in data["habits"] if row[1] in zones}
+            _marks(session, data["habit_marks"], habit_ids, owned_habits, report)
             await session.commit()
             for table, model in MODELS.items():
                 report.after[table] = int(
