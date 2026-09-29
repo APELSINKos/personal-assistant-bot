@@ -73,16 +73,22 @@ async def _rate_limited(request: Request, error: Exception) -> JSONResponse:
     return problem(429, "rate_limited", "Too many requests", headers={"Retry-After": str(wait)})
 
 
+_LIMIT_KEYS = ("min_length", "max_length", "ge", "gt", "le", "lt")
+
+
 async def _validation_error(request: Request, error: Exception) -> JSONResponse:
     assert isinstance(error, RequestValidationError)
     first = error.errors()[0] if error.errors() else {}
     location = [str(part) for part in first.get("loc", ()) if part not in ("body", "query", "path")]
+    ctx = first.get("ctx") or {}
+    limit = next((ctx[key] for key in _LIMIT_KEYS if key in ctx), None)
     return problem(
         422,
         "validation_error",
         "Invalid input",
         detail=first.get("msg"),
         field=".".join(location) or None,
+        limit=limit,
     )
 
 
