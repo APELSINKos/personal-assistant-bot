@@ -54,7 +54,7 @@ def verify_init_data(init_data: str, bot_token: str, now: datetime) -> TelegramU
     received = fields.pop("hash", "")
     if len(fields) + 1 != len(pairs) or not received:
         raise AuthError("invalid_init_data")  # no hash, or a key sent twice
-    if not hmac.compare_digest(_digest(fields, bot_token), received):
+    if not hmac.compare_digest(_digest(fields, bot_token).encode(), received.encode()):
         raise AuthError("invalid_init_data")
     try:
         signed_at = datetime.fromtimestamp(int(fields["auth_date"]), UTC)

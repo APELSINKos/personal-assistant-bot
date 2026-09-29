@@ -35,6 +35,7 @@ def test_signature_field_takes_part_in_the_check() -> None:
         lambda s: s + "&hash=00",
         lambda s: "",
         lambda s: "%%%",
+        lambda s: s.split("&hash=")[0] + "&hash=%D1%8F",
     ],
 )
 def test_tampered_or_malformed(mutate: Callable[[str], str]) -> None:
