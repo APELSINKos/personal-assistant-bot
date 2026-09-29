@@ -18,6 +18,9 @@ from assistant.core.i18n import check_translations
 from assistant.core.logging import setup_logging
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+# Open-Meteo and the Bank of Russia get a shorter budget here than in the bot: a screen of
+# the app waits for them, and a quick 503 beats a skeleton that hangs for ten seconds.
+UPSTREAM_TIMEOUT = 4.0
 
 
 async def main() -> None:
@@ -26,7 +29,7 @@ async def main() -> None:
     check_translations()
     engine = create_engine(settings.database_url)
     try:
-        async with httpx.AsyncClient(timeout=settings.http_timeout) as http:
+        async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as http:
             app = create_app(
                 settings=settings,
                 sessionmaker=make_sessionmaker(engine),

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import Depends, Header, Request
+from fastapi import Depends, Header, Path, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from assistant.api.auth import AuthError, verify_init_data
@@ -55,3 +55,6 @@ async def _current_user(
 
 
 CurrentUser = Annotated[User, Depends(_current_user)]
+
+# An item id in a path: SQLite keeps signed 64-bit integers, a larger one would crash the driver.
+ItemId = Annotated[int, Path(ge=1, le=2**63 - 1)]

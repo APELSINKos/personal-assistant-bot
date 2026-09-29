@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from datetime import timedelta
 from pathlib import Path
 
 import httpx
 import pytest
+from sqlalchemy import func, select
 
 import assistant
+from assistant.api import __main__ as entry
 from assistant.api.app import create_app
 from assistant.api.ratelimit import RateLimiter
 from assistant.api.routers.health import read_commit
@@ -55,6 +59,18 @@ async def test_first_request_creates_user_with_telegram_language(client, auth, s
     assert user is not None and user.tg_language == "en"
 
 
+async def test_new_user_first_open_sends_requests_at_once(client, auth, session) -> None:
+    # The app asks for /me and /today in the same tick; neither may trip over the other.
+    for user_id in range(300, 305):
+        me, today = await asyncio.gather(
+            client.get("/api/me", headers=auth(user_id)),
+            client.get("/api/today", headers=auth(user_id)),
+        )
+        assert (me.status_code, today.status_code) == (200, 200)
+    count = await session.scalar(select(func.count()).select_from(User))
+    assert count == 5
+
+
 async def test_rate_limit_is_a_429_problem(sessionmaker, api_settings, meteo, cbr, auth) -> None:
     app = create_app(
         settings=api_settings,
@@ -97,6 +113,19 @@ async def test_internal_errors_hide_details(app, client) -> None:
     assert "secret" not in response.text
 
 
+async def test_internal_error_is_logged_as_one_line(app, client, caplog) -> None:
+    @app.get("/api/_boom")
+    async def boom() -> None:
+        raise RuntimeError("secret internals")
+
+    with caplog.at_level(logging.ERROR):
+        await client.get("/api/_boom")
+    # The server logs the traceback once when the error propagates; the handler adds no second.
+    records = [record for record in caplog.records if record.name == "assistant.api.errors"]
+    assert [record.getMessage() for record in records] == ["request GET /api/_boom failed"]
+    assert records[0].exc_info is None and records[0].exc_text is None
+
+
 def test_read_commit(tmp_path: Path) -> None:
     git = tmp_path / ".git"
     git.mkdir()
@@ -109,3 +138,27 @@ def test_read_commit(tmp_path: Path) -> None:
     (git / "refs" / "heads").mkdir(parents=True)
     (git / "refs" / "heads" / "main").write_text("c" * 40 + "\n")
     assert read_commit(tmp_path) == "c" * 40
+
+
+async def test_api_gives_upstream_services_a_short_time_budget(monkeypatch, api_settings) -> None:
+    timeouts: list[object] = []
+    real_client = httpx.AsyncClient
+
+    def recording_client(*, timeout: float) -> httpx.AsyncClient:
+        timeouts.append(timeout)
+        return real_client(timeout=timeout)
+
+    class NoServer:
+        def __init__(self, config: object) -> None:
+            pass
+
+        async def serve(self) -> None:
+            pass
+
+    monkeypatch.setattr(entry, "get_settings", lambda: api_settings)
+    monkeypatch.setattr(entry, "setup_logging", lambda *args: None)
+    monkeypatch.setattr(entry.httpx, "AsyncClient", recording_client)
+    monkeypatch.setattr(entry.uvicorn, "Server", NoServer)
+    await entry.main()
+    # «Сегодня» must not wait for a hanging upstream as long as the bot may.
+    assert timeouts == [4.0] and api_settings.http_timeout == 10.0

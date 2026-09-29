@@ -7,7 +7,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Response
 
-from assistant.api.deps import CurrentUser, Session, State
+from assistant.api.deps import CurrentUser, ItemId, Session, State
 from assistant.api.schemas import ReminderIn, ReminderOut
 from assistant.api.views import reminder_out
 from assistant.core.errors import InvalidInput, NotFound
@@ -42,7 +42,7 @@ async def create_reminder(
 
 
 @router.delete("/reminders/{reminder_id}", status_code=204)
-async def cancel_reminder(reminder_id: int, user: CurrentUser, db: Session) -> Response:
+async def cancel_reminder(reminder_id: ItemId, user: CurrentUser, db: Session) -> Response:
     if not await reminders.cancel(db, user.id, reminder_id):
         raise NotFound(entity="reminder")
     await db.commit()

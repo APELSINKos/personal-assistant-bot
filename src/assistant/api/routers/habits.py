@@ -6,7 +6,7 @@ from datetime import date
 
 from fastapi import APIRouter, Response
 
-from assistant.api.deps import CurrentUser, Session, State
+from assistant.api.deps import CurrentUser, ItemId, Session, State
 from assistant.api.schemas import HabitIn, HabitOut, MarkIn
 from assistant.api.views import habit_out
 from assistant.core.errors import NotFound
@@ -28,7 +28,7 @@ async def create_habit(body: HabitIn, user: CurrentUser, db: Session, state: Sta
 
 
 @router.delete("/habits/{habit_id}", status_code=204)
-async def delete_habit(habit_id: int, user: CurrentUser, db: Session) -> Response:
+async def delete_habit(habit_id: ItemId, user: CurrentUser, db: Session) -> Response:
     if not await habits.delete(db, user.id, habit_id):
         raise NotFound(entity="habit")
     await db.commit()
@@ -37,7 +37,7 @@ async def delete_habit(habit_id: int, user: CurrentUser, db: Session) -> Respons
 
 @router.put("/habits/{habit_id}/marks/{day}", response_model=HabitOut)
 async def mark_day(
-    habit_id: int,
+    habit_id: ItemId,
     day: date,
     body: MarkIn,
     user: CurrentUser,

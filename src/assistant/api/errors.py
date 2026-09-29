@@ -100,7 +100,8 @@ async def _http_error(request: Request, error: Exception) -> JSONResponse:
 
 
 async def _internal_error(request: Request, error: Exception) -> JSONResponse:
-    log.exception("request %s %s failed", request.method, request.url.path)
+    # One line only: Starlette re-raises the error afterwards and the server logs its traceback.
+    log.error("request %s %s failed", request.method, request.url.path)
     return problem(500, "internal_error", "Internal server error")
 
 
