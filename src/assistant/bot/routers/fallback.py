@@ -11,7 +11,8 @@ from assistant.bot.keyboards import main_menu
 
 
 async def unknown(message: Message, ctx: Ctx) -> None:
-    await message.answer(ctx.t("unknown"), reply_markup=main_menu(ctx.t))
+    text = f"{ctx.t('unknown')}\n{ctx.t('unknown-hint')}"
+    await message.answer(text, reply_markup=main_menu(ctx.t))
 
 
 async def need_text(message: Message, ctx: Ctx) -> None:

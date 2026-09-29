@@ -163,18 +163,39 @@ reminders-empty = ⏰ Активных напоминаний нет. Нажми
 reminders-title = ⏰ Твои напоминания ({ $count }/{ $limit }):
 reminder-item = { $number }. { $when } — { $text }
 reminders-limit = Достигнут лимит — { $limit } напоминаний. Удали лишние.
-reminder-ask-text = ✍️ О чём напомнить? (до { $limit } символов)
-hint-reminder-text = Напиши, о чём напомнить.
-reminder-bad-text = Нужен текст от 1 до { $limit } символов. Попробуй ещё раз:
-reminder-ask-when =
-    Когда напомнить? Примеры:
-    • 18:30 — сегодня (или завтра, если время уже прошло)
-    • 25.09 18:30 — в этом году
-    • 25.09.2027 18:30 — точная дата
-hint-when = Напиши время, например 18:30 или 25.09 18:30.
-reminder-bad-when = Не понял время. { reminder-ask-when }
 reminder-past = Это время уже прошло. Укажи момент в будущем:
 reminder-saved = ✅ Напомню { $date } в { $time }: { $text }
+reminder-ask-phrase =
+    ✍️ Напиши, о чём и когда напомнить. Например:
+    • завтра в 9 купить молоко
+    • через 20 минут чай
+    • каждый понедельник в 10 планёрка
+    • по будням в 7:30 зарядка
+hint-reminder-phrase = Напиши, о чём и когда напомнить, например «завтра в 9 купить молоко».
+reminder-not-understood = 🤔 Не нашёл, когда напомнить. { reminder-ask-phrase }
+reminder-need-text = ✍️ О чём напомнить? Напиши фразу целиком, например «завтра в 9 купить молоко».
+reminder-ask-time = 🕘 Во сколько? Выбери или напиши, например 18:30 или «завтра в 10».
+hint-reminder-time = Напиши время, например 18:30 или «завтра в 10».
+reminder-card = ⏰ { $when }, { $time } — { $text }
+reminder-card-repeat =
+    ↻ { $rule } — { $text }
+    Первый раз: { $first }
+button-create = ✅ Создать
+button-retime = 🕘 Другое время
+button-card-cancel = ✖️ Отмена
+reminder-saved-repeat = ✅ Буду напоминать { $rule }: { $text }
+reminder-item-repeat = { $number }. ↻ { $rule } — { $text }
+reminder-delete-series = Удалить повтор «{ $text }» целиком?
+day-today = Сегодня
+day-tomorrow = Завтра
+day-after-tomorrow = Послезавтра
+unknown-hint = Чтобы создать напоминание, просто напиши, например: «завтра в 9 купить молоко».
+button-snooze-10m = +10 мин
+button-snooze-1h = +1 ч
+button-snooze-tomorrow = Завтра
+button-done = ✓ Готово
+fired-snoozed = ⏭ Перенёс на { $when }
+fired-done = ✓ Готово
 
 ## Habits
 habits-empty = 🎯 Привычек пока нет. Нажми «➕ Добавить», чтобы начать.

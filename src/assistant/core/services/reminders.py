@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import replace
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,52 +15,16 @@ from assistant.core.models import Reminder, ReminderStatus, Repeat, User
 from assistant.core.services import recurrence
 from assistant.core.services.phrases import Parsed
 from assistant.core.services.recurrence import Rule
-from assistant.core.timeutil import local_to_utc, local_today, parse_hhmm, to_local, utcnow
+from assistant.core.timeutil import local_to_utc, local_today, to_local, utcnow
 
 log = logging.getLogger(__name__)
 
 BACKOFF: tuple[int, ...] = (30, 60, 300, 900, 3600, 10800)
 # Every delay in BACKOFF is used once; the attempt after the last delay is the final one.
 MAX_FAILURES = len(BACKOFF) + 1
-_DAY = re.compile(r"^(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?$")
 
 SNOOZE_KINDS = ("10m", "1h", "tomorrow")
 _SNOOZE_DELAYS = {"10m": timedelta(minutes=10), "1h": timedelta(hours=1)}
-
-
-def parse_when(text: str, now_local: datetime) -> datetime | None:
-    """'HH:MM' (today, or tomorrow if already reached), 'DD.MM HH:MM', 'DD.MM.YYYY HH:MM'.
-
-    Returns a naive wall time. With an aware `now_local`, a time that cannot be placed on the
-    UTC timeline in that zone (the very edges of the calendar, e.g. 31.12.9999 23:59 west of
-    UTC) counts as unparsable too.
-    """
-    try:
-        moment = _parse_wall(text, now_local.replace(tzinfo=None))
-        if moment is not None and now_local.tzinfo is not None:
-            moment.replace(tzinfo=now_local.tzinfo, fold=0).astimezone(UTC)
-    except (ValueError, OverflowError):
-        return None
-    return moment
-
-
-def _parse_wall(text: str, wall_now: datetime) -> datetime | None:
-    parts = text.split()
-    if len(parts) == 1:
-        hhmm = parse_hhmm(parts[0])
-        if hhmm is None:
-            return None
-        hours, minutes = (int(x) for x in hhmm.split(":"))
-        moment = wall_now.replace(hour=hours, minute=minutes, second=0, microsecond=0)
-        return moment + timedelta(days=1) if moment <= wall_now else moment
-    if len(parts) == 2:
-        day_match, hhmm = _DAY.match(parts[0]), parse_hhmm(parts[1])
-        if day_match is None or hhmm is None:
-            return None
-        year = int(day_match.group(3)) if day_match.group(3) else wall_now.year
-        hours, minutes = (int(x) for x in hhmm.split(":"))
-        return datetime(year, int(day_match.group(2)), int(day_match.group(1)), hours, minutes)
-    return None
 
 
 def clean_text(text: str) -> str:

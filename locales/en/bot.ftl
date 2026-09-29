@@ -152,18 +152,39 @@ reminders-empty = ⏰ No active reminders. Tap “➕ Add” to create one.
 reminders-title = ⏰ Your reminders ({ $count }/{ $limit }):
 reminder-item = { $number }. { $when } — { $text }
 reminders-limit = You've reached the limit of { $limit } reminders. Delete some first.
-reminder-ask-text = ✍️ What should I remind you about? (up to { $limit } characters)
-hint-reminder-text = Send what to remind you about.
-reminder-bad-text = I need text from 1 to { $limit } characters. Try again:
-reminder-ask-when =
-    When should I remind you? Examples:
-    • 18:30 — today (or tomorrow if the time has passed)
-    • 25.09 18:30 — this year (day.month)
-    • 25.09.2027 18:30 — exact date
-hint-when = Send a time, e.g. 18:30 or 25.09 18:30.
-reminder-bad-when = I didn't get the time. { reminder-ask-when }
 reminder-past = That time has already passed. Pick a moment in the future:
 reminder-saved = ✅ I'll remind you on { $date } at { $time }: { $text }
+reminder-ask-phrase =
+    ✍️ Tell me what to remind you about and when. For example:
+    • tomorrow at 9 buy milk
+    • in 20 minutes tea
+    • every monday at 10 planning
+    • on weekdays at 7:30 workout
+hint-reminder-phrase = Tell me what and when, e.g. “tomorrow at 9 buy milk”.
+reminder-not-understood = 🤔 I couldn't find when to remind you. { reminder-ask-phrase }
+reminder-need-text = ✍️ What should I remind you about? Send the whole phrase, e.g. “tomorrow at 9 buy milk”.
+reminder-ask-time = 🕘 At what time? Pick one or send it, e.g. 18:30 or “tomorrow at 10”.
+hint-reminder-time = Send a time, e.g. 18:30 or “tomorrow at 10”.
+reminder-card = ⏰ { $when }, { $time } — { $text }
+reminder-card-repeat =
+    ↻ { $rule } — { $text }
+    First time: { $first }
+button-create = ✅ Create
+button-retime = 🕘 Another time
+button-card-cancel = ✖️ Cancel
+reminder-saved-repeat = ✅ I'll remind you { $rule }: { $text }
+reminder-item-repeat = { $number }. ↻ { $rule } — { $text }
+reminder-delete-series = Delete the repeat “{ $text }” entirely?
+day-today = Today
+day-tomorrow = Tomorrow
+day-after-tomorrow = The day after tomorrow
+unknown-hint = To create a reminder, just write, e.g. “tomorrow at 9 buy milk”.
+button-snooze-10m = +10 min
+button-snooze-1h = +1 h
+button-snooze-tomorrow = Tomorrow
+button-done = ✓ Done
+fired-snoozed = ⏭ Moved to { $when }
+fired-done = ✓ Done
 
 ## Habits
 habits-empty = 🎯 No habits yet. Tap “➕ Add” to start.

@@ -14,8 +14,9 @@ class NoteForm(StatesGroup):
 
 
 class ReminderForm(StatesGroup):
-    text = State()
-    when = State()
+    text = State()  # waiting for a phrase («➕ Добавить»)
+    time = State()  # the phrase has no usable time yet
+    confirm = State()  # a confirmation card is shown
 
 
 class HabitForm(StatesGroup):
