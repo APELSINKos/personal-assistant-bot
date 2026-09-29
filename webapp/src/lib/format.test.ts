@@ -16,6 +16,7 @@ describe("format", () => {
 
   it("formats numbers and temperatures", () => {
     expect(formatNumber(84.1975, "ru")).toBe("84,20");
+    // The thousands separator below is a no-break space (U+00A0), as Intl writes it for ru.
     expect(formatNumber(1500.5, "ru")).toBe("1 500,50");
     expect(formatNumber(1500.5, "en")).toBe("1,500.50");
     expect([9.6, -3.7, -0.4, 0.2, null].map(formatTemp)).toEqual(["+10°", "-4°", "0°", "0°", "—"]);

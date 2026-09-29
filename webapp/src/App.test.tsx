@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { toast } from "./components/toastStore";
@@ -7,7 +7,6 @@ import { me } from "./test/fixtures";
 import { installTelegram, oldHeaderColor } from "./test/fakeTelegram";
 import { mockApi } from "./test/mockApi";
 import { normalizeLaunchHash } from "./telegram";
-import { act } from "react";
 
 describe("App shell", () => {
   it("shows the five tabs in the user's language", async () => {
