@@ -1,6 +1,9 @@
 import type { ComponentType } from "react";
 import { HabitForm } from "./screens/HabitForm";
 import { HabitsScreen } from "./screens/Habits";
+import { MoreScreen } from "./screens/More";
+import { NoteEditor } from "./screens/NoteEditor";
+import { NotesScreen } from "./screens/Notes";
 import { ReminderForm } from "./screens/ReminderForm";
 import { RemindersScreen } from "./screens/Reminders";
 import { TodayScreen } from "./screens/Today";
@@ -26,4 +29,8 @@ export const ROUTES: AppRoute[] = [
   { path: "/reminders/new", component: ReminderForm, parent: "/reminders", hideNav: true },
   { path: "/habits", component: HabitsScreen },
   { path: "/habits/new", component: HabitForm, parent: "/habits", hideNav: true },
+  { path: "/notes", component: NotesScreen },
+  { path: "/notes/new", component: NoteEditor, hideNav: true },
+  { path: "/notes/:id", component: NoteEditor, hideNav: true },
+  { path: "/more", component: MoreScreen },
 ];
