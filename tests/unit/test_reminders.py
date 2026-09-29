@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -104,15 +105,21 @@ def _reminder() -> Reminder:
     )
 
 
-def test_retry_backoff_then_failure() -> None:
+def test_retry_backoff_then_failure(caplog) -> None:
     reminder = _reminder()
+    reminder.id = 5
     delays = []
-    for _ in range(5):
+    for _ in range(6):
         reminders.schedule_retry(reminder, NOW, "network")
         delays.append((reminder.next_attempt_at - NOW).total_seconds())
-    assert delays == [30, 60, 300, 900, 3600] and reminder.status == ReminderStatus.PENDING
+    # Every delay is used, the 3 h one included; the 7th failure is the last one.
+    assert delays == [30, 60, 300, 900, 3600, 10800] and reminder.status == ReminderStatus.PENDING
+    assert reminders.MAX_FAILURES == 7 and not caplog.records
     reminders.schedule_retry(reminder, NOW, "network")
-    assert reminder.status == ReminderStatus.FAILED and reminder.attempts == 6
+    assert reminder.status == ReminderStatus.FAILED and reminder.attempts == 7
+    [record] = caplog.records
+    assert record.levelno == logging.ERROR
+    assert record.getMessage() == "reminder 5 gave up after 7 attempts: network"
 
 
 def test_retry_after_does_not_count_attempt() -> None:

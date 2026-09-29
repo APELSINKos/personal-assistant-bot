@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import date, datetime, time, timedelta
 
@@ -13,8 +14,11 @@ from assistant.core.errors import InvalidInput, LimitReached
 from assistant.core.models import Reminder, ReminderStatus, User
 from assistant.core.timeutil import local_to_utc, local_today, parse_hhmm, utcnow
 
+log = logging.getLogger(__name__)
+
 BACKOFF: tuple[int, ...] = (30, 60, 300, 900, 3600, 10800)
-MAX_FAILURES = 6
+# Every delay in BACKOFF is used once; the attempt after the last delay is the final one.
+MAX_FAILURES = len(BACKOFF) + 1
 _DAY = re.compile(r"^(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?$")
 
 
@@ -147,6 +151,10 @@ def schedule_retry(
     reminder.attempts += 1
     if reminder.attempts >= MAX_FAILURES:
         mark_failed(reminder, error)
+        # No reminder text in the log — only the id and the error.
+        log.error(
+            "reminder %s gave up after %d attempts: %s", reminder.id, reminder.attempts, error
+        )
         return
     reminder.next_attempt_at = now + timedelta(seconds=BACKOFF[reminder.attempts - 1])
 

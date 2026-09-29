@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -85,11 +86,14 @@ async def test_retry_after_does_not_count_and_stops_the_batch(
     assert second.status == ReminderStatus.PENDING
 
 
-async def test_network_errors_back_off_then_fail(scheduler, session, make_user, fake) -> None:
+async def test_network_errors_back_off_then_fail(
+    scheduler, session, make_user, fake, caplog
+) -> None:
     await make_user(morning_enabled=False)
     reminder = await add_reminder(session)
     moment = NOW
-    for attempt, delay in enumerate(reminders.BACKOFF, start=1):
+    delays = []
+    for attempt in range(1, reminders.MAX_FAILURES + 1):
         error = (
             TelegramNetworkError(method=METHOD, message="timeout")
             if attempt % 2
@@ -100,9 +104,12 @@ async def test_network_errors_back_off_then_fail(scheduler, session, make_user, 
         reminder = await reload(session, reminder)
         if attempt < reminders.MAX_FAILURES:
             assert (reminder.status, reminder.attempts) == (ReminderStatus.PENDING, attempt)
-            assert reminder.next_attempt_at == moment + timedelta(seconds=delay)
+            delays.append((reminder.next_attempt_at - moment).total_seconds())
             moment = reminder.next_attempt_at
-    assert reminder.status == ReminderStatus.FAILED
+    assert delays == [30, 60, 300, 900, 3600, 10800]
+    assert (reminder.status, reminder.attempts) == (ReminderStatus.FAILED, 7)
+    gave_up = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
+    assert gave_up == [f"reminder {reminder.id} gave up after 7 attempts: network: timeout"]
 
 
 async def test_blocked_user(scheduler, session, make_user, fake) -> None:
