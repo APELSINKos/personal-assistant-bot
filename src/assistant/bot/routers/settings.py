@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import secrets
 from dataclasses import asdict
 
 from aiogram import Bot, F, Router
@@ -20,6 +21,9 @@ from assistant.core.models import User
 from assistant.core.services import users
 
 AUTO = "auto"
+# Joins the search id and the index in a city button's value. Not ":" — that is the
+# separator of the packed callback data itself.
+PICK_JOIN = "-"
 
 
 def _button(text: str, action: str, value: str = "") -> InlineKeyboardButton:
@@ -140,8 +144,13 @@ async def got_city(message: Message, ctx: Ctx) -> None:
         await message.answer(ctx.t("city-saved", city=found[0].name), reply_markup=main_menu(ctx.t))
         return
     if len(found) > 1:
-        await ctx.state.update_data(cities=[asdict(city) for city in found])
-        rows = [[_button(city_label(city), "pick", str(index))] for index, city in enumerate(found)]
+        # A new id per search: a button from an earlier list must not pick from this one.
+        search = secrets.token_hex(4)
+        await ctx.state.update_data(search=search, cities=[asdict(city) for city in found])
+        rows = [
+            [_button(city_label(city), "pick", f"{search}{PICK_JOIN}{index}")]
+            for index, city in enumerate(found)
+        ]
         await message.answer(
             ctx.t("city-choose"), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
         )
@@ -150,13 +159,15 @@ async def got_city(message: Message, ctx: Ctx) -> None:
 
 
 async def on_pick(query: CallbackQuery, callback_data: SettingsCb, ctx: Ctx, bot: Bot) -> None:
-    cities = (await ctx.state.get_data()).get("cities")
-    try:
-        city = City(**cities[int(callback_data.value)])  # type: ignore[index]
-    except (TypeError, ValueError, IndexError, KeyError):
-        await query.answer(ctx.t("stale-button"))
-        return
-    if not await _save_city(ctx, city):
+    data = await ctx.state.get_data()
+    search, _, index = callback_data.value.partition(PICK_JOIN)
+    city: City | None = None
+    if search and search == data.get("search"):  # a button from an older list is stale
+        try:
+            city = City(**data["cities"][int(index)])
+        except (TypeError, ValueError, LookupError):
+            city = None
+    if city is None or not await _save_city(ctx, city):
         await query.answer(ctx.t("stale-button"))
         return
     await query.answer()

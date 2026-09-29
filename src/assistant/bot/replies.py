@@ -12,6 +12,20 @@ log = logging.getLogger(__name__)
 Markup = InlineKeyboardMarkup | ReplyKeyboardMarkup | None
 
 
+async def answer_quietly(
+    query: CallbackQuery, text: str | None = None, show_alert: bool = False
+) -> None:
+    """Answer a pressed button after a write was already committed.
+
+    An expired query ("query is too old") must not abort what follows — refreshing the list
+    that shows the change — nor turn a successful action into "something went wrong".
+    """
+    try:
+        await query.answer(text, show_alert=show_alert)
+    except TelegramBadRequest as error:
+        log.info("could not answer a callback query: %s", error.message)
+
+
 async def send(bot: Bot, query: CallbackQuery, text: str, markup: Markup = None) -> None:
     # Private chats only, so the chat id equals the user id.
     await bot.send_message(query.from_user.id, text, reply_markup=markup)

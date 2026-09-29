@@ -67,7 +67,7 @@ async def on_page(query: CallbackQuery, callback_data: NoteCb, ctx: Ctx, bot: Bo
 
 async def on_delete(query: CallbackQuery, callback_data: NoteCb, ctx: Ctx, bot: Bot) -> None:
     removed = await notes.delete(ctx.session, ctx.user.id, callback_data.id)
-    await query.answer(ctx.t("deleted" if removed else "already-deleted"))
+    await replies.answer_quietly(query, ctx.t("deleted" if removed else "already-deleted"))
     text, markup = await _view(ctx, callback_data.page)
     await replies.edit(bot, query, text, markup)
 

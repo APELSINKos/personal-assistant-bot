@@ -76,3 +76,13 @@ def test_moment_formatting() -> None:
     moment = datetime(2026, 9, 25, 15, 30, tzinfo=UTC)
     assert texts.short_moment(moment, "Europe/Moscow", "ru", now) == "25 сент., 18:30"
     assert texts.short_moment(moment, "Europe/Moscow", "en", now) == "25 Sep, 18:30"
+
+
+async def test_a_date_at_the_edge_of_the_calendar_is_not_understood(feed, fake, make_user) -> None:
+    await make_user(id=1, tz="America/New_York")  # west of UTC: year 9999 overflows
+    await make_user(id=2, tz="Europe/Moscow")  # east of UTC: year 1 overflows
+    for user_id, when in ((1, "31.12.9999 23:59"), (2, "01.01.0001 00:30")):
+        await feed(callback_update(ReminderCb(action="add").pack(), user_id=user_id))
+        await feed(message_update("купить молоко", user_id=user_id))
+        await feed(message_update(when, user_id=user_id))
+        assert fake.sent_texts()[-1] == "Не понял время. " + ASK_WHEN

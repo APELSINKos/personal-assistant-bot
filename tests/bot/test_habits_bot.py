@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 from aiogram.methods import AnswerCallbackQuery, EditMessageText
 from sqlalchemy import select
@@ -11,6 +11,7 @@ from assistant.core.i18n import translator
 from assistant.core.models import Habit, HabitMark
 from assistant.core.services import habits
 from assistant.core.services.habits import HabitStats
+from assistant.core.timeutil import local_today
 from tests.bot.fakes import callback_update, message_update
 
 RU, EN = translator("ru"), translator("en")
@@ -145,4 +146,21 @@ async def test_old_buttons_never_hit_a_newer_habit(feed, fake, session, make_use
     await feed(callback_update(old_delete))
     assert fake.of(AnswerCallbackQuery)[-1].text == "Этого уже нет."
     assert [h.name for h in (await session.scalars(select(Habit))).all()] == ["Чтение"]
+    assert (await session.scalars(select(HabitMark))).all() == []
+
+
+async def test_toggle_outside_the_habit_days_answers_like_a_stale_button(
+    feed, fake, session, make_user
+) -> None:
+    user = await make_user()
+    # Created "tomorrow" from the user's point of view, e.g. after moving west that day.
+    tomorrow = local_today(user.timezone) + timedelta(days=1)
+    habit = Habit(user_id=user.id, name="Спорт", created_on=tomorrow)
+    session.add(habit)
+    await session.commit()
+    await feed(callback_update(HabitCb(action="toggle", id=habit.id).pack()))
+    answer = fake.of(AnswerCallbackQuery)[-1]
+    assert answer.text == "Эта кнопка устарела — открой раздел заново из меню."
+    assert fake.of(EditMessageText)[-1].text.startswith("📅 Отметь привычки за ")
+    assert not any(text.startswith("⚠️") for text in fake.sent_texts())
     assert (await session.scalars(select(HabitMark))).all() == []

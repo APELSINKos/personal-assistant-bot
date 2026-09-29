@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.methods import SendMessage
+from aiogram.methods import AnswerCallbackQuery, SendMessage
 from aiogram.types import Message, ReplyKeyboardMarkup
 from sqlalchemy import func, select
 
@@ -11,6 +12,7 @@ from assistant.bot.context import Ctx
 from assistant.bot.fsm_storage import current_session
 from assistant.bot.keyboards import menu_key, paginate, preview
 from assistant.core.models import User
+from assistant.core.services import users
 from tests.bot.fakes import callback_update, message_update
 
 
@@ -192,3 +194,48 @@ def test_helpers() -> None:
     assert paginate(items, 99) == ([10, 11], 2, 3)
     assert paginate(items, -1) == ([0, 1, 2, 3, 4], 0, 3)
     assert paginate([], 0) == ([], 0, 1)
+
+
+TOO_OLD = "Bad Request: query is too old and response timeout expired or query ID is invalid"
+
+
+async def test_expired_query_does_not_stop_the_error_message(make_dp, feed, fake) -> None:
+    async def boom(query, ctx: Ctx) -> None:
+        raise RuntimeError("boom")
+
+    router = Router(name="boom")
+    router.callback_query.register(boom)
+    fake.errors.append(
+        TelegramBadRequest(method=AnswerCallbackQuery(callback_query_id="1"), message=TOO_OLD)
+    )
+    await feed(callback_update("whatever"), make_dp([router]))
+    assert [type(c).__name__ for c in fake.calls] == ["AnswerCallbackQuery", "SendMessage"]
+    assert fake.sent_texts() == ["⚠️ Что-то пошло не так. Попробуй ещё раз чуть позже."]
+
+
+async def test_error_message_uses_the_saved_language(feed, fake, make_user, monkeypatch) -> None:
+    await make_user(language="en")
+
+    async def boom(message: Message, ctx: Ctx) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setitem(sections.SECTIONS, "rates", boom)
+    await feed(message_update("💱 Курс валют", lang="ru"))  # Telegram says Russian
+    assert fake.sent_texts()[-1] == "⚠️ Something went wrong. Please try again a bit later."
+
+
+async def test_error_message_falls_back_to_telegram_language(
+    feed, fake, make_user, monkeypatch
+) -> None:
+    await make_user(language="en")
+
+    async def boom(message: Message, ctx: Ctx) -> None:
+        raise RuntimeError("boom")
+
+    async def broken_get(session, user_id):
+        raise RuntimeError("database is locked")
+
+    monkeypatch.setitem(sections.SECTIONS, "rates", boom)
+    monkeypatch.setattr(users, "get", broken_get)
+    await feed(message_update("💱 Курс валют", lang="ru"))
+    assert fake.sent_texts()[-1] == "⚠️ Что-то пошло не так. Попробуй ещё раз чуть позже."

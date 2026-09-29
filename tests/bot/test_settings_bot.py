@@ -83,11 +83,27 @@ async def test_city_choice_between_several(feed, fake, meteo, session) -> None:
         "Санкт-Петербург, Россия",
         "Saint Petersburg, Florida, США",
     ]
-    await feed(callback_update(SettingsCb(action="pick", value="1").pack()))
+    pick = choice.reply_markup.inline_keyboard[1][0].callback_data
+    await feed(callback_update(pick))
     assert fake.sent_texts()[-1] == "✅ Город сохранён: Saint Petersburg"
     assert (await session.get(User, 1)).timezone == "America/New_York"
-    await feed(callback_update(SettingsCb(action="pick", value="1").pack()))  # stale choice
+    await feed(callback_update(pick))  # stale choice
     assert fake.calls[-1].text == "Эта кнопка устарела — открой раздел заново из меню."
+
+
+async def test_a_button_from_an_earlier_city_search_is_stale(feed, fake, meteo, session) -> None:
+    meteo.cities = [SPB, SPB_US]
+    await feed(callback_update(SettingsCb(action="city").pack()))
+    await feed(message_update("Saint Petersburg"))
+    first = fake.of(SendMessage)[-1].reply_markup.inline_keyboard
+    meteo.cities = [SPB_US, SPB]  # the same cities in another order
+    await feed(message_update("Петербург"))
+    second = fake.of(SendMessage)[-1].reply_markup.inline_keyboard
+    await feed(callback_update(first[1][0].callback_data))
+    assert fake.calls[-1].text == "Эта кнопка устарела — открой раздел заново из меню."
+    assert (await session.get(User, 1)).city == "Москва"
+    await feed(callback_update(second[1][0].callback_data))
+    assert fake.sent_texts()[-1] == "✅ Город сохранён: Санкт-Петербург"
 
 
 async def test_city_not_found_and_service_down(feed, fake, meteo) -> None:

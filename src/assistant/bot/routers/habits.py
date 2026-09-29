@@ -131,13 +131,17 @@ async def on_toggle(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot:
     today = local_today(ctx.user.timezone)
     try:
         stats = await habits.stats_for(ctx.session, ctx.user, callback_data.id)
-    except NotFound:
-        await query.answer(ctx.t("already-deleted"))
-    else:
         await habits.set_mark(
             ctx.session, ctx.user, stats.habit.id, today, NEXT_MARK[stats.done_today]
         )
-        await query.answer()
+    except NotFound:
+        await query.answer(ctx.t("already-deleted"))
+    except InvalidInput:
+        # Today is outside the habit's days, e.g. the user moved west on the day it was
+        # created: nothing to mark, the list below shows the current state.
+        await query.answer(ctx.t("stale-button"))
+    else:
+        await replies.answer_quietly(query)
     items = await _items(ctx)
     if items:
         await replies.edit(bot, query, *mark_view(items, today, ctx.t))
@@ -165,7 +169,7 @@ async def on_ask(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bo
 
 async def on_delete(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bot) -> None:
     removed = await habits.delete(ctx.session, ctx.user.id, callback_data.id)
-    await query.answer(ctx.t("deleted" if removed else "already-deleted"))
+    await replies.answer_quietly(query, ctx.t("deleted" if removed else "already-deleted"))
     await replies.edit(bot, query, *habits_view(await _items(ctx), ctx.t))
 
 

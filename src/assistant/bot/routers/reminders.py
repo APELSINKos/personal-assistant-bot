@@ -79,7 +79,7 @@ async def on_page(query: CallbackQuery, callback_data: ReminderCb, ctx: Ctx, bot
 
 async def on_delete(query: CallbackQuery, callback_data: ReminderCb, ctx: Ctx, bot: Bot) -> None:
     removed = await reminders.cancel(ctx.session, ctx.user.id, callback_data.id)
-    await query.answer(ctx.t("deleted" if removed else "already-deleted"))
+    await replies.answer_quietly(query, ctx.t("deleted" if removed else "already-deleted"))
     text, markup = await _view(ctx, callback_data.page)
     await replies.edit(bot, query, text, markup)
 
@@ -120,8 +120,10 @@ async def got_when(message: Message, ctx: Ctx) -> None:
         return
     try:
         reminder = await reminders.create(ctx.session, ctx.user, text, when)
-    except InvalidInput:
-        await message.answer(ctx.t("reminder-past"))
+    except InvalidInput as error:
+        # "invalid": a date parse_when let through that still has no place in time.
+        unusable = error.params.get("reason") == "invalid"
+        await message.answer(ctx.t("reminder-bad-when" if unusable else "reminder-past"))
         return
     except LimitReached:
         await ctx.state.clear()

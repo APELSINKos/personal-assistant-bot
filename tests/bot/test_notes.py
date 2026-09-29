@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import AnswerCallbackQuery, EditMessageText, SendMessage
 from sqlalchemy import select
 
@@ -80,3 +81,21 @@ async def test_old_delete_button_never_hits_a_newer_note(feed, fake, session, ma
     await feed(callback_update(old_delete))
     assert fake.of(AnswerCallbackQuery)[-1].text == "Этого уже нет."
     assert [n.text for n in await notes.all_for(session, 1)] == ["вторая"]
+
+
+async def test_expired_query_after_delete_still_refreshes_the_list(
+    feed, fake, session, make_user
+) -> None:
+    await make_user()
+    note = await notes.create(session, 1, "секрет")
+    await session.commit()
+    fake.errors.append(
+        TelegramBadRequest(
+            method=AnswerCallbackQuery(callback_query_id="1"),
+            message="Bad Request: query is too old and response timeout expired",
+        )
+    )
+    await feed(callback_update(NoteCb(action="del", id=note.id).pack()))
+    assert await notes.count(session, 1) == 0
+    # The list is refreshed, and there is no "something went wrong".
+    assert fake.sent_texts() == ["📝 Заметок пока нет. Нажми «➕ Добавить», чтобы создать первую."]
