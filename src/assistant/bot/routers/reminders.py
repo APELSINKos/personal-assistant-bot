@@ -255,16 +255,20 @@ async def _verified(
 ) -> _Draft | None:
     """The draft behind a pressed card button, if the button still belongs to it.
 
-    On a mismatch or an expired draft the button is already answered and its keyboard
-    dropped. An expired draft also clears the state (nothing usable is left there); a
-    mismatched one does not, since a newer draft may still be alive under it.
+    Three cases all answer the button with `already-deleted` and drop its keyboard, but
+    differ in what they do to the state:
+    - no draft at all (there may be no reminder dialog here — e.g. an unrelated FSM dialog
+      is in progress under a stale reminder-card button): the state is left untouched;
+    - a draft that outlived `CARD_TTL`: nothing usable is left, so the state is cleared;
+    - a draft whose `card` does not match the pressed button's `id` (a newer draft replaced
+      it): the state is left untouched, since that newer draft may still be alive under it.
     """
     draft = await _draft(ctx)
     expired = draft is not None and clock() - draft.at > CARD_TTL
     if draft is None or expired or draft.card != callback_data.id:
         await replies.answer_quietly(query, ctx.t("already-deleted"))
         await replies.drop_buttons(bot, query)
-        if draft is None or expired:
+        if expired:
             await ctx.state.clear()
         return None
     return draft

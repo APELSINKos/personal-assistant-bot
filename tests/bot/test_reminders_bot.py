@@ -6,7 +6,7 @@ import pytest
 from aiogram.methods import AnswerCallbackQuery, SendMessage
 from sqlalchemy import select
 
-from assistant.bot.keyboards import ReminderCb
+from assistant.bot.keyboards import ReminderCb, SettingsCb
 from assistant.bot.routers import reminders as reminders_router
 from assistant.core.models import Reminder, ReminderStatus, Repeat
 from assistant.core.services import reminders
@@ -234,6 +234,17 @@ async def test_the_time_prompt_can_be_cancelled(feed, fake) -> None:
 async def test_a_date_next_year_shows_the_year(feed, fake) -> None:
     await feed(message_update("29.02 в 10 тест"))
     assert fake.sent_texts()[-1] == "⏰ вт, 29 февр. 2028, 10:00 — тест"
+
+
+async def test_a_stale_card_does_not_break_another_dialog(feed, fake, session) -> None:
+    await feed(message_update("завтра в 9 купить молоко"))
+    old_ok = button_data(fake, "✅ Создать")
+    await feed(callback_update(SettingsCb(action="city").pack()))  # an unrelated dialog starts
+    await feed(callback_update(old_ok))
+    assert fake.of(AnswerCallbackQuery)[-1].text == "Этого уже нет."
+    await feed(message_update("Москва"))  # the city dialog must still be listening
+    assert fake.sent_texts()[-1] == "Не нашёл город «Москва». Проверь название и напиши ещё раз:"
+    assert await all_reminders(session) == []
 
 
 def test_looks_like_reminder() -> None:
