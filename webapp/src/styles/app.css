@@ -119,6 +119,13 @@ a {
   gap: 12px;
 }
 
+/* A label wrapping a switch: clicking anywhere in the row toggles it, so the row itself
+   (not just the visible switch control) must meet the 44px touch-target minimum. */
+.switch-row {
+  min-height: 44px;
+  width: 100%;
+}
+
 .muted {
   color: var(--hint);
 }

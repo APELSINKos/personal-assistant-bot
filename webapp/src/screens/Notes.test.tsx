@@ -75,4 +75,36 @@ describe("NoteEditor", () => {
     expect(app.showConfirm).toHaveBeenCalledWith("Выйти без сохранения?", expect.any(Function));
     expect(history.at(-1)).toBe("/notes/11");
   });
+
+  it("shows a not-found state for a note that doesn't exist", async () => {
+    installTelegram();
+    mockApi({ "GET /notes": [note] });
+    renderWithApp(<NoteEditor />, { path: "/notes/999" });
+    expect(await screen.findByText("Этого уже нет")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Заметки" })).toBeInTheDocument();
+  });
+
+  it("keeps the draft when the note disappears elsewhere while editing", async () => {
+    const app = installTelegram();
+    mockApi({
+      "GET /notes": [note],
+      "PATCH /notes/11": () => ({ status: 404, body: { status: 404, code: "not_found", title: "Not found" } }),
+    });
+    const { client } = renderWithApp(<><NoteEditor /><Toasts /></>, { path: "/notes/11" });
+    const editor = await screen.findByDisplayValue("Купить хлеб");
+    fireEvent.change(editor, { target: { value: "черновик" } });
+
+    // The note is gone from the cache — e.g. deleted in another tab — while the user is still
+    // editing it here. React Query notifies subscribers on a real macrotask (`setTimeout(…, 0)`),
+    // so the update is awaited here to let the screen actually re-render before the assertion.
+    await act(async () => {
+      client.setQueryData(["notes"], []);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(screen.getByDisplayValue("черновик")).toBeInTheDocument();
+
+    pressMainButton(app);
+    expect(await screen.findByText("Этого уже нет")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("черновик")).toBeInTheDocument();
+  });
 });

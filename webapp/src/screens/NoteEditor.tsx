@@ -33,7 +33,11 @@ export function NoteEditor() {
 
   if (id !== null && notes.isPending) return <Loader />;
   if (id !== null && notes.isError) return <ErrorState onRetry={() => void notes.refetch()} />;
-  if (id !== null && !existing) {
+  // Once the user has started a draft, a background refetch that drops the note (e.g. it was
+  // deleted elsewhere) must not swap to the not-found state and silently discard their edits —
+  // only show it before any edit was made. Saving then surfaces the API's 404 as the usual
+  // "already gone" toast, and the draft stays on screen either way.
+  if (id !== null && !existing && draft === null) {
     return (
       <>
         <Empty text={t.errors.not_found} />

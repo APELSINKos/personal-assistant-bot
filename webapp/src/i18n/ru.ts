@@ -79,6 +79,7 @@ export const ru = {
     morningTime: "Время сводки",
     language: "Язык",
     auto: "Авто",
+    languageNames: { ru: "Русский", en: "English" },
     about: "О приложении",
     version: (value: string) => `Версия ${value}`,
     source: "Исходный код на GitHub",

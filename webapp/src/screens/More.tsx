@@ -9,7 +9,6 @@ import { useDebounced } from "../lib/useDebounced";
 import { openLink } from "../telegram";
 
 export const REPO_URL = "https://github.com/APELSINKos/personal-assistant-bot";
-const LANGUAGE_NAMES = { ru: "Русский", en: "English" } as const;
 
 function cityLabel(city: City): string {
   const parts: string[] = [];
@@ -57,7 +56,10 @@ export function MoreScreen() {
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
-        {search.trim().length >= 2 && cities.data && (
+        {/* Both the live query and the debounced one must be long enough — otherwise, right
+            after picking a city (which clears `query`), the stale suggestions would linger
+            for up to the debounce delay while `search` catches up. */}
+        {query.trim().length >= 2 && search.trim().length >= 2 && cities.data && (
           cities.data.length === 0 ? (
             <p className="muted">{t.more.noCities}</p>
           ) : (
@@ -78,8 +80,8 @@ export function MoreScreen() {
       </Card>
 
       <Card index={1}>
-        <label className="row field">
-          <span className="card__title">{t.more.morning}</span>
+        <label className="switch-row row field">
+          <span>{t.more.morning}</span>
           <input
             type="checkbox"
             role="switch"
@@ -112,7 +114,7 @@ export function MoreScreen() {
               aria-pressed={profile.language_setting === option}
               onClick={() => update.mutate({ language: option })}
             >
-              {option === "auto" ? t.more.auto : LANGUAGE_NAMES[option]}
+              {option === "auto" ? t.more.auto : t.more.languageNames[option]}
             </button>
           ))}
         </div>

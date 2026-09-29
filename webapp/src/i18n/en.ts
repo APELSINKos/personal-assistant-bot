@@ -76,6 +76,8 @@ export const en: Dict = {
     morningTime: "Digest time",
     language: "Language",
     auto: "Auto",
+    // A language picker names each language in itself (an endonym), the same in both dictionaries.
+    languageNames: { ru: "Русский", en: "English" },
     about: "About",
     version: (value: string) => `Version ${value}`,
     source: "Source code on GitHub",

@@ -28,6 +28,9 @@ describe("More", () => {
       body: { name: "Казань", lat: 55.79, lon: 49.12, timezone: "Europe/Moscow" },
     });
     expect(await screen.findByText("Казань")).toBeInTheDocument();
+    // Picking a city clears the query; the stale suggestion must vanish right away, not linger
+    // for the debounce delay while the search value catches up.
+    expect(screen.queryByRole("button", { name: "Казань, Татарстан, Россия" })).not.toBeInTheDocument();
   });
 
   it("changes the digest and the language", async () => {
