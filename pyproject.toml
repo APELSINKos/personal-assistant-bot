@@ -11,12 +11,14 @@ dependencies = [
     "sqlalchemy[asyncio]==2.1.1",
     "aiosqlite==0.22.1",
     "alembic==1.20.0",
+    "fastapi==0.141.1",
     "pydantic==2.13.5",
     "pydantic-settings==2.15.0",
     "httpx==0.28.1",
     "fluent.runtime==0.4.0",
     "babel==2.18.0",
     "tzdata>=2026.1",
+    "uvicorn==0.54.0",
 ]
 
 [dependency-groups]
@@ -63,7 +65,7 @@ addopts = "-q"
 
 [tool.coverage.run]
 source = ["assistant"]
-omit = ["*/assistant/bot/__main__.py"]
+omit = ["*/assistant/bot/__main__.py", "*/assistant/api/__main__.py"]
 branch = true
 
 [tool.coverage.report]

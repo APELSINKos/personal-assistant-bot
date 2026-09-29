@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     http_timeout: float = 10.0
     scheduler_interval: float = 20.0
+    api_host: str = "127.0.0.1"
+    api_port: int = 8000
+    api_rate_limit: int = 120
 
 
 @lru_cache(maxsize=1)
