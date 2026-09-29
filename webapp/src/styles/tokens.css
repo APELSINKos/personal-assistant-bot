@@ -1,0 +1,44 @@
+:root {
+  color-scheme: light dark;
+  --radius-card: 18px;
+  --radius-field: 12px;
+  --radius-pill: 999px;
+  --font-text: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Unbounded", "Manrope", system-ui, sans-serif;
+  --safe-top: calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px));
+  --safe-bottom: calc(
+    var(--tg-safe-area-inset-bottom, 0px) + var(--tg-content-safe-area-inset-bottom, 0px)
+  );
+  --nav-height: 64px;
+}
+
+:root,
+[data-theme="dark"] {
+  --bg-base: #0a0913;
+  --glow-1: #3b1f6e;
+  --glow-2: #0f4a52;
+  --text: #f4f2ff;
+  --hint: #a39fc0;
+  --glass: rgba(255, 255, 255, 0.07);
+  --glass-strong: rgba(20, 16, 36, 0.78);
+  --line: rgba(255, 255, 255, 0.1);
+  --accent: #7cf5c4;
+  --accent-text: #7cf5c4;
+  --on-accent: #0a0913;
+  --error: #ff7a90;
+}
+
+[data-theme="light"] {
+  --bg-base: #f7f5f2;
+  --glow-1: #f3d9ff;
+  --glow-2: #cdeff0;
+  --text: #1c1830;
+  --hint: #6e6787;
+  --glass: rgba(255, 255, 255, 0.62);
+  --glass-strong: rgba(255, 255, 255, 0.86);
+  --line: rgba(40, 20, 80, 0.08);
+  --accent: #0f9d76;
+  --accent-text: #0b7a5c;
+  --on-accent: #1c1830;
+  --error: #d63b5c;
+}
