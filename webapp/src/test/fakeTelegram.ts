@@ -47,6 +47,15 @@ export function installTelegram(overrides: Partial<TgWebApp> = {}, version = "8.
   return app;
 }
 
+/** setHeaderColor as telegram-web-app.js has it before 6.9: a hex colour throws, only keys pass. */
+export function oldHeaderColor() {
+  return vi.fn((color: string) => {
+    if (color !== "bg_color" && color !== "secondary_bg_color") {
+      throw new Error("WebAppHeaderColorKeyInvalid");
+    }
+  });
+}
+
 export function removeTelegram(): void {
   delete window.Telegram;
 }

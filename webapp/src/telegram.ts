@@ -103,13 +103,24 @@ export function startTelegram(): void {
   if (supports("7.7")) app.disableVerticalSwipes?.();
 }
 
+/** telegram-web-app.js throws on a colour it does not take; a colour is never worth the app. */
+function tryPaint(paint: () => void): void {
+  try {
+    paint();
+  } catch {
+    // Telegram keeps its own colour for that part.
+  }
+}
+
 export function paintTelegram(scheme: "light" | "dark"): void {
   const app = webApp();
   if (!app || !supports("6.1")) return;
   const color = THEME_BACKGROUND[scheme];
-  app.setHeaderColor?.(color);
-  app.setBackgroundColor?.(color);
-  if (supports("7.10")) app.setBottomBarColor?.(color);
+  // The header takes a hex colour from 6.9 on, before that only a theme key; the background
+  // takes one from 6.1, the bottom bar exists from 7.10.
+  tryPaint(() => app.setHeaderColor?.(supports("6.9") ? color : "bg_color"));
+  tryPaint(() => app.setBackgroundColor?.(color));
+  if (supports("7.10")) tryPaint(() => app.setBottomBarColor?.(color));
 }
 
 export function onThemeChange(callback: () => void): () => void {

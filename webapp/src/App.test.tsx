@@ -4,7 +4,7 @@ import { App } from "./App";
 import { toast } from "./components/toastStore";
 import { ROUTES } from "./routes";
 import { me } from "./test/fixtures";
-import { installTelegram } from "./test/fakeTelegram";
+import { installTelegram, oldHeaderColor } from "./test/fakeTelegram";
 import { mockApi } from "./test/mockApi";
 import { normalizeLaunchHash } from "./telegram";
 import { act } from "react";
@@ -53,6 +53,15 @@ describe("App shell", () => {
     expect(app.setBackgroundColor).toHaveBeenCalledWith("#f7f5f2");
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(app.ready).not.toHaveBeenCalled(); // startTelegram() runs in main.tsx, not in <App />
+  });
+
+  it("opens on a Telegram client older than 6.9", async () => {
+    // Such a client refuses a hex header colour; the app must still come up.
+    installTelegram({ setHeaderColor: oldHeaderColor() }, "6.5");
+    mockApi({ "GET /me": me });
+    render(<App />);
+    expect(await screen.findByRole("link", { name: "Привычки" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation")).toBeInTheDocument();
   });
 
   it("applies the theme even before the session is confirmed", async () => {

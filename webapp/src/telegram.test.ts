@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { installTelegram } from "./test/fakeTelegram";
+import { installTelegram, oldHeaderColor } from "./test/fakeTelegram";
 import {
   confirmAction, haptic, initData, normalizeLaunchHash, paintTelegram, startTelegram, webApp,
 } from "./telegram";
@@ -32,6 +32,24 @@ describe("telegram", () => {
     expect(app.disableVerticalSwipes).not.toHaveBeenCalled();
     paintTelegram("light");
     expect(app.setHeaderColor).not.toHaveBeenCalled();
+  });
+
+  it("gives clients before 6.9 the header colour key they accept", () => {
+    const app = installTelegram({ setHeaderColor: oldHeaderColor() }, "6.5");
+    paintTelegram("dark");
+    expect(app.setHeaderColor).toHaveBeenCalledWith("bg_color");
+    expect(app.setHeaderColor).not.toHaveBeenCalledWith("#0a0913");
+    expect(app.setBackgroundColor).toHaveBeenCalledWith("#0a0913"); // a hex colour is fine from 6.1
+    expect(app.setBottomBarColor).not.toHaveBeenCalled(); // 7.10 and later only
+  });
+
+  it("never lets a colour call take the app down", () => {
+    const refuse = () => {
+      throw new Error("WebAppBackgroundColorInvalid");
+    };
+    const app = installTelegram({ setHeaderColor: vi.fn(refuse), setBackgroundColor: vi.fn(refuse) });
+    expect(() => paintTelegram("light")).not.toThrow();
+    expect(app.setBottomBarColor).toHaveBeenCalledWith("#f7f5f2");
   });
 
   it("confirms through Telegram, or the browser outside it", async () => {
