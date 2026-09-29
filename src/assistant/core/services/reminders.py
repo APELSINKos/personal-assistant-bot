@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import replace
 from datetime import UTC, date, datetime, time, timedelta
 
 from sqlalchemy import func, select, update
@@ -151,9 +152,14 @@ async def create_repeating(
     cleaned = clean_text(text)
     rule.validate()
     await _check_limit(session, user.id)
+    moment = now or utcnow()
+    first = recurrence.next_after(rule, moment, user.timezone)
+    # A series never carries a firing from before it existed: the anchor starts no earlier
+    # than the first real firing (still an "on" week for an every-other-week rule).
+    rule = replace(rule, anchor_date=max(rule.anchor_date, to_local(first, user.timezone).date()))
     reminder = Reminder(user_id=user.id, text=cleaned, status=ReminderStatus.PENDING)
     _set_rule(reminder, rule)
-    _schedule(reminder, recurrence.next_after(rule, now or utcnow(), user.timezone))
+    _schedule(reminder, first)
     session.add(reminder)
     await session.flush()
     return reminder
@@ -197,18 +203,29 @@ async def update_reminder(
     if reminder is None or reminder.status is not ReminderStatus.PENDING:
         raise NotFound(entity="reminder")
     moment = now or utcnow()
-    if text is not None:
-        reminder.text = clean_text(text)
+    # Every check runs before any field is touched, so a rejected edit leaves the row as-is.
+    cleaned = clean_text(text) if text is not None else None
     if rule is not None:
         rule.validate()
+        first = recurrence.next_after(rule, moment, user.timezone)
+        rule = replace(
+            rule, anchor_date=max(rule.anchor_date, to_local(first, user.timezone).date())
+        )
+        if cleaned is not None:
+            reminder.text = cleaned
+        reminder.parent_id = None  # a snoozed copy turned into a repeat is its own series
         _set_rule(reminder, rule)
-        _schedule(reminder, recurrence.next_after(rule, moment, user.timezone))
+        _schedule(reminder, first)
     elif when_local is not None:
         due_at = _to_utc(when_local, user.timezone)
         if due_at <= moment:
             raise InvalidInput(field="when", reason="past")
+        if cleaned is not None:
+            reminder.text = cleaned
         _set_rule(reminder, None)
         _schedule(reminder, due_at)
+    elif cleaned is not None:
+        reminder.text = cleaned
     await session.flush()
     return reminder
 
@@ -230,11 +247,21 @@ async def snooze(
     now: datetime | None = None,
 ) -> Reminder:
     reminder = await get_owned(session, user.id, reminder_id)
-    if reminder is None or reminder.status in (ReminderStatus.CANCELLED, ReminderStatus.FAILED):
+    if reminder is None or reminder.status in (
+        ReminderStatus.CANCELLED,
+        ReminderStatus.FAILED,
+        ReminderStatus.DONE,
+    ):
         raise NotFound(entity="reminder")
     if until <= (now or utcnow()):
         raise InvalidInput(field="until", reason="past")
     if reminder.repeat is not Repeat.NONE:
+        rule = rule_of(reminder)
+        if rule is not None and (
+            recurrence.next_after(rule, until - timedelta(microseconds=1), user.timezone) == until
+        ):
+            # The series itself already fires exactly then: nothing to snooze, no duplicate.
+            return reminder
         # The series keeps its own schedule; the snoozed firing becomes a one-off copy.
         await _check_limit(session, user.id)
         copy = Reminder(
@@ -248,6 +275,9 @@ async def snooze(
         session.add(copy)
         await session.flush()
         return copy
+    if reminder.status is not ReminderStatus.PENDING:
+        # Sent (not pending) until now: re-pending it needs a free slot, like a new reminder.
+        await _check_limit(session, user.id)
     reminder.status = ReminderStatus.PENDING
     _schedule(reminder, until)
     await session.flush()
@@ -404,9 +434,20 @@ async def expire_stale(
 
 
 async def reschedule_repeating(
-    session: AsyncSession, user: User, now: datetime | None = None
+    session: AsyncSession,
+    user: User,
+    now: datetime | None = None,
+    *,
+    previous_tz: str | None = None,
 ) -> int:
-    """After a move: every repeat keeps its local time in the new zone."""
+    """After a move: every repeat keeps its local time in the new zone.
+
+    With `previous_tz`, a pending firing whose local day (in the old zone) still fires under
+    the rule keeps that same day's moment (never earlier than `now`): moving west right after
+    a firing does not fire again the same evening, and moving east past the local time fires
+    at once instead of waiting for tomorrow.
+    """
+    moment = now or utcnow()
     rows = (
         await session.scalars(
             select(Reminder).where(
@@ -418,8 +459,16 @@ async def reschedule_repeating(
     ).all()
     for reminder in rows:
         rule = rule_of(reminder)
-        if rule is not None:
-            _schedule(reminder, recurrence.next_after(rule, now or utcnow(), user.timezone))
+        if rule is None:
+            continue
+        next_due = None
+        if previous_tz is not None:
+            same_day = to_local(reminder.due_at, previous_tz).date()
+            if recurrence.fires_on(rule, same_day):
+                next_due = max(moment, recurrence.moment_on(rule, same_day, user.timezone))
+        if next_due is None:
+            next_due = recurrence.next_after(rule, moment, user.timezone)
+        _schedule(reminder, next_due)
     await session.flush()
     return len(rows)
 

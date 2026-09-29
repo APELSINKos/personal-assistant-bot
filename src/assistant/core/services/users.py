@@ -92,8 +92,10 @@ async def set_city(
         raise InvalidInput(field="city", reason="invalid")
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
         raise InvalidInput(field="city", reason="invalid")
+    previous_tz = user.timezone
     user.city, user.lat, user.lon, user.timezone = cleaned, lat, lon, timezone
-    await reminders.reschedule_repeating(session, user, now)
+    if previous_tz != timezone:
+        await reminders.reschedule_repeating(session, user, now, previous_tz=previous_tz)
     await session.flush()
 
 
