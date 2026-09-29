@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import { TodayScreen } from "./screens/Today";
 
 export interface AppRoute {
   path: string;
@@ -15,4 +16,4 @@ export interface AppRoute {
 }
 
 /** Screens register themselves here (Tasks 8–10); the first matching path wins. */
-export const ROUTES: AppRoute[] = [];
+export const ROUTES: AppRoute[] = [{ path: "/", component: TodayScreen }];
