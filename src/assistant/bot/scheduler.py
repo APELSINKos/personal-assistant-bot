@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -81,12 +82,20 @@ class Scheduler:
         self._interval = interval
         self._clock = clock
         self._last_cleanup: datetime | None = None
+        self._stopping = asyncio.Event()
 
     async def run(self) -> None:
         log.info("Scheduler started, every %.0f s", self._interval)
-        while True:
+        while not self._stopping.is_set():
             await self.tick()
-            await asyncio.sleep(self._interval)
+            # Sleep until the next tick, but wake up at once when stop() is called.
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(self._stopping.wait(), timeout=self._interval)
+        log.info("Scheduler stopped")
+
+    def stop(self) -> None:
+        """Finish the current tick (its writes included) and return from run()."""
+        self._stopping.set()
 
     async def tick(self) -> None:
         now = self._clock()
@@ -146,8 +155,9 @@ class Scheduler:
         async with self._sessionmaker() as session:
             batch = await reminders.due(session, now)
         # The read session above is closed before any send; each outcome below is then
-        # written in its own short session, so one reminder's failure (a decode error, a
-        # busy database, a bug) cannot corrupt or abort the delivery of the others.
+        # written in its own short session, so one reminder's failure (a busy database, a
+        # bug) cannot corrupt or abort the delivery of the others. A 429 or a failing
+        # network/Telegram stops the batch instead: the rest stay due for the next tick.
         blocked: set[int] = set()
         for reminder, user in batch:
             if user.id in blocked:
@@ -186,6 +196,10 @@ class Scheduler:
                         partial(reminders.schedule_retry, now=now, error=delivery.error),
                     )
                     log.warning("reminder %s not delivered: %s", reminder.id, delivery.error)
+                    # The network or Telegram is failing: the rest of the batch would most
+                    # likely fail the same way, each after a full timeout, stalling the tick.
+                    # They stay due and are tried on the next tick.
+                    break
             except Exception as error:
                 # An unexpected failure (a busy database, a formatting bug) must not pin
                 # this reminder at the head of the queue and must not stop the rest of
@@ -208,10 +222,10 @@ class Scheduler:
         # The session is closed; the loaded attributes stay readable on the detached objects.
         sent = 0
         for user in candidates:
-            day = digest_window_date(now_local(user.timezone, now), user.morning_time)
-            if day is None or user.last_morning_date == day:
-                continue
             try:
+                day = digest_window_date(now_local(user.timezone, now), user.morning_time)
+                if day is None or user.last_morning_date == day:
+                    continue
                 delivery = await self._digest(user.id, day, now)
             except Exception:
                 # One broken user must not stop the others; their own session is gone already.

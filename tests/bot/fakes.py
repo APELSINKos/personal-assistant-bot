@@ -19,6 +19,7 @@ class FakeSession(BaseSession):
     def __init__(self) -> None:
         super().__init__()
         self.calls: list[TelegramMethod[Any]] = []
+        self.timeouts: list[int | None] = []  # the per-request timeout of each call
         self.errors: list[BaseException] = []  # raised one per call, oldest first
         self.results: dict[type[Any], Any] = {}
         # Called at the start of make_request, before the call is recorded — lets tests
@@ -38,6 +39,7 @@ class FakeSession(BaseSession):
         if self.on_request is not None:
             self.on_request(method)
         self.calls.append(method)
+        self.timeouts.append(timeout)
         if self.errors:
             raise self.errors.pop(0)
         if type(method) in self.results:

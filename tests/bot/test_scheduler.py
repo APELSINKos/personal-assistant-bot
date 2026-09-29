@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, date, datetime, timedelta
 
@@ -137,21 +138,30 @@ async def test_bad_request_fails_without_blocking(scheduler, session, make_user,
     assert not (await reload(session, user)).bot_blocked
 
 
-async def test_client_decode_error_does_not_stop_the_batch(
-    scheduler, session, make_user, fake
-) -> None:
+@pytest.mark.parametrize(
+    "error",
+    [
+        ClientDecodeError("failed to decode", ValueError("bad json"), b"<html>"),
+        TelegramNetworkError(method=METHOD, message="timeout"),
+        TelegramServerError(method=METHOD, message="Bad Gateway"),
+    ],
+)
+async def test_network_failure_stops_the_batch(scheduler, session, make_user, fake, error) -> None:
     await make_user(id=1, morning_enabled=False)
     await make_user(id=2, morning_enabled=False)
     first = await add_reminder(session, user_id=1, ago=timedelta(minutes=2), text="полить цветы")
     second = await add_reminder(session, user_id=2, ago=timedelta(minutes=1), text="call mom")
-    fake.errors.append(ClientDecodeError("failed to decode", ValueError("bad json"), b"<html>"))
-    assert await scheduler.deliver_reminders(NOW) == 1
-    # Both were attempted (the fake records the outgoing call before the error), only
-    # the second one actually went through.
-    assert fake.sent_texts() == ["⏰ Напоминание: полить цветы", "⏰ Напоминание: call mom"]
+    fake.errors.append(error)
+    assert await scheduler.deliver_reminders(NOW) == 0
+    # Only the first one was attempted; a dropping network must not stall the tick with a
+    # timeout per reminder. The second stays due, untouched, for the next tick.
+    assert fake.sent_texts() == ["⏰ Напоминание: полить цветы"]
     first = await reload(session, first)
     assert (first.status, first.attempts) == (ReminderStatus.PENDING, 1)
     assert first.next_attempt_at == NOW + timedelta(seconds=reminders.BACKOFF[0])
+    second = await reload(session, second)
+    assert (second.status, second.attempts) == (ReminderStatus.PENDING, 0)
+    assert await scheduler.deliver_reminders(NOW + timedelta(seconds=1)) == 1
     assert (await reload(session, second)).status == ReminderStatus.SENT
 
 
@@ -296,3 +306,43 @@ async def test_english_reminder(scheduler, session, make_user, fake) -> None:
     await add_reminder(session, ago=timedelta(minutes=30), text="call mom")
     await scheduler.deliver_reminders(NOW)
     assert fake.sent_texts() == ["⏰ Reminder: call mom (was due at 14:30)"]
+
+
+async def test_digest_user_with_a_broken_zone_does_not_stop_others(
+    scheduler, session, make_user, fake
+) -> None:
+    await make_user(id=1, morning_time="23:30", tz="Mars/Olympus")
+    await make_user(id=2, morning_time="23:30")
+    assert await scheduler.send_digests(AT_2345) == 1
+    assert [call.chat_id for call in fake.of(SendMessage)] == [2]
+
+
+async def test_stop_ends_run_without_waiting_for_the_interval(
+    bot, sessionmaker, meteo, cbr, make_user
+) -> None:
+    await make_user(morning_enabled=False)
+    scheduler = Scheduler(bot, sessionmaker, meteo, cbr, interval=3600, clock=lambda: NOW)
+    task = asyncio.create_task(scheduler.run())
+    await asyncio.sleep(0.05)  # the first tick runs, then the scheduler sleeps
+    scheduler.stop()
+    await asyncio.wait_for(task, 1)  # returns by itself: nothing was cancelled
+    assert task.done() and not task.cancelled()
+
+
+async def test_stop_lets_the_current_tick_finish(
+    bot, sessionmaker, meteo, cbr, monkeypatch
+) -> None:
+    scheduler = Scheduler(bot, sessionmaker, meteo, cbr, interval=3600, clock=lambda: NOW)
+    started, finished = asyncio.Event(), []
+
+    async def slow_tick() -> None:
+        started.set()
+        await asyncio.sleep(0.05)
+        finished.append(True)
+
+    monkeypatch.setattr(scheduler, "tick", slow_tick)
+    task = asyncio.create_task(scheduler.run())
+    await started.wait()
+    scheduler.stop()  # in the middle of a tick
+    await asyncio.wait_for(task, 1)
+    assert finished == [True]
