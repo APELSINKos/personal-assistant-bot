@@ -1,0 +1,221 @@
+from __future__ import annotations
+
+from datetime import UTC, date, datetime, timedelta
+
+import pytest
+
+from assistant.core.errors import InvalidInput, LimitReached, NotFound
+from assistant.core.models import ReminderStatus, Repeat
+from assistant.core.services import phrases, reminders, users
+from assistant.core.services.recurrence import WEEKDAYS, Rule
+
+NOW = datetime(2026, 9, 28, 12, 0, tzinfo=UTC)  # Monday, 15:00 in Moscow
+LOCAL_NOW = datetime(2026, 9, 28, 15, 0)
+DAILY_21 = Rule(repeat=Repeat.DAILY, time_local="21:00", anchor_date=date(2026, 9, 28))
+
+
+def utc(y, m, d, h=0, mi=0, s=0) -> datetime:
+    return datetime(y, m, d, h, mi, s, tzinfo=UTC)
+
+
+async def test_create_repeating_schedules_the_next_firing(session, make_user) -> None:
+    user = await make_user()
+    reminder = await reminders.create_repeating(session, user, " таблетки ", DAILY_21, NOW)
+    assert reminder.text == "таблетки" and reminder.repeat is Repeat.DAILY
+    assert reminder.occurrence_at == reminder.due_at == utc(2026, 9, 28, 18)
+    assert reminder.next_attempt_at == utc(2026, 9, 28, 18)
+    assert reminders.rule_of(reminder) == DAILY_21
+
+
+async def test_create_repeating_validates_and_counts(session, make_user) -> None:
+    user = await make_user()
+    bad = Rule(repeat=Repeat.WEEKLY, time_local="09:00", anchor_date=date(2026, 9, 28))
+    with pytest.raises(InvalidInput):
+        await reminders.create_repeating(session, user, "x", bad, NOW)
+    for i in range(20):
+        await reminders.create(session, user, f"r{i}", datetime(2099, 1, 1, 10), NOW)
+    with pytest.raises(LimitReached):
+        await reminders.create_repeating(session, user, "x", DAILY_21, NOW)
+
+
+@pytest.mark.parametrize(
+    ("message", "repeat", "due"),
+    [
+        ("завтра в 9 купить молоко", Repeat.NONE, datetime(2026, 9, 29, 6, tzinfo=UTC)),
+        ("по будням в 7:30 зарядка", Repeat.WEEKLY, datetime(2026, 9, 29, 4, 30, tzinfo=UTC)),
+    ],
+)
+async def test_create_from_a_phrase(session, make_user, message, repeat, due) -> None:
+    user = await make_user()
+    parsed = phrases.parse(message, LOCAL_NOW)
+    reminder = await reminders.create_from(session, user, parsed, NOW)
+    assert (reminder.repeat, reminder.due_at) == (repeat, due)
+
+
+async def test_create_from_needs_a_time_and_a_text(session, make_user) -> None:
+    user = await make_user()
+    no_time = phrases.parse("завтра позвонить", LOCAL_NOW)
+    with pytest.raises(InvalidInput) as error:
+        await reminders.create_from(session, user, no_time, NOW)
+    assert error.value.params["reason"] == "needs_time"
+    no_text = phrases.parse("завтра в 9", LOCAL_NOW)
+    with pytest.raises(InvalidInput) as error:
+        await reminders.create_from(session, user, no_text, NOW)
+    assert error.value.params["field"] == "text"
+
+
+async def test_update_text_time_and_repeat(session, make_user) -> None:
+    user = await make_user()
+    reminder = await reminders.create(session, user, "a", datetime(2026, 9, 29, 9), NOW)
+    await reminders.update_reminder(session, user, reminder.id, text="b", rule=DAILY_21, now=NOW)
+    assert (reminder.text, reminder.repeat) == ("b", Repeat.DAILY)
+    assert reminder.due_at == utc(2026, 9, 28, 18)
+    await reminders.update_reminder(
+        session, user, reminder.id, when_local=datetime(2026, 10, 1, 10), now=NOW
+    )
+    assert reminder.repeat is Repeat.NONE and reminder.time_local is None
+    assert reminder.due_at == reminder.occurrence_at == utc(2026, 10, 1, 7)
+    with pytest.raises(InvalidInput) as error:
+        await reminders.update_reminder(
+            session, user, reminder.id, when_local=datetime(2026, 9, 28, 10), now=NOW
+        )
+    assert error.value.params["reason"] == "past"
+
+
+async def test_update_refuses_foreign_and_finished(session, make_user) -> None:
+    user = await make_user()
+    other = await make_user(id=2)
+    reminder = await reminders.create(session, user, "a", datetime(2026, 9, 29, 9), NOW)
+    with pytest.raises(NotFound):
+        await reminders.update_reminder(session, other, reminder.id, text="x", now=NOW)
+    await reminders.cancel(session, user.id, reminder.id)
+    with pytest.raises(NotFound):
+        await reminders.update_reminder(session, user, reminder.id, text="x", now=NOW)
+
+
+def test_snooze_until() -> None:
+    fired = utc(2026, 9, 28, 18)  # 21:00 Moscow
+    tz = "Europe/Moscow"
+    assert reminders.snooze_until("10m", fired, tz, NOW) == NOW + timedelta(minutes=10)
+    assert reminders.snooze_until("1h", fired, tz, NOW) == NOW + timedelta(hours=1)
+    # «Завтра» = the same local time as the firing, on the next local day
+    assert reminders.snooze_until("tomorrow", fired, tz, NOW) == utc(2026, 9, 29, 18)
+
+
+async def test_snooze_moves_a_one_off(session, make_user) -> None:
+    user = await make_user()
+    reminder = await reminders.create(session, user, "a", datetime(2026, 9, 28, 16), NOW)
+    reminders.mark_sent(reminder, NOW)
+    until = NOW + timedelta(minutes=10)
+    moved = await reminders.snooze(session, user, reminder.id, until, NOW)
+    assert moved is reminder and reminder.status is ReminderStatus.PENDING
+    assert reminder.due_at == reminder.next_attempt_at == until
+
+
+async def test_snoozing_a_repeat_makes_a_copy(session, make_user) -> None:
+    user = await make_user()
+    series = await reminders.create_repeating(session, user, "таблетки", DAILY_21, NOW)
+    copy = await reminders.snooze(session, user, series.id, NOW + timedelta(hours=1), NOW)
+    assert copy.id != series.id and copy.parent_id == series.id
+    assert copy.repeat is Repeat.NONE and copy.text == "таблетки"
+    assert series.due_at == utc(2026, 9, 28, 18)  # the series goes on untouched
+    with pytest.raises(InvalidInput):
+        await reminders.snooze(session, user, series.id, NOW - timedelta(minutes=1), NOW)
+
+
+async def test_done(session, make_user) -> None:
+    user = await make_user()
+    one_off = await reminders.create(session, user, "a", datetime(2026, 9, 28, 16), NOW)
+    series = await reminders.create_repeating(session, user, "b", DAILY_21, NOW)
+    assert await reminders.done(session, user.id, one_off.id)
+    assert one_off.status is ReminderStatus.DONE
+    assert await reminders.done(session, user.id, series.id)
+    assert series.status is ReminderStatus.PENDING  # a repeat keeps going
+    assert not await reminders.done(session, 2, series.id)
+
+
+async def test_mark_delivered_and_give_up(session, make_user) -> None:
+    user = await make_user()
+    tz = "Europe/Moscow"
+    one_off = await reminders.create(session, user, "a", datetime(2026, 9, 28, 16), NOW)
+    series = await reminders.create_repeating(session, user, "b", DAILY_21, NOW)
+    later = utc(2026, 9, 28, 18, 0, 5)
+    reminders.mark_delivered(one_off, later, tz)
+    reminders.mark_delivered(series, later, tz)
+    assert one_off.status is ReminderStatus.SENT
+    assert series.status is ReminderStatus.PENDING and series.sent_at == later
+    assert series.due_at == utc(2026, 9, 29, 18) and series.attempts == 0
+    reminders.give_up(series, "Forbidden", later, tz)
+    assert series.status is ReminderStatus.PENDING and series.last_error == "Forbidden"
+    other = await reminders.create(session, user, "c", datetime(2026, 9, 28, 17), NOW)
+    reminders.give_up(other, "Bad Request", later, tz)
+    assert other.status is ReminderStatus.FAILED
+
+
+async def test_retry_budget_never_kills_a_series(session, make_user) -> None:
+    user = await make_user()
+    series = await reminders.create_repeating(session, user, "b", DAILY_21, NOW)
+    moment = utc(2026, 9, 28, 18)
+    for _ in range(reminders.MAX_FAILURES):
+        reminders.schedule_retry(series, moment, "network", tz="Europe/Moscow")
+    assert series.status is ReminderStatus.PENDING
+    assert series.due_at == utc(2026, 9, 29, 18) and series.attempts == 0
+
+
+async def test_shown_at_reports_the_latest_missed_firing(session, make_user) -> None:
+    user = await make_user()
+    series = await reminders.create_repeating(session, user, "b", DAILY_21, NOW)
+    three_days_later = utc(2026, 10, 1, 12)
+    assert reminders.shown_at(series, "Europe/Moscow", three_days_later) == utc(2026, 9, 30, 18)
+
+
+async def test_expire_stale_fails_one_offs_and_moves_repeats(session, make_user) -> None:
+    user = await make_user()
+    one_off = await reminders.create(session, user, "a", datetime(2026, 9, 28, 16), NOW)
+    series = await reminders.create_repeating(session, user, "b", DAILY_21, NOW)
+    much_later = utc(2026, 10, 5, 12)
+    assert await reminders.expire_stale(session, user.id, much_later, "Europe/Moscow") == 2
+    await session.refresh(one_off)
+    assert one_off.status is ReminderStatus.FAILED
+    assert series.status is ReminderStatus.PENDING and series.due_at == utc(2026, 10, 5, 18)
+
+
+async def test_moving_keeps_local_time_of_repeats(session, make_user) -> None:
+    user = await make_user()
+    series = await reminders.create_repeating(session, user, "таблетки", DAILY_21, NOW)
+    one_off = await reminders.create(session, user, "врач", datetime(2026, 9, 29, 10), NOW)
+    await users.set_city(session, user, "Берлин", 52.52, 13.4, "Europe/Berlin", now=NOW)
+    assert series.due_at == utc(2026, 9, 28, 19)  # 21:00 in Berlin (summer time, UTC+2)
+    assert one_off.due_at == utc(2026, 9, 29, 7)  # the same moment as before
+
+
+async def test_between_lists_one_offs_and_firings(session, make_user) -> None:
+    user = await make_user()
+    week = Rule(
+        repeat=Repeat.WEEKLY, time_local="07:30", anchor_date=date(2026, 9, 28), weekdays=WEEKDAYS
+    )
+    await reminders.create_repeating(session, user, "зарядка", week, NOW)
+    await reminders.create(session, user, "врач", datetime(2026, 9, 29, 10), NOW)
+    found = await reminders.between(session, user, utc(2026, 9, 29), utc(2026, 9, 30, 21))
+    assert [(r.text, m) for r, m in found] == [
+        ("зарядка", utc(2026, 9, 29, 4, 30)),
+        ("врач", utc(2026, 9, 29, 7)),
+        ("зарядка", utc(2026, 9, 30, 4, 30)),
+    ]
+
+
+async def test_app_requests_do_not_unblock_or_grant_writing(session, make_user) -> None:
+    user = await make_user(bot_blocked=True, can_write=False)
+    await users.ensure(session, user.id, "Test", "ru", NOW, from_bot=False)
+    assert user.bot_blocked and not user.can_write
+    await users.allow_write(session, user)
+    assert user.can_write
+    await users.ensure(session, user.id, "Test", "ru", NOW)  # a message to the bot
+    assert not user.bot_blocked
+
+
+async def test_only_the_bot_marks_new_users_writable(session) -> None:
+    from_app = await users.ensure(session, 77, "New", "en", NOW, from_bot=False)
+    assert from_app.can_write is False
+    from_bot = await users.ensure(session, 78, "Bot", "en", NOW)
+    assert from_bot.can_write is True

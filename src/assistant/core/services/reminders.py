@@ -10,9 +10,12 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from assistant.core.config import LIMITS
-from assistant.core.errors import InvalidInput, LimitReached
-from assistant.core.models import Reminder, ReminderStatus, User
-from assistant.core.timeutil import local_to_utc, local_today, parse_hhmm, utcnow
+from assistant.core.errors import InvalidInput, LimitReached, NotFound
+from assistant.core.models import Reminder, ReminderStatus, Repeat, User
+from assistant.core.services import recurrence
+from assistant.core.services.phrases import Parsed
+from assistant.core.services.recurrence import Rule
+from assistant.core.timeutil import local_to_utc, local_today, parse_hhmm, to_local, utcnow
 
 log = logging.getLogger(__name__)
 
@@ -20,6 +23,9 @@ BACKOFF: tuple[int, ...] = (30, 60, 300, 900, 3600, 10800)
 # Every delay in BACKOFF is used once; the attempt after the last delay is the final one.
 MAX_FAILURES = len(BACKOFF) + 1
 _DAY = re.compile(r"^(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?$")
+
+SNOOZE_KINDS = ("10m", "1h", "tomorrow")
+_SNOOZE_DELAYS = {"10m": timedelta(minutes=10), "1h": timedelta(hours=1)}
 
 
 def parse_when(text: str, now_local: datetime) -> datetime | None:
@@ -73,6 +79,48 @@ async def count_pending(session: AsyncSession, user_id: int) -> int:
     return int(await session.scalar(query) or 0)
 
 
+async def _check_limit(session: AsyncSession, user_id: int) -> None:
+    if await count_pending(session, user_id) >= LIMITS.reminders:
+        raise LimitReached(entity="reminder", limit=LIMITS.reminders)
+
+
+def rule_of(reminder: Reminder) -> Rule | None:
+    if reminder.repeat is Repeat.NONE or reminder.time_local is None:
+        return None
+    if reminder.anchor_date is None:
+        return None
+    return Rule(
+        repeat=reminder.repeat,
+        time_local=reminder.time_local,
+        anchor_date=reminder.anchor_date,
+        weekdays=reminder.weekdays,
+        interval_weeks=reminder.interval_weeks,
+        month_day=reminder.month_day,
+    )
+
+
+def _set_rule(reminder: Reminder, rule: Rule | None) -> None:
+    reminder.repeat = rule.repeat if rule else Repeat.NONE
+    reminder.time_local = rule.time_local if rule else None
+    reminder.anchor_date = rule.anchor_date if rule else None
+    reminder.weekdays = rule.weekdays if rule else None
+    reminder.interval_weeks = rule.interval_weeks if rule else 1
+    reminder.month_day = rule.month_day if rule else None
+
+
+def _schedule(reminder: Reminder, moment: datetime) -> None:
+    reminder.occurrence_at = reminder.due_at = reminder.next_attempt_at = moment
+    reminder.attempts = 0
+    reminder.last_error = None
+
+
+def _to_utc(when_local: datetime, tz: str) -> datetime:
+    try:
+        return local_to_utc(when_local, tz)
+    except OverflowError as error:  # the edges of the calendar: nothing to schedule there
+        raise InvalidInput(field="when", reason="invalid") from error
+
+
 async def create(
     session: AsyncSession,
     user: User,
@@ -81,25 +129,139 @@ async def create(
     now: datetime | None = None,
 ) -> Reminder:
     cleaned = clean_text(text)
-    try:
-        due_at = local_to_utc(when_local, user.timezone)
-    except OverflowError as error:  # the edges of the calendar: nothing to schedule there
-        raise InvalidInput(field="when", reason="invalid") from error
+    due_at = _to_utc(when_local, user.timezone)
     if due_at <= (now or utcnow()):
         raise InvalidInput(field="when", reason="past")
-    if await count_pending(session, user.id) >= LIMITS.reminders:
-        raise LimitReached(entity="reminder", limit=LIMITS.reminders)
-    reminder = Reminder(
-        user_id=user.id,
-        text=cleaned,
-        due_at=due_at,
-        next_attempt_at=due_at,
-        status=ReminderStatus.PENDING,
-        attempts=0,
-    )
+    await _check_limit(session, user.id)
+    reminder = Reminder(user_id=user.id, text=cleaned, status=ReminderStatus.PENDING)
+    _set_rule(reminder, None)
+    _schedule(reminder, due_at)
     session.add(reminder)
     await session.flush()
     return reminder
+
+
+async def create_repeating(
+    session: AsyncSession,
+    user: User,
+    text: str,
+    rule: Rule,
+    now: datetime | None = None,
+) -> Reminder:
+    cleaned = clean_text(text)
+    rule.validate()
+    await _check_limit(session, user.id)
+    reminder = Reminder(user_id=user.id, text=cleaned, status=ReminderStatus.PENDING)
+    _set_rule(reminder, rule)
+    _schedule(reminder, recurrence.next_after(rule, now or utcnow(), user.timezone))
+    session.add(reminder)
+    await session.flush()
+    return reminder
+
+
+async def create_from(
+    session: AsyncSession,
+    user: User,
+    parsed: Parsed,
+    now: datetime | None = None,
+) -> Reminder:
+    """A reminder from an understood phrase; the text is checked before the time."""
+    moment = now or utcnow()
+    clean_text(parsed.text)
+    local_now = to_local(moment, user.timezone)
+    rule = parsed.rule(local_now)
+    if rule is not None:
+        return await create_repeating(session, user, parsed.text, rule, moment)
+    when = parsed.when(local_now)
+    if when is None:
+        raise InvalidInput(field="when", reason="needs_time")
+    return await create(session, user, parsed.text, when, moment)
+
+
+async def get_owned(session: AsyncSession, user_id: int, reminder_id: int) -> Reminder | None:
+    reminder = await session.get(Reminder, reminder_id)
+    return reminder if reminder is not None and reminder.user_id == user_id else None
+
+
+async def update_reminder(
+    session: AsyncSession,
+    user: User,
+    reminder_id: int,
+    *,
+    text: str | None = None,
+    when_local: datetime | None = None,
+    rule: Rule | None = None,
+    now: datetime | None = None,
+) -> Reminder:
+    reminder = await get_owned(session, user.id, reminder_id)
+    if reminder is None or reminder.status is not ReminderStatus.PENDING:
+        raise NotFound(entity="reminder")
+    moment = now or utcnow()
+    if text is not None:
+        reminder.text = clean_text(text)
+    if rule is not None:
+        rule.validate()
+        _set_rule(reminder, rule)
+        _schedule(reminder, recurrence.next_after(rule, moment, user.timezone))
+    elif when_local is not None:
+        due_at = _to_utc(when_local, user.timezone)
+        if due_at <= moment:
+            raise InvalidInput(field="when", reason="past")
+        _set_rule(reminder, None)
+        _schedule(reminder, due_at)
+    await session.flush()
+    return reminder
+
+
+def snooze_until(kind: str, fired_at: datetime, tz: str, now: datetime) -> datetime:
+    """«+10 мин» / «+1 ч» from now; «Завтра» — the firing's local time on the next day."""
+    if kind == "tomorrow":
+        clock = to_local(fired_at, tz).time()
+        tomorrow = local_today(tz, now) + timedelta(days=1)
+        return local_to_utc(datetime.combine(tomorrow, clock), tz)
+    return now + _SNOOZE_DELAYS[kind]
+
+
+async def snooze(
+    session: AsyncSession,
+    user: User,
+    reminder_id: int,
+    until: datetime,
+    now: datetime | None = None,
+) -> Reminder:
+    reminder = await get_owned(session, user.id, reminder_id)
+    if reminder is None or reminder.status in (ReminderStatus.CANCELLED, ReminderStatus.FAILED):
+        raise NotFound(entity="reminder")
+    if until <= (now or utcnow()):
+        raise InvalidInput(field="until", reason="past")
+    if reminder.repeat is not Repeat.NONE:
+        # The series keeps its own schedule; the snoozed firing becomes a one-off copy.
+        await _check_limit(session, user.id)
+        copy = Reminder(
+            user_id=user.id,
+            text=reminder.text,
+            status=ReminderStatus.PENDING,
+            parent_id=reminder.id,
+        )
+        _set_rule(copy, None)
+        _schedule(copy, until)
+        session.add(copy)
+        await session.flush()
+        return copy
+    reminder.status = ReminderStatus.PENDING
+    _schedule(reminder, until)
+    await session.flush()
+    return reminder
+
+
+async def done(session: AsyncSession, user_id: int, reminder_id: int) -> bool:
+    reminder = await get_owned(session, user_id, reminder_id)
+    if reminder is None or reminder.status in (ReminderStatus.CANCELLED, ReminderStatus.FAILED):
+        return False
+    if reminder.repeat is Repeat.NONE:
+        reminder.status = ReminderStatus.DONE
+    await session.flush()
+    return True
 
 
 async def pending(session: AsyncSession, user_id: int) -> list[Reminder]:
@@ -152,11 +314,39 @@ def mark_failed(reminder: Reminder, error: str) -> None:
     reminder.last_error = error[:500]
 
 
+def shown_at(reminder: Reminder, tz: str, now: datetime) -> datetime:
+    """The firing a delivery reports: for a repeat, the latest one missed so far."""
+    rule = rule_of(reminder)
+    if rule is None:
+        return reminder.due_at
+    return recurrence.latest_up_to(rule, now, reminder.occurrence_at, tz)
+
+
+def mark_delivered(reminder: Reminder, now: datetime, tz: str) -> None:
+    rule = rule_of(reminder)
+    if rule is None:
+        mark_sent(reminder, now)
+        return
+    reminder.sent_at = now
+    _schedule(reminder, recurrence.next_after(rule, now, tz))
+
+
+def give_up(reminder: Reminder, error: str, now: datetime, tz: str) -> None:
+    """This firing will never be delivered: a one-off fails, a repeat moves on."""
+    rule = rule_of(reminder)
+    if rule is None:
+        mark_failed(reminder, error)
+        return
+    _schedule(reminder, recurrence.next_after(rule, now, tz))
+    reminder.last_error = error[:500]
+
+
 def schedule_retry(
     reminder: Reminder,
     now: datetime,
     error: str,
     retry_after: float | None = None,
+    tz: str | None = None,
 ) -> None:
     reminder.last_error = error[:500]
     if retry_after is not None:
@@ -164,11 +354,14 @@ def schedule_retry(
         return
     reminder.attempts += 1
     if reminder.attempts >= MAX_FAILURES:
-        mark_failed(reminder, error)
         # No reminder text in the log — only the id and the error.
         log.error(
             "reminder %s gave up after %d attempts: %s", reminder.id, reminder.attempts, error
         )
+        if tz is not None and rule_of(reminder) is not None:
+            give_up(reminder, error, now, tz)
+        else:
+            mark_failed(reminder, error)
         return
     reminder.next_attempt_at = now + timedelta(seconds=BACKOFF[reminder.attempts - 1])
 
@@ -177,18 +370,76 @@ async def expire_stale(
     session: AsyncSession,
     user_id: int,
     now: datetime,
+    tz: str,
     max_age: timedelta = timedelta(hours=24),
 ) -> int:
+    """After a long pause (the user had blocked the bot): old one-offs are dropped, repeats
+    move on to their next firing instead of arriving in a burst."""
     result = await session.execute(
         update(Reminder)
         .where(
             Reminder.user_id == user_id,
             Reminder.status == ReminderStatus.PENDING,
+            Reminder.repeat == Repeat.NONE,
             Reminder.due_at < now - max_age,
         )
         .values(status=ReminderStatus.FAILED, last_error="expired")
     )
-    return int(result.rowcount)  # type: ignore[attr-defined]
+    stale = (
+        await session.scalars(
+            select(Reminder).where(
+                Reminder.user_id == user_id,
+                Reminder.status == ReminderStatus.PENDING,
+                Reminder.repeat != Repeat.NONE,
+                Reminder.due_at < now - max_age,
+            )
+        )
+    ).all()
+    for reminder in stale:
+        rule = rule_of(reminder)
+        if rule is not None:
+            _schedule(reminder, recurrence.next_after(rule, now, tz))
+    await session.flush()
+    return int(result.rowcount) + len(stale)  # type: ignore[attr-defined]
+
+
+async def reschedule_repeating(
+    session: AsyncSession, user: User, now: datetime | None = None
+) -> int:
+    """After a move: every repeat keeps its local time in the new zone."""
+    rows = (
+        await session.scalars(
+            select(Reminder).where(
+                Reminder.user_id == user.id,
+                Reminder.status == ReminderStatus.PENDING,
+                Reminder.repeat != Repeat.NONE,
+            )
+        )
+    ).all()
+    for reminder in rows:
+        rule = rule_of(reminder)
+        if rule is not None:
+            _schedule(reminder, recurrence.next_after(rule, now or utcnow(), user.timezone))
+    await session.flush()
+    return len(rows)
+
+
+async def between(
+    session: AsyncSession, user: User, start: datetime, end: datetime
+) -> list[tuple[Reminder, datetime]]:
+    """Pending one-offs and the firings of repeats in [start, end), by moment."""
+    found: list[tuple[Reminder, datetime]] = []
+    for reminder in await pending(session, user.id):
+        rule = rule_of(reminder)
+        if rule is None:
+            if start <= reminder.due_at < end:
+                found.append((reminder, reminder.due_at))
+        else:
+            found.extend(
+                (reminder, moment) for moment in recurrence.between(rule, start, end, user.timezone)
+            )
+    found.sort(key=lambda pair: (pair[1], pair[0].id))
+    return found
 
 
 def _day_bounds(day: date, tz_name: str) -> tuple[datetime, datetime]:
