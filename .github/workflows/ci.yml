@@ -44,7 +44,7 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: webapp/package-lock.json
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test

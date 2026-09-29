@@ -46,8 +46,8 @@ apt-get update -qq && apt-get install -y -qq nodejs caddy
 # 1 GB of swap: headroom for the web app build next to the running services.
 if [ -z "$(swapon --show --noheadings)" ]; then
   fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile
-  echo '/swapfile none swap sw 0 0' >> /etc/fstab
 fi
+grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
 ufw allow 80/tcp >/dev/null && ufw allow 443/tcp >/dev/null
 node --version && caddy version && swapon --show --noheadings
 EOF
@@ -126,7 +126,8 @@ show assistant-deploy > /usr/local/sbin/assistant-deploy
 show assistant-backup > /usr/local/sbin/assistant-backup
 chmod 0755 /usr/local/sbin/assistant-deploy /usr/local/sbin/assistant-backup
 for unit in assistant-bot.service assistant-api.service assistant-backup.service assistant-backup.timer; do
-  show "$unit" > "/etc/systemd/system/$unit"
+  show "$unit" > "/etc/systemd/system/$unit.new"
+  mv "/etc/systemd/system/$unit.new" "/etc/systemd/system/$unit"
 done
 systemctl daemon-reload
 systemctl enable --now assistant-backup.timer
@@ -158,32 +159,45 @@ configuration.
 ssh <server> 'sudo SITE_HOST=<site host> bash -s' <<'EOF'
 set -euo pipefail
 cd /opt/assistant/app
+runuser -u assistant -- git fetch --quiet origin main
 show() { runuser -u assistant -- git show "origin/main:deploy/$1"; }
 printf 'SITE_HOST=%s\n' "$SITE_HOST" > /etc/caddy/assistant.env
 chmod 0644 /etc/caddy/assistant.env
 install -d -m 0755 /etc/systemd/system/caddy.service.d
-show caddy-assistant.conf > /etc/systemd/system/caddy.service.d/assistant.conf
+show caddy-assistant.conf > /etc/systemd/system/caddy.service.d/assistant.conf.new
+mv /etc/systemd/system/caddy.service.d/assistant.conf.new /etc/systemd/system/caddy.service.d/assistant.conf
 show Caddyfile > /etc/caddy/Caddyfile.new
 caddy validate --config /etc/caddy/Caddyfile.new --adapter caddyfile
 mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
 systemctl daemon-reload
 systemctl restart caddy
-sleep 10
-curl -sS -o /dev/null -w '%{http_code} %{ssl_verify_result}\n' "https://$SITE_HOST/api/health"
+code=""
+for _ in $(seq 12); do
+  sleep 5
+  code=$(curl -sS -o /dev/null -w '%{http_code} %{ssl_verify_result}' "https://$SITE_HOST/api/health" 2>/dev/null || true)
+  if [[ $code == 200* ]]; then
+    break
+  fi
+done
+echo "$code"
 EOF
 ```
 
-Expected: `Valid configuration`, then `502 0` before the API runs (the
-certificate verified; nothing behind it yet) and `200 0` once it does. The
-headers can be checked at any time:
+Expected: `Valid configuration`, then `200 0` once the API answers — the
+loop retries for up to a minute while Caddy's certificate is being issued
+and the API starts, without aborting on a `curl` failure in between; `502 0`
+if it times out before the API is up (the certificate still verified;
+nothing behind it yet). The headers can be checked at any time:
 
 ```bash
 ssh <server> 'curl -sSI https://<site host>/ | grep -iE "^(strict-transport|content-security|x-content-type|referrer|permissions|server)"'
 ```
 
 Expected: the five security headers from the Caddyfile and no `Server`
-line. After a change to the Caddyfile on `main`, repeat the block above;
-`caddy validate` rejects a broken file before it replaces the working one.
+line. Later changes to the Caddyfile on `main` need only `caddy validate`
+followed by `systemctl reload caddy`; the `systemctl restart caddy` above is
+needed only for this first install, because the drop-in changes the unit's
+environment.
 
 ## 5. Deploy user
 

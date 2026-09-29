@@ -50,6 +50,9 @@ if [[ $EUID -ne 0 ]]; then
   exit 2
 fi
 
+# Caddy (a different user) must be able to read the built web app.
+umask 0022
+
 exec 9>/run/assistant-deploy.lock
 if ! flock -n 9; then
   echo "another deploy is running" >&2
@@ -101,7 +104,7 @@ build_webapp() {
   # Single quotes on purpose: $1 is the inner bash's argument.
   as_app git worktree add --quiet --detach "$BUILD" "$1" &&
     as_app bash -c 'cd "$1/webapp" && export NPM_CONFIG_UPDATE_NOTIFIER=false &&
-      npm ci --no-audit --no-fund --loglevel=error &&
+      npm ci --no-audit --no-fund --ignore-scripts --loglevel=error &&
       NODE_OPTIONS=--max-old-space-size=512 npm run build' _ "$BUILD" &&
     as_app rm -rf "$NEXT" &&
     as_app mv "$BUILD/webapp/dist" "$NEXT" || status=1
@@ -111,13 +114,20 @@ build_webapp() {
 
 web=0
 swapped=0
-# Puts the new build in place, keeping the one it replaces for a rollback.
+# Puts the new build in place, keeping the one it replaces for a rollback. Also runs when the
+# new commit has no web app of its own (web=0): an existing dist is moved aside rather than
+# left live with no API behind it, with the same bookkeeping so a rollback puts it back.
+# swapped is set only once the old build is safely aside, so a failure before that point
+# leaves dist untouched and the rollback below knows not to touch it either.
 swap_webapp() {
-  [[ $web -eq 1 ]] || return 0
+  [[ $web -eq 1 || -d $WEB/dist ]] || return 0
+  as_app rm -rf "$WEB/dist.previous" || return 1
+  if [[ -d $WEB/dist ]]; then
+    as_app mv "$WEB/dist" "$WEB/dist.previous" || return 1
+  fi
   swapped=1
-  as_app rm -rf "$WEB/dist.previous" &&
-    { [[ ! -d $WEB/dist ]] || as_app mv "$WEB/dist" "$WEB/dist.previous"; } &&
-    as_app mv "$NEXT" "$WEB/dist"
+  [[ $web -eq 1 ]] || return 0
+  as_app mv "$NEXT" "$WEB/dist"
 }
 
 # Puts back the web app that was live before swap_webapp (none, if there was none).
@@ -151,13 +161,15 @@ healthy() {  # $1 = the bot's invocation id, $2 = the expected commit, $3 = 1 wh
 }
 
 start_and_check() {  # $1 = the commit that is checked out
-  local api=0
+  local api=0 api_ok=1
   if has_api "$1"; then
     api=1
-    systemctl start "$API" || return 1
+    systemctl start "$API" || api_ok=0
   fi
+  # The bot is started regardless of whether the API came up, so it keeps serving reminders
+  # even if the API failed to start; healthy() below still fails the deploy in that case.
   systemctl start "$BOT" || return 1
-  healthy "$(systemctl show -p InvocationID --value "$BOT")" "$1" "$api"
+  healthy "$(systemctl show -p InvocationID --value "$BOT")" "$1" "$api" && [[ $api_ok -eq 1 ]]
 }
 
 # Keeps the newest $KEEP_SNAPSHOTS pre-deploy snapshots (by modification time). Runs as the
@@ -184,8 +196,10 @@ restore_snapshot() {
 }
 
 # Nothing changed (or the change was undone) — try to leave the previously running commit up
-# and healthy; used both when a pre-stop step fails and when the snapshot itself fails.
+# and healthy; used both when a pre-stop step fails and when the snapshot itself fails. A
+# successful build_webapp before either of those points can leave $NEXT behind unswapped.
 give_up_unchanged() {
+  as_app rm -rf "$NEXT" || echo "warning: could not remove $NEXT" >&2
   if start_and_check "$previous"; then
     echo "$previous is running"
     exit 1
@@ -235,10 +249,13 @@ fi
 
 if take_snapshot && build "$sha" && swap_webapp &&
   with_service_env .venv/bin/alembic upgrade head && start_and_check "$sha"; then
-  as_app rm -rf "$WEB/dist.previous" || true
+  as_app rm -rf "$WEB/dist.previous" || echo "warning: could not remove $WEB/dist.previous" >&2
   echo "deployed $sha"
   exit 0
 fi
+
+# A successful build_webapp can leave $NEXT behind unswapped if a later step failed first.
+as_app rm -rf "$NEXT" || echo "warning: could not remove $NEXT" >&2
 
 echo "deploy of $sha failed" >&2
 echo "see: journalctl -u $BOT -u $API -n 50" >&2

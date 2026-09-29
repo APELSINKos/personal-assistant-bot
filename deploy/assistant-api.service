@@ -4,6 +4,8 @@ Description=Personal Assistant API for the Telegram Mini App
 Documentation=https://github.com/APELSINKos/personal-assistant-bot
 After=network-online.target
 Wants=network-online.target
+# A checkout without the API (e.g. after a rollback to v2.0.0) must not crash-loop the enabled unit.
+ConditionPathExists=/opt/assistant/app/src/assistant/api/__main__.py
 
 [Service]
 Type=exec

@@ -10,7 +10,7 @@
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "no-referrer"
-		Permissions-Policy "accelerometer=(), camera=(), geolocation=(self), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+		Permissions-Policy "accelerometer=(), autoplay=(), bluetooth=(), camera=(), clipboard-read=(), display-capture=(), fullscreen=(), geolocation=(self), gyroscope=(), hid=(), idle-detection=(), magnetometer=(), microphone=(), midi=(), payment=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), usb=(), web-share=()"
 		Content-Security-Policy "default-src 'self'; script-src 'self' https://telegram.org; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'self' https://web.telegram.org; base-uri 'none'; form-action 'self'"
 	}
 	# A deletion defers its whole header block to the moment the response is written; kept

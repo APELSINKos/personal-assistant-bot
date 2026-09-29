@@ -78,6 +78,7 @@ def test_deploy_builds_the_webapp_and_checks_the_api() -> None:
     for expected in (
         "git worktree add",
         "npm ci",
+        "--ignore-scripts",
         "NODE_OPTIONS=--max-old-space-size=512",
         "http://127.0.0.1:8000/api/health",
         "BOT=assistant-bot",
