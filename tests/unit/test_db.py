@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.exc import StatementError
 
+from assistant.core.db import create_engine
 from assistant.core.models import Note, Reminder, ReminderStatus
 
 
@@ -42,3 +43,13 @@ async def test_naive_datetime_rejected(session, make_user) -> None:
     session.add(Reminder(user_id=user.id, text="x", due_at=naive, next_attempt_at=naive))
     with pytest.raises(StatementError):
         await session.commit()
+
+
+async def test_foreign_keys_can_be_switched_off_for_migrations(db_url) -> None:
+    engine = create_engine(db_url, foreign_keys=False)
+    try:
+        async with engine.connect() as conn:
+            assert (await conn.execute(text("PRAGMA foreign_keys"))).scalar() == 0
+            assert (await conn.execute(text("PRAGMA journal_mode"))).scalar() == "wal"
+    finally:
+        await engine.dispose()

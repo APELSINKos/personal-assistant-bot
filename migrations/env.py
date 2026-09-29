@@ -40,18 +40,31 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def _check_foreign_keys(connection: Connection) -> None:
+    broken = connection.exec_driver_sql("PRAGMA foreign_key_check").fetchall()
+    if broken:
+        tables = ", ".join(sorted({f"{row[0]} -> {row[2]}" for row in broken}))
+        raise RuntimeError(f"migrations left rows with broken foreign keys in: {tables}")
+
+
 def _run_sync(connection: Connection) -> None:
     _configure(connection)
     with context.begin_transaction():
         context.run_migrations()
+        # Foreign keys are off while migrating, so nothing enforced them; check them now.
+        _check_foreign_keys(connection)
 
 
 async def run_migrations_online() -> None:
-    engine = create_engine(_url())
-    async with engine.connect() as connection:
-        await connection.run_sync(_run_sync)
-        await connection.commit()
-    await engine.dispose()
+    # Foreign keys off: a batch table rebuild drops the old table, and with them on, that DROP
+    # would cascade-delete every child row (e.g. all notes when `users` is rebuilt).
+    engine = create_engine(_url(), foreign_keys=False)
+    try:
+        async with engine.connect() as connection:
+            await connection.run_sync(_run_sync)
+            await connection.commit()
+    finally:
+        await engine.dispose()
 
 
 if context.is_offline_mode():
