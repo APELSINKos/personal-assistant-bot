@@ -169,6 +169,17 @@ async def get_owned(session: AsyncSession, user_id: int, reminder_id: int) -> Re
     return reminder if reminder is not None and reminder.user_id == user_id else None
 
 
+def _same_schedule(new: Rule, current: Rule | None) -> bool:
+    """Whether an edit's rule fires exactly as the stored one. Its anchor is noise (the API
+    fills in today when none is given) — except the first day of an every-other-week rule,
+    which the form shows and lets the user move."""
+    if current is None:
+        return False
+    if new.interval_weeks == 2 and new.anchor_date != current.anchor_date:
+        return False
+    return replace(new, anchor_date=current.anchor_date) == current
+
+
 async def update_reminder(
     session: AsyncSession,
     user: User,
@@ -185,7 +196,13 @@ async def update_reminder(
     moment = now or utcnow()
     # Every check runs before any field is touched, so a rejected edit leaves the row as-is.
     cleaned = clean_text(text) if text is not None else None
-    if rule is not None:
+    if rule is not None and _same_schedule(rule, rule_of(reminder)):
+        rule.validate()
+        # The form sends the whole rule with every edit: a text-only edit keeps the series'
+        # own firings (rescheduling from now could skip today's or flip its weeks).
+        if cleaned is not None:
+            reminder.text = cleaned
+    elif rule is not None:
         rule.validate()
         rule = _biweekly_anchor(rule, user.timezone, moment)
         first = recurrence.next_after(rule, moment, user.timezone)
@@ -199,12 +216,18 @@ async def update_reminder(
         _schedule(reminder, first)
     elif when_local is not None:
         due_at = _to_utc(when_local, user.timezone)
-        if due_at <= moment:
+        # The form only speaks minutes: its own moment sent back unchanged (even an overdue
+        # one) is no reschedule and no past check.
+        unchanged = reminder.repeat is Repeat.NONE and due_at == reminder.due_at.replace(
+            second=0, microsecond=0
+        )
+        if not unchanged and due_at <= moment:
             raise InvalidInput(field="when", reason="past")
         if cleaned is not None:
             reminder.text = cleaned
-        _set_rule(reminder, None)
-        _schedule(reminder, due_at)
+        if not unchanged:
+            _set_rule(reminder, None)
+            _schedule(reminder, due_at)
     elif cleaned is not None:
         reminder.text = cleaned
     await session.flush()

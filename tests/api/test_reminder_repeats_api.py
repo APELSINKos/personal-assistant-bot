@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 WEEKDAYS_0730 = {"repeat": "weekly", "time_local": "07:30", "weekdays": 31}
@@ -214,3 +216,47 @@ async def test_parse_gives_the_first_day_of_a_repeat(client, auth) -> None:
     assert response.status_code == 200
     body = response.json()
     assert (body["repeat"], body["interval_weeks"], body["date"]) == ("weekly", 2, "2026-09-30")
+
+
+async def test_a_text_only_edit_of_an_overdue_one_off_keeps_its_moment(client, auth, clock) -> None:
+    created = (await create(client, auth, text="врач", due_local="2026-09-28T16:00")).json()
+    clock[0] = datetime(2026, 9, 28, 14, 0, tzinfo=UTC)  # 17:00 in Moscow: it is overdue now
+    patched = await client.patch(
+        f"/api/reminders/{created['id']}",
+        json={"text": "зубной врач", "due_local": "2026-09-28T16:00"},
+        headers=auth(),
+    )
+    assert patched.status_code == 200
+    assert (patched.json()["text"], patched.json()["due_local"]) == (
+        "зубной врач",
+        "2026-09-28T16:00",
+    )
+
+
+BIWEEKLY_MONDAY_10 = {"repeat": "weekly", "time_local": "10:00", "weekdays": 1, "interval_weeks": 2}
+
+
+async def test_a_text_only_edit_of_a_biweekly_series_keeps_its_weeks(client, auth, clock) -> None:
+    created = (await create(client, auth, text="уборка", rule=BIWEEKLY_MONDAY_10)).json()
+    assert created["due_local"] == "2026-10-05T10:00"
+    later = datetime(2026, 10, 5, 9, 0, tzinfo=UTC)  # 12:00 on its firing day, after the time
+    clock[0] = later
+    patched = await client.patch(
+        f"/api/reminders/{created['id']}",
+        json={"text": "генеральная уборка", "rule": created["rule"]},
+        headers=auth(signed_at=later),
+    )
+    assert patched.status_code == 200
+    body = patched.json()
+    assert body["text"] == "генеральная уборка"
+    assert (body["due_local"], body["rule"]["anchor_date"]) == ("2026-10-05T10:00", "2026-10-05")
+
+
+async def test_moving_the_first_day_of_a_biweekly_series_still_moves_it(client, auth) -> None:
+    created = (await create(client, auth, text="уборка", rule=BIWEEKLY_MONDAY_10)).json()
+    rule = {**created["rule"], "anchor_date": "2026-10-12"}
+    patched = await client.patch(
+        f"/api/reminders/{created['id']}", json={"text": "уборка", "rule": rule}, headers=auth()
+    )
+    assert patched.status_code == 200
+    assert patched.json()["due_local"] == "2026-10-12T10:00"

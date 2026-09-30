@@ -404,3 +404,20 @@ async def test_a_failed_edit_leaves_the_reminder_untouched(session, make_user) -
             session, user, one_off.id, text="новое", when_local=datetime(2026, 9, 28, 10), now=NOW
         )
     assert one_off.text == "врач" and one_off.due_at == utc(2026, 9, 29, 7)
+
+
+async def test_a_text_only_edit_keeps_a_snoozed_moment_to_the_second(session, make_user) -> None:
+    user = await make_user()
+    one_off = await reminders.create(session, user, "чай", datetime(2026, 9, 28, 16), NOW)
+    until = NOW + timedelta(minutes=10, seconds=37)  # «+10 мин» keeps the press's seconds
+    await reminders.snooze(session, user, one_off.id, until, NOW)
+    later = NOW + timedelta(hours=1)  # overdue by now; the form shows and sends 15:10
+    await reminders.update_reminder(
+        session,
+        user,
+        one_off.id,
+        text="зелёный чай",
+        when_local=datetime(2026, 9, 28, 15, 10),
+        now=later,
+    )
+    assert (one_off.text, one_off.due_at) == ("зелёный чай", until)
