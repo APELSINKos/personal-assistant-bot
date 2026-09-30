@@ -3,6 +3,7 @@ from __future__ import annotations
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import SimpleEventIsolation
 from aiogram.methods import AnswerCallbackQuery, SendMessage
 from aiogram.types import Message, ReplyKeyboardMarkup
 from sqlalchemy import func, select
@@ -133,8 +134,10 @@ async def test_cancel_and_unknown(feed, fake) -> None:
     assert fake.sent_texts() == [
         "Отменено.",
         "Отменено.",
-        "🤔 Не понял. Выбери раздел в меню ниже 👇",
-        "🤔 Не понял. Выбери раздел в меню ниже 👇",
+        "🤔 Не понял. Выбери раздел в меню ниже 👇\n"
+        "Чтобы создать напоминание, просто напиши, например: «завтра в 9 купить молоко».",
+        "🤔 Не понял. Выбери раздел в меню ниже 👇\n"
+        "Чтобы создать напоминание, просто напиши, например: «завтра в 9 купить молоко».",
     ]
 
 
@@ -239,3 +242,8 @@ async def test_error_message_falls_back_to_telegram_language(
     monkeypatch.setattr(users, "get", broken_get)
     await feed(message_update("💱 Курс валют", lang="ru"))
     assert fake.sent_texts()[-1] == "⚠️ Что-то пошло не так. Попробуй ещё раз чуть позже."
+
+
+def test_one_users_updates_are_handled_one_at_a_time(dp) -> None:
+    # Two quick messages (or a double tap) of the same user must not race through a dialog.
+    assert isinstance(dp.fsm.events_isolation, SimpleEventIsolation)

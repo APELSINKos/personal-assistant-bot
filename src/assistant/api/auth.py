@@ -25,6 +25,7 @@ class TelegramUser:
     id: int
     first_name: str | None
     language_code: str | None
+    allows_write_to_pm: bool = False
 
 
 def _secret(bot_token: str) -> bytes:
@@ -64,4 +65,9 @@ def verify_init_data(init_data: str, bot_token: str, now: datetime) -> TelegramU
         raise AuthError("invalid_init_data") from error
     if now - signed_at > MAX_AGE or signed_at - now > MAX_CLOCK_SKEW:
         raise AuthError("expired_init_data")
-    return TelegramUser(user_id, _text(user.get("first_name")), _text(user.get("language_code")))
+    return TelegramUser(
+        user_id,
+        _text(user.get("first_name")),
+        _text(user.get("language_code")),
+        user.get("allows_write_to_pm") is True,
+    )

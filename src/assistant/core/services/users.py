@@ -26,6 +26,8 @@ async def ensure(
     first_name: str | None,
     tg_language: str | None,
     now: datetime | None = None,
+    *,
+    from_bot: bool = True,
 ) -> User:
     user = await session.get(User, user_id)
     if user is None:
@@ -46,6 +48,7 @@ async def ensure(
                 morning_enabled=True,
                 morning_time=settings.default_morning_time,
                 bot_blocked=False,
+                can_write=from_bot,
             )
             .on_conflict_do_nothing(index_elements=[User.id])
         )
@@ -56,9 +59,14 @@ async def ensure(
     # Telegram does not always send a language code; keep the last known one then.
     if tg_language is not None and user.tg_language != tg_language:
         user.tg_language = tg_language
-    if user.bot_blocked:
-        user.bot_blocked = False
-        await reminders.expire_stale(session, user.id, now or utcnow())
+    # Only a message to the bot proves the bot may write here and that it is unblocked;
+    # opening the app does neither.
+    if from_bot:
+        if not user.can_write:
+            user.can_write = True
+        if user.bot_blocked:
+            user.bot_blocked = False
+            await reminders.expire_stale(session, user.id, now or utcnow(), user.timezone)
     await session.flush()
     return user
 
@@ -77,13 +85,17 @@ async def set_city(
     lat: float,
     lon: float,
     timezone: str,
+    now: datetime | None = None,
 ) -> None:
     cleaned = name.strip()
     if not 1 <= len(cleaned) <= LIMITS.city_length * 2 or not is_valid_timezone(timezone):
         raise InvalidInput(field="city", reason="invalid")
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
         raise InvalidInput(field="city", reason="invalid")
+    previous_tz = user.timezone
     user.city, user.lat, user.lon, user.timezone = cleaned, lat, lon, timezone
+    if previous_tz != timezone:
+        await reminders.reschedule_repeating(session, user, now, previous_tz=previous_tz)
     await session.flush()
 
 
@@ -106,3 +118,8 @@ async def set_morning(
 
 async def mark_blocked(session: AsyncSession, user_id: int) -> None:
     await session.execute(update(User).where(User.id == user_id).values(bot_blocked=True))
+
+
+async def allow_write(session: AsyncSession, user: User) -> None:
+    user.can_write = True
+    await session.flush()

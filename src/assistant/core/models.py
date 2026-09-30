@@ -6,7 +6,7 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, Index, MetaData, String, Text
+from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, Index, MetaData, String, Text, event
 from sqlalchemy.engine import Dialect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
@@ -46,6 +46,7 @@ class ReminderStatus(StrEnum):
     SENT = "sent"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    DONE = "done"
 
 
 class ReminderStatusType(TypeDecorator[ReminderStatus]):
@@ -57,6 +58,24 @@ class ReminderStatusType(TypeDecorator[ReminderStatus]):
 
     def process_result_value(self, value: str | None, dialect: Dialect) -> ReminderStatus | None:
         return None if value is None else ReminderStatus(value)
+
+
+class Repeat(StrEnum):
+    NONE = "none"
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+
+
+class RepeatType(TypeDecorator[Repeat]):
+    impl = String(8)
+    cache_ok = True
+
+    def process_bind_param(self, value: Repeat | None, dialect: Dialect) -> str | None:
+        return None if value is None else Repeat(value).value
+
+    def process_result_value(self, value: str | None, dialect: Dialect) -> Repeat | None:
+        return None if value is None else Repeat(value)
 
 
 class User(Base):
@@ -74,6 +93,8 @@ class User(Base):
     morning_time: Mapped[str] = mapped_column(String(5), default="08:00")
     last_morning_date: Mapped[date | None]
     bot_blocked: Mapped[bool] = mapped_column(default=False)
+    # The bot may write to this person: they wrote to it, or allowed messages in the app.
+    can_write: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 
@@ -111,6 +132,24 @@ class Reminder(Base):
     last_error: Mapped[str | None] = mapped_column(Text)
     sent_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    # Repeats: the rule in explicit fields, in the user's current zone (services/recurrence.py).
+    repeat: Mapped[Repeat] = mapped_column(RepeatType(), default=Repeat.NONE)
+    time_local: Mapped[str | None] = mapped_column(String(5))
+    anchor_date: Mapped[date | None]
+    weekdays: Mapped[int | None]
+    interval_weeks: Mapped[int] = mapped_column(default=1)
+    month_day: Mapped[int | None]
+    # The rule's own moment of the pending firing; due_at can differ when it was snoozed.
+    occurrence_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    # A «+10 мин» copy of a repeat points to it; the copy outlives a deleted series.
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("reminders.id", ondelete="SET NULL"))
+
+
+@event.listens_for(Reminder, "before_insert")
+def _occurrence_defaults_to_due(_mapper: object, _connection: object, target: Reminder) -> None:
+    # ORM inserts only (session.add(...)); a Core insert (e.g. raw SQL) must set it itself.
+    if target.occurrence_at is None:
+        target.occurrence_at = target.due_at
 
 
 class Habit(Base):

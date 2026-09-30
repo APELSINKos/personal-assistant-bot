@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installTelegram, oldHeaderColor } from "./test/fakeTelegram";
 import {
-  confirmAction, haptic, initData, normalizeLaunchHash, paintTelegram, startTelegram, webApp,
+  confirmAction, haptic, initData, normalizeLaunchHash, paintTelegram,
+  requestWriteAccess, startTelegram, webApp,
 } from "./telegram";
 
 describe("telegram", () => {
@@ -82,6 +83,22 @@ describe("telegram", () => {
       window.history.replaceState(null, "", "/");
       normalizeLaunchHash();
       expect(window.location.hash).toBe("#/");
+    });
+  });
+
+  describe("write access", () => {
+    it("asks Telegram on 6.9+ and reports the answer", async () => {
+      const app = installTelegram({
+        requestWriteAccess: vi.fn((callback?: (allowed: boolean) => void) => callback?.(true)),
+      });
+      await expect(requestWriteAccess()).resolves.toBe(true);
+      expect(app.requestWriteAccess).toHaveBeenCalled();
+    });
+
+    it("is a soft no on older clients", async () => {
+      const app = installTelegram({ requestWriteAccess: vi.fn() }, "6.5");
+      await expect(requestWriteAccess()).resolves.toBe(false);
+      expect(app.requestWriteAccess).not.toHaveBeenCalled();
     });
   });
 });

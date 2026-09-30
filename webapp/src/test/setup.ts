@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 import { clearToasts } from "../components/toastStore";
+import { setCalendarDay } from "../lib/calendarDay";
 import { removeTelegram } from "./fakeTelegram";
 
 if (!window.matchMedia) {
@@ -22,6 +23,7 @@ afterEach(() => {
   cleanup();
   removeTelegram();
   clearToasts();
+  setCalendarDay(null);
   window.history.replaceState(null, "", "/");
   document.documentElement.removeAttribute("data-theme");
   vi.unstubAllGlobals();

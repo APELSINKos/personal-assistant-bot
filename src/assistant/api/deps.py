@@ -47,8 +47,14 @@ async def _current_user(
     if wait is not None:
         raise RateLimited(wait)
     user = await users.ensure(
-        db, telegram_user.id, telegram_user.first_name, telegram_user.language_code
+        db,
+        telegram_user.id,
+        telegram_user.first_name,
+        telegram_user.language_code,
+        from_bot=False,
     )
+    if telegram_user.allows_write_to_pm and not user.can_write:
+        await users.allow_write(db, user)
     # Release SQLite's write lock before a handler waits for Open-Meteo or the Bank of Russia.
     await db.commit()
     return user

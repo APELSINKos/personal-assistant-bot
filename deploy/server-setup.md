@@ -359,6 +359,28 @@ journal under the `assistant-deploy` syslog identifier:
 ssh <server> 'journalctl -t assistant-deploy -n 100 --no-pager'
 ```
 
+### Going back from 2.2 to 2.1
+
+Version 2.2 adds migration `0002`, which 2.1 does not know, and a deploy only
+ever upgrades the schema. To go back to 2.1, first undo the migration with the
+2.2 code that is still deployed, then deploy the 2.1 commit on purpose:
+
+```bash
+ssh <server> 'sudo bash -s' <<'EOF'
+set -euo pipefail
+systemctl stop assistant-bot assistant-api
+cd /opt/assistant/app
+runuser -u assistant -- bash -c 'set -a; . /etc/assistant/assistant.env; set +a; exec .venv/bin/alembic downgrade 0001'
+EOF
+ssh <server> 'sudo DEPLOY_ALLOW_OLDER=1 /usr/local/sbin/assistant-deploy <v2.1.0 commit sha>'
+```
+
+The services stay stopped between the two commands (2.2 does not run on the
+old schema); the deploy starts them again. No reminder is lost: a pending
+repeat stays as a one-off at its next firing, and one marked done counts as
+sent. If that deploy fails and brings 2.2 back, stop both services, run the
+same `runuser` line with `alembic upgrade head` instead, and start them again.
+
 ## 8. Restore from a backup
 
 Nightly backups live in `/var/backups/assistant`

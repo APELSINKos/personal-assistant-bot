@@ -4,7 +4,7 @@ import {
 import { toast } from "../components/toastStore";
 import { haptic } from "../telegram";
 import { api, ApiError } from "./client";
-import type { City, Habit, Health, Me, Note, Reminder, Today } from "./types";
+import type { Agenda, City, Habit, Health, Me, Note, ParsedPhrase, Reminder, ReminderInput, Today } from "./types";
 
 export const keys = {
   me: ["me"],
@@ -14,12 +14,15 @@ export const keys = {
   habits: ["habits"],
   health: ["health"],
   cities: (query: string) => ["cities", query] as const,
+  agenda: (from: string, to: string) => ["agenda", from, to] as const,
 } as const;
+
+const OWN_TEXT_REASONS = new Set(["past", "duplicate", "phrase_not_understood", "repeat_invalid", "needs_time", "schedule", "length"]);
 
 /** The key in the `errors` dictionary that explains a failed request. */
 export function errorCode(error: unknown): string {
   if (!(error instanceof ApiError)) return "generic";
-  if (error.reason === "past" || error.reason === "duplicate") return error.reason;
+  if (error.reason && OWN_TEXT_REASONS.has(error.reason)) return error.reason;
   return error.code;
 }
 
@@ -131,18 +134,89 @@ export function useUpdateNote() {
 
 export const useDeleteNote = () => useOptimisticRemove<Note>(keys.notes, (id) => `/notes/${id}`);
 
+export const useAgenda = (from: string, to: string, enabled = true) =>
+  useQuery({
+    queryKey: keys.agenda(from, to),
+    queryFn: () => api<Agenda>(`/agenda?from=${from}&to=${to}`),
+    enabled,
+  });
+
+function useReminderRefresh() {
+  const client = useQueryClient();
+  return () =>
+    Promise.all([
+      client.invalidateQueries({ queryKey: keys.reminders }),
+      client.invalidateQueries({ queryKey: ["agenda"] }),
+      client.invalidateQueries({ queryKey: keys.today }),
+    ]);
+}
+
 export function useCreateReminder() {
-  const refresh = useRefresh();
+  const refresh = useReminderRefresh();
   return useMutation({
-    mutationFn: (body: { text: string; due_local: string }) =>
-      api<Reminder>("/reminders", { method: "POST", body }),
+    mutationFn: (body: ReminderInput) => api<Reminder>("/reminders", { method: "POST", body }),
     onSuccess: () => haptic("success"),
-    onSettled: () => refresh(keys.reminders),
+    onSettled: refresh,
   });
 }
 
-export const useDeleteReminder = () =>
-  useOptimisticRemove<Reminder>(keys.reminders, (id) => `/reminders/${id}`);
+export function useUpdateReminder() {
+  const refresh = useReminderRefresh();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: Partial<ReminderInput> }) =>
+      api<Reminder>(`/reminders/${id}`, { method: "PATCH", body }),
+    onSuccess: () => haptic("success"),
+    onSettled: refresh,
+  });
+}
+
+const DELETE_REMINDER_KEY = ["delete", "reminder"];
+
+/** Removes the reminder from every cached week and from the list at once; puts them back if
+ * the request fails (404 excepted: it is gone anyway). */
+export function useDeleteReminder() {
+  const client = useQueryClient();
+  const refresh = useReminderRefresh();
+  return useMutation({
+    mutationKey: DELETE_REMINDER_KEY,
+    mutationFn: (id: number) => api<void>(`/reminders/${id}`, { method: "DELETE" }),
+    onMutate: async (id: number) => {
+      await Promise.all([
+        client.cancelQueries({ queryKey: ["agenda"] }),
+        client.cancelQueries({ queryKey: keys.reminders }),
+      ]);
+      const weeks = client.getQueriesData<Agenda>({ queryKey: ["agenda"] });
+      const list = client.getQueryData<Reminder[]>(keys.reminders);
+      client.setQueriesData<Agenda>({ queryKey: ["agenda"] }, (agenda) =>
+        agenda && { days: agenda.days.map((day) => ({ ...day, items: day.items.filter((item) => item.id !== id) })) });
+      client.setQueryData<Reminder[]>(keys.reminders, (items) => items?.filter((item) => item.id !== id));
+      return { weeks, list };
+    },
+    onError: (error, _id, context) => {
+      if (error instanceof ApiError && error.status === 404) return;
+      for (const [key, data] of context?.weeks ?? []) client.setQueryData(key, data);
+      client.setQueryData(keys.reminders, context?.list);
+    },
+    onSuccess: () => haptic("success"),
+    onSettled: () => {
+      if (client.isMutating({ mutationKey: DELETE_REMINDER_KEY }) === 1) return refresh();
+    },
+  });
+}
+
+export function useParseReminder() {
+  return useMutation({
+    mutationFn: (text: string) => api<ParsedPhrase>("/reminders/parse", { method: "POST", body: { text } }),
+  });
+}
+
+export function useAllowWrite() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<Me>("/me/write-access", { method: "POST" }),
+    onSuccess: (me) => client.setQueryData(keys.me, me),
+  });
+}
 
 export function useCreateHabit() {
   const refresh = useRefresh();

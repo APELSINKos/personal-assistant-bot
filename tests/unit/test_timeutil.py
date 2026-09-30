@@ -76,3 +76,10 @@ def test_parse_hhmm(text: str, expected: str | None) -> None:
 def test_is_valid_timezone() -> None:
     assert timeutil.is_valid_timezone("Asia/Vladivostok")
     assert not timeutil.is_valid_timezone("Mars/Olympus")
+
+
+def test_supported_years_are_one_core_range() -> None:
+    # The API refuses dates outside these years before any date arithmetic can overflow.
+    years = timeutil.SUPPORTED_YEARS
+    assert (years[0], years[-1]) == (2000, 2100)
+    assert 1999 not in years and 2101 not in years

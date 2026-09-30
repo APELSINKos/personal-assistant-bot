@@ -6,6 +6,7 @@ import logging
 from collections.abc import Sequence
 
 from aiogram import Bot, Dispatcher, Router
+from aiogram.fsm.storage.memory import SimpleEventIsolation
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from assistant import __version__
@@ -44,6 +45,9 @@ def build_dispatcher(
     # `sessionmaker`, since the update's session is closed by the time it runs.
     dp = Dispatcher(
         storage=SqliteStorage(sessionmaker),
+        # One update of a user at a time: a double tap or two quick messages see each other's
+        # dialog state instead of racing through it.
+        events_isolation=SimpleEventIsolation(),
         sessionmaker=sessionmaker,
         meteo=meteo,
         cbr=cbr,

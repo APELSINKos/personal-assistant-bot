@@ -29,7 +29,7 @@
 | 🌤 **Weather with tips** | Not just degrees: in how many minutes rain or snow starts, whether it gets colder by the evening, whether it's a good day for a bike ride |
 | ☀️ **Morning digest** | The bot writes at the time you choose, in your city's time zone: weather, today's plans, habits, rates |
 | 📅 **My day** | Everything important for today in one message |
-| ⏰ **Reminders** | `18:30`, `25.09 18:30` or `25.09.2027 18:30`. If Telegram or the network fails, the bot tries again |
+| ⏰ **Reminders** | Write like to a person: “tomorrow at 9 buy milk”, “in 20 minutes tea”, “on weekdays at 7:30 workout”. Repeats on weekdays, every other week or monthly — in your city's time zone; a delivered reminder has “+10 min”, “+1 h”, “Tomorrow”, “✓ Done” buttons |
 | 🎯 **Habits** | One-tap marks, streaks and a strip of the last 9 days |
 | 📝 **Notes** | Short notes with a delete button next to each |
 | 💱 **Bank of Russia rates** | USD and EUR with the daily change, a converter both ways |
@@ -52,6 +52,13 @@
 💵 84.20 ₽ · 💶 96.67 ₽
 ```
 
+```text
+You: on weekdays at 7:30 workout
+Bot: ↻ on weekdays at 07:30 — workout
+     First time: Tomorrow, 07:30
+     [✅ Create] [🕘 Another time] [✖️ Cancel]
+```
+
 ## Mini App
 
 The Open button next to the message field opens the app right inside Telegram — the same account and the same data as the chat: what you add in the app shows up in the bot at once, and the other way round.
@@ -59,7 +66,7 @@ The Open button next to the message field opens the app right inside Telegram �
 | Screen | What's there |
 |---|---|
 | **Today** | A big date, weather with tips, today's plans, one-tap habit marks, rates and the best streak. Pull down to refresh |
-| **Reminders** | Grouped by day — Today, Tomorrow, then by date; a new reminder with a date and time picker in your city's time zone |
+| **Calendar** | A week strip with dots, a day heading “Today · Tuesday, 29 September”, the month on a tap; reminders and repeats per day, editing and deleting, a new reminder from a phrase or the fields |
 | **Habits** | Streak, progress and a 9-day strip; marks cycle ⬜ → ✅ → ❌ as in the bot |
 | **Notes** | A list and an editor with a character counter; leaving with unsaved text asks first |
 | **More** | City search, the morning digest, language, version |
@@ -84,6 +91,7 @@ flowchart LR
     core --> cbr[Bank of Russia]
 ```
 
+- **Phrases without AI.** “tomorrow at 9”, “in 20 minutes”, “every other wednesday” are parsed by Russian and English rules with over a hundred table tests; nothing is created until you confirm the card.
 - **The core knows nothing about Telegram.** Limits, habit streaks, time parsing and weather tips live in `assistant.core` and are covered by tests. The bot only parses input and formats replies, and the app's API calls the same services — so the chat and the app follow the same rules.
 - **The app is trusted only by signature.** The API accepts a request only when its initData is signed by Telegram with the bot token and is less than a day old; the user comes from the signature, and someone else's id gets 404. Errors are problem+json, at most 120 requests a minute.
 - **Time without surprises.** Every moment is stored in UTC, "today" is computed in the city's time zone, DST transitions are handled.
@@ -114,10 +122,12 @@ Settings come from environment variables or a `.env` file, see [.env.example](.e
 - [x] **v1.0** — coursework edition
 - [x] **v2.0** — new core, two languages, reliable delivery, CI and automatic deploys
 - [x] **v2.1** — Mini App: today, reminders, habits, notes and settings inside Telegram
-- [ ] **v2.2** — smart reminders: repeats, “+10 minutes”, natural input like “tomorrow at 9 buy milk”
-- [ ] **v2.3** — habits: yearly heat map, goals, a shareable stats card
-- [ ] **v2.4** — finances: expenses, budget, exchange rate charts
-- [ ] **v2.5** — 7-day forecast, several cities, search and checklists in notes
+- [x] **v2.2** — smart reminders: repeats, “+10 minutes”, phrase input, a calendar in the app
+- [ ] **v2.3** — class schedule: a MIREA group, a calendar link or file
+- [ ] **v2.4** — habits: yearly heat map, goals, a shareable stats card
+- [ ] **v2.5** — finances: expenses, budget, exchange rate charts
+- [ ] **v2.6** — 7-day forecast, several cities, search and checklists in notes
+- [ ] **v2.7** — showcase: screenshots, a demo and a project cover
 
 ## History
 

@@ -85,4 +85,18 @@ describe("Habits", () => {
       { name: "Спорт" }, { name: "Чтение" },
     ]);
   });
+
+  it("asks before leaving a name unsaved, but not an empty one", async () => {
+    const app = installTelegram({ showConfirm: vi.fn((_m: string, callback: (ok: boolean) => void) => callback(false)) });
+    mockApi({ "GET /me": me });
+    const { history } = renderWithApp(<HabitForm />, { path: "/habits/new" });
+    const back = () => vi.mocked(app.BackButton.onClick).mock.calls.at(-1)?.[0];
+    fireEvent.change(await screen.findByLabelText("Название"), { target: { value: "Плавание" } });
+    await act(async () => back()?.());
+    expect(app.showConfirm).toHaveBeenCalledWith("Выйти без сохранения?", expect.any(Function));
+    expect(history.at(-1)).toBe("/habits/new");
+    fireEvent.change(screen.getByLabelText("Название"), { target: { value: "" } });
+    await act(async () => back()?.());
+    expect(history.at(-1)).toBe("/habits");
+  });
 });

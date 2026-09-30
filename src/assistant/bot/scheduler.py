@@ -19,10 +19,12 @@ from aiogram.exceptions import (
     TelegramNetworkError,
     TelegramRetryAfter,
 )
+from aiogram.types import InlineKeyboardMarkup
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from assistant.bot import texts
+from assistant.bot.keyboards import fired_markup
 from assistant.core.clients.cbr import CbrClient
 from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.i18n import Translator, resolve_language, translator
@@ -50,16 +52,16 @@ def _translator(user: User) -> Translator:
     return translator(resolve_language(user.language, user.tg_language))
 
 
-def reminder_text(reminder: Reminder, user: User, now: datetime, t: Translator) -> str:
-    if now - reminder.due_at <= LATE_AFTER:
+def reminder_text(
+    reminder: Reminder, user: User, shown: datetime, now: datetime, t: Translator
+) -> str:
+    if now - shown <= LATE_AFTER:
         return t("reminder-fire", text=reminder.text)
-    same_day = (
-        to_local(reminder.due_at, user.timezone).date() == to_local(now, user.timezone).date()
-    )
+    same_day = to_local(shown, user.timezone).date() == to_local(now, user.timezone).date()
     when = (
-        texts.local_time(reminder.due_at, user.timezone)
+        texts.local_time(shown, user.timezone)
         if same_day
-        else texts.short_moment(reminder.due_at, user.timezone, t.lang, now)
+        else texts.short_moment(shown, user.timezone, t.lang, now)
     )
     return t("reminder-fire-late", text=reminder.text, when=when)
 
@@ -112,9 +114,11 @@ class Scheduler:
             except Exception:
                 log.exception("scheduler job %s failed", name)
 
-    async def _send(self, chat_id: int, text: str) -> Delivery:
+    async def _send(
+        self, chat_id: int, text: str, markup: InlineKeyboardMarkup | None = None
+    ) -> Delivery:
         try:
-            await self._bot.send_message(chat_id, text)
+            await self._bot.send_message(chat_id, text, reply_markup=markup)
         except TelegramRetryAfter as error:
             return Delivery(False, retry_after=float(error.retry_after), error="retry_after")
         except TelegramForbiddenError as error:
@@ -142,11 +146,13 @@ class Scheduler:
                 mutate(reminder)
                 await session.commit()
 
-    async def _fail_and_block(self, reminder_id: int, user_id: int, error: str) -> None:
+    async def _fail_and_block(
+        self, reminder_id: int, user_id: int, error: str, now: datetime, tz: str
+    ) -> None:
         async with self._sessionmaker() as session:
             reminder = await session.get(Reminder, reminder_id)
             if reminder is not None:
-                reminders.mark_failed(reminder, error)
+                reminders.give_up(reminder, error, now, tz)
             await users.mark_blocked(session, user_id)
             await session.commit()
 
@@ -163,8 +169,12 @@ class Scheduler:
             if user.id in blocked:
                 continue
             try:
+                t = _translator(user)
+                shown = reminders.shown_at(reminder, user.timezone, now)
                 delivery = await self._send(
-                    user.id, reminder_text(reminder, user, now, _translator(user))
+                    user.id,
+                    reminder_text(reminder, user, shown, now, t),
+                    fired_markup(t, reminder.id, shown),
                 )
                 if delivery.retry_after is not None:
                     await self._update_reminder(
@@ -179,21 +189,31 @@ class Scheduler:
                     log.warning("Telegram asked to wait %.0f s", delivery.retry_after)
                     break
                 if delivery.ok:
-                    await self._update_reminder(reminder.id, partial(reminders.mark_sent, now=now))
+                    await self._update_reminder(
+                        reminder.id, partial(reminders.mark_delivered, now=now, tz=user.timezone)
+                    )
                     sent += 1
                 elif delivery.blocked:
-                    await self._fail_and_block(reminder.id, user.id, delivery.error)
+                    await self._fail_and_block(
+                        reminder.id, user.id, delivery.error, now, user.timezone
+                    )
                     blocked.add(user.id)
-                    log.info("reminder %s failed permanently: %s", reminder.id, delivery.error)
+                    log.info("reminder %s: gave up this firing: %s", reminder.id, delivery.error)
                 elif delivery.permanent:
                     await self._update_reminder(
-                        reminder.id, partial(reminders.mark_failed, error=delivery.error)
+                        reminder.id,
+                        partial(reminders.give_up, error=delivery.error, now=now, tz=user.timezone),
                     )
-                    log.info("reminder %s failed permanently: %s", reminder.id, delivery.error)
+                    log.info("reminder %s: gave up this firing: %s", reminder.id, delivery.error)
                 else:
                     await self._update_reminder(
                         reminder.id,
-                        partial(reminders.schedule_retry, now=now, error=delivery.error),
+                        partial(
+                            reminders.schedule_retry,
+                            now=now,
+                            error=delivery.error,
+                            tz=user.timezone,
+                        ),
                     )
                     log.warning("reminder %s not delivered: %s", reminder.id, delivery.error)
                     # The network or Telegram is failing: the rest of the batch would most
@@ -208,7 +228,12 @@ class Scheduler:
                 log.exception("reminder %s failed", reminder.id)
                 await self._update_reminder(
                     reminder.id,
-                    partial(reminders.schedule_retry, now=now, error=type(error).__name__),
+                    partial(
+                        reminders.schedule_retry,
+                        now=now,
+                        error=type(error).__name__,
+                        tz=user.timezone,
+                    ),
                 )
         return sent
 

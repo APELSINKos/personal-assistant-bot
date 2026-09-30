@@ -1,41 +1,17 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
 
 from assistant.core.errors import InvalidInput, LimitReached
-from assistant.core.models import Reminder, ReminderStatus
+from assistant.core.models import Reminder, ReminderStatus, Repeat
 from assistant.core.services import reminders
+from assistant.core.services.recurrence import Rule
 
-NOW_LOCAL = datetime(2026, 9, 28, 15, 0)  # naive local wall time (Moscow)
 NOW = datetime(2026, 9, 28, 12, 0, tzinfo=UTC)  # the same moment in UTC
-
-
-@pytest.mark.parametrize(
-    ("text", "expected"),
-    [
-        ("18:30", datetime(2026, 9, 28, 18, 30)),
-        ("14:00", datetime(2026, 9, 29, 14, 0)),  # already past today → tomorrow
-        ("15:00", datetime(2026, 9, 29, 15, 0)),  # exactly now → tomorrow
-        ("7:5", datetime(2026, 9, 29, 7, 5)),
-        ("25.09 18:30", datetime(2026, 9, 25, 18, 30)),
-        ("25.09.2027 18:30", datetime(2027, 9, 25, 18, 30)),
-        ("29.02.2028 10:00", datetime(2028, 2, 29, 10, 0)),
-        ("24:00", None),
-        ("31.02 10:00", None),
-        ("29.02.2027 10:00", None),
-        ("abc", None),
-        ("", None),
-        ("1 2 3", None),
-        ("25.09", None),
-    ],
-)
-def test_parse_when(text: str, expected: datetime | None) -> None:
-    assert reminders.parse_when(text, NOW_LOCAL.replace(tzinfo=None)) == expected
 
 
 async def test_create_stores_utc(session, make_user) -> None:
@@ -140,18 +116,16 @@ async def test_today_for_uses_user_zone(session, make_user) -> None:
     assert len((await session.scalars(select(Reminder))).all()) == 2
 
 
-@pytest.mark.parametrize(
-    ("text", "zone"),
-    [("01.01.0001 00:30", "Europe/Moscow"), ("31.12.9999 23:59", "America/New_York")],
-)
-def test_parse_when_rejects_the_edges_of_the_calendar(text: str, zone: str) -> None:
-    now_local = NOW.astimezone(ZoneInfo(zone))
-    assert reminders.parse_when(text, now_local) is None
-    assert reminders.parse_when("31.12.2030 23:59", now_local) == datetime(2030, 12, 31, 23, 59)
-
-
 async def test_create_rejects_a_moment_outside_the_calendar(session, make_user) -> None:
     user = await make_user(tz="America/New_York")
     with pytest.raises(InvalidInput) as error:
         await reminders.create(session, user, "x", datetime(9999, 12, 31, 23, 59), now=NOW)
     assert error.value.params["reason"] == "invalid"
+
+
+async def test_today_for_includes_todays_firing_of_a_repeat(session, make_user) -> None:
+    user = await make_user()  # Moscow
+    morning = datetime(2026, 9, 28, 5, 0, tzinfo=UTC)  # 08:00 in Moscow
+    rule = Rule(repeat=Repeat.DAILY, time_local="21:00", anchor_date=date(2026, 9, 28))
+    await reminders.create_repeating(session, user, "таблетки", rule, morning)
+    assert [r.text for r in await reminders.today_for(session, user, morning)] == ["таблетки"]

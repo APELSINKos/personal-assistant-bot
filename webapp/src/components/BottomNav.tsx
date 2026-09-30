@@ -1,11 +1,11 @@
-import { Bell, NotebookPen, Settings2, Sun, Target } from "lucide-react";
+import { CalendarDays, NotebookPen, Settings2, Sun, Target } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useT } from "../i18n";
 import { haptic } from "../telegram";
 
 const TABS = [
   { path: "/", key: "today", Icon: Sun },
-  { path: "/reminders", key: "reminders", Icon: Bell },
+  { path: "/calendar", key: "calendar", Icon: CalendarDays },
   { path: "/habits", key: "habits", Icon: Target },
   { path: "/notes", key: "notes", Icon: NotebookPen },
   { path: "/more", key: "more", Icon: Settings2 },

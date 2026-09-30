@@ -421,9 +421,27 @@ a {
 .toggle:focus-visible,
 .icon-button:focus-visible,
 .tab:focus-visible,
-.fab:focus-visible {
+.fab:focus-visible,
+.cal-cell:focus-visible,
+.cal-title:focus-visible,
+.chip-button:focus-visible,
+.cal-item:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Visually hidden but still announced — used to fold extra context (e.g. a toggle's state) into
+   a control's accessible name without displacing its visible label. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 textarea.input {
@@ -438,6 +456,12 @@ textarea.input {
   justify-self: end;
   color: var(--hint);
   font-size: 12px;
+}
+
+.field__hint {
+  margin: -8px 0 14px;
+  color: var(--error);
+  font-size: 13px;
 }
 
 .button {
@@ -478,6 +502,16 @@ textarea.input {
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
+}
+
+.segmented--wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.segmented--week {
+  grid-template-columns: repeat(7, 1fr);
 }
 
 .segmented__option {
@@ -638,4 +672,217 @@ textarea.input {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* Calendar */
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cal-title {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chip-button {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* --accent-text (#0b7a5c) on the tinted chip background is only ~4.1:1 in the light theme —
+   short of the 4.5:1 text minimum; --text gives full contrast there. The dark theme's
+   accent-text already clears AA on its tinted background, so it keeps it. */
+[data-theme="light"] .chip-button {
+  color: var(--text);
+}
+
+.cal-range {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
+.cal-strip {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin: 8px 0 4px;
+  touch-action: pan-y;
+}
+
+/* Month cells sit edge to edge (no gap) so each button is the column's full width — see the
+   44px-target rule below. */
+.cal-month__row,
+.cal-month__weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0;
+}
+
+.cal-month__weekdays {
+  margin: 4px 0 2px;
+}
+
+.cal-cell {
+  display: flex;
+  min-height: 56px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 0;
+  border: 1.5px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cal-cell__weekday {
+  color: var(--hint);
+  font-size: 11px;
+  text-align: center;
+}
+
+.cal-cell__day {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.cal-cell--today {
+  border-color: var(--accent);
+}
+
+.cal-cell--selected {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.cal-cell--selected .cal-cell__weekday {
+  color: var(--on-accent);
+}
+
+/* Days of other months: a dimmer text colour rather than opacity, which was also fading the dot
+   below AA's 3:1 non-text-contrast floor. */
+.cal-cell--other {
+  color: var(--hint);
+}
+
+.cal-dots {
+  display: flex;
+  height: 5px;
+  justify-content: center;
+  gap: 2px;
+}
+
+.cal-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #ffd28a;
+}
+
+/* #ffd28a is ~1.3:1 against the light theme's background (--bg-base: #f7f5f2) — far below the
+   3:1 non-text contrast minimum. #b36b00 (a darker amber) gives ~3.8:1 there; the dark theme
+   keeps the mockup's colour, which already clears ~14:1 against its background. */
+[data-theme="light"] .cal-dot {
+  background: #b36b00;
+}
+
+/* In the strip the fill covers the whole cell, so the dot needs the on-accent colour; in the
+   month grid the fill lives on the smaller inner mark (below) and the dot stays on the plain
+   page background, so it keeps its normal colour there. */
+.cal-strip .cal-cell--selected .cal-dot {
+  background: var(--on-accent);
+}
+
+.cal-month {
+  margin: 8px 0 4px;
+}
+
+.cal-month__title {
+  margin: 4px 2px 8px;
+  font-weight: 700;
+}
+
+/* Month cells: the button is the full, borderless, edge-to-edge tap target (≥ 44px tall, a full
+   column wide — ≥ 46px at 360px); the fill/ring for today/selected lives on the inset
+   `.cal-cell__mark` circle instead, so the target size never shrinks to draw them. */
+.cal-month .cal-cell {
+  min-height: 44px;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.cal-cell__mark {
+  display: flex;
+  width: 32px;
+  height: 32px;
+  margin: 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid transparent;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.cal-month .cal-cell--today .cal-cell__mark {
+  border-color: var(--accent);
+}
+
+.cal-month .cal-cell--selected .cal-cell__mark {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.cal-dayhead {
+  margin: 14px 2px 8px;
+}
+
+.cal-dayhead__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.cal-item {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 10px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.cal-item__body {
+  display: flex;
+  flex-direction: column;
+}
+
+.cal-item__sub {
+  font-size: 12px;
 }

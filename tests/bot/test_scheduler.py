@@ -17,9 +17,11 @@ from aiogram.methods import SendMessage
 from sqlalchemy import select
 
 from assistant.bot import scheduler as scheduler_module
+from assistant.bot.keyboards import FireCb
 from assistant.bot.scheduler import Scheduler
-from assistant.core.models import FsmState, Reminder, ReminderStatus
+from assistant.core.models import FsmState, Reminder, ReminderStatus, Repeat
 from assistant.core.services import reminders
+from assistant.core.services.recurrence import Rule
 
 NOW = datetime(2026, 9, 28, 12, 0, tzinfo=UTC)  # 15:00 in Moscow
 METHOD = SendMessage(chat_id=1, text="x")
@@ -174,10 +176,10 @@ async def test_unexpected_error_for_one_reminder_does_not_stop_the_batch(
     await add_reminder(session, user_id=2, ago=timedelta(minutes=1), text="ok")
     original = scheduler_module.reminder_text
 
-    def flaky(reminder, user, now, t):
+    def flaky(reminder, user, shown, now, t):
         if reminder.text == "broken":
             raise RuntimeError("boom")
-        return original(reminder, user, now, t)
+        return original(reminder, user, shown, now, t)
 
     monkeypatch.setattr(scheduler_module, "reminder_text", flaky)
     assert await scheduler.deliver_reminders(NOW) == 1
@@ -346,3 +348,127 @@ async def test_stop_lets_the_current_tick_finish(
     scheduler.stop()  # in the middle of a tick
     await asyncio.wait_for(task, 1)
     assert finished == [True]
+
+
+async def add_daily(session, *, time_local: str, occurrence: datetime, text: str = "таблетки"):
+    reminder = Reminder(
+        user_id=1,
+        text=text,
+        due_at=occurrence,
+        next_attempt_at=occurrence,
+        occurrence_at=occurrence,
+        repeat=Repeat.DAILY,
+        time_local=time_local,
+        anchor_date=date(2026, 9, 1),
+    )
+    session.add(reminder)
+    await session.commit()
+    return reminder
+
+
+async def test_fired_message_has_buttons(scheduler, session, make_user, fake) -> None:
+    await make_user(morning_enabled=False)
+    reminder = await add_reminder(session)
+    await scheduler.deliver_reminders(NOW)
+    markup = fake.of(SendMessage)[-1].reply_markup
+    buttons = [button for row in markup.inline_keyboard for button in row]
+    assert [b.text for b in buttons] == ["+10 мин", "+1 ч", "Завтра", "✓ Готово"]
+    first = FireCb.unpack(buttons[0].callback_data)
+    assert (first.action, first.id) == ("10m", reminder.id)
+    assert first.at == int(reminder.due_at.timestamp() // 60)
+
+
+async def test_repeat_moves_to_the_next_firing(scheduler, session, make_user, fake) -> None:
+    await make_user(morning_enabled=False)
+    series = await add_daily(session, time_local="14:59", occurrence=NOW - timedelta(minutes=1))
+    assert await scheduler.deliver_reminders(NOW) == 1
+    assert fake.sent_texts() == ["⏰ Напоминание: таблетки"]
+    series = await reload(session, series)
+    assert series.status == ReminderStatus.PENDING and series.sent_at == NOW
+    assert series.due_at == datetime(2026, 9, 29, 11, 59, tzinfo=UTC)
+
+
+async def test_repeat_catches_up_with_one_message(scheduler, session, make_user, fake) -> None:
+    await make_user(morning_enabled=False)
+    three_days_ago = datetime(2026, 9, 25, 6, 0, tzinfo=UTC)  # 09:00 Moscow
+    series = await add_daily(session, time_local="09:00", occurrence=three_days_ago)
+    assert await scheduler.deliver_reminders(NOW) == 1
+    assert fake.sent_texts() == ["⏰ Напоминание: таблетки (было на 09:00)"]
+    series = await reload(session, series)
+    assert series.due_at == datetime(2026, 9, 29, 6, 0, tzinfo=UTC)
+    assert await scheduler.deliver_reminders(NOW + timedelta(minutes=1)) == 0
+
+
+async def test_blocked_user_keeps_the_series(scheduler, session, make_user, fake) -> None:
+    user = await make_user(morning_enabled=False)
+    series = await add_daily(session, time_local="14:59", occurrence=NOW - timedelta(minutes=1))
+    fake.errors.append(
+        TelegramForbiddenError(method=METHOD, message="Forbidden: bot was blocked by the user")
+    )
+    await scheduler.deliver_reminders(NOW)
+    series = await reload(session, series)
+    assert series.status == ReminderStatus.PENDING
+    assert series.due_at == datetime(2026, 9, 29, 11, 59, tzinfo=UTC)
+    assert (await reload(session, user)).bot_blocked
+
+
+async def test_bad_request_moves_a_series_on(scheduler, session, make_user, fake) -> None:
+    await make_user(morning_enabled=False)
+    series = await add_daily(session, time_local="14:59", occurrence=NOW - timedelta(minutes=1))
+    fake.errors.append(TelegramBadRequest(method=METHOD, message="Bad Request: chat not found"))
+    await scheduler.deliver_reminders(NOW)
+    series = await reload(session, series)
+    assert series.status == ReminderStatus.PENDING
+    assert series.last_error == "Bad Request: chat not found"
+    assert series.due_at == datetime(2026, 9, 29, 11, 59, tzinfo=UTC)
+
+
+async def test_repeat_survives_max_temporary_failures(scheduler, session, make_user, fake) -> None:
+    """Exhausting every backoff attempt with a temporary error still moves the series on,
+    never fails it — this pins `tz=user.timezone` on the temporary-failure `schedule_retry`
+    call inside `deliver_reminders`."""
+    await make_user(morning_enabled=False)
+    series = await add_daily(session, time_local="14:59", occurrence=NOW - timedelta(minutes=1))
+    moment = NOW
+    for _ in range(reminders.MAX_FAILURES):
+        fake.errors.append(TelegramServerError(method=METHOD, message="Bad Gateway"))
+        await scheduler.deliver_reminders(moment)
+        series = await reload(session, series)
+        moment = series.next_attempt_at
+    assert series.status == ReminderStatus.PENDING
+    assert series.attempts == 0
+    assert series.due_at == datetime(2026, 9, 29, 11, 59, tzinfo=UTC)
+
+
+async def test_repeat_survives_an_unexpected_rendering_error(
+    scheduler, session, make_user, fake, monkeypatch
+) -> None:
+    """Same as above, but through the `except Exception` path (e.g. a formatting bug) —
+    pins `tz=user.timezone` on that call site's `schedule_retry` too."""
+    await make_user(morning_enabled=False)
+    series = await add_daily(session, time_local="14:59", occurrence=NOW - timedelta(minutes=1))
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(scheduler_module, "reminder_text", broken)
+    moment = NOW
+    for _ in range(reminders.MAX_FAILURES):
+        await scheduler.deliver_reminders(moment)
+        series = await reload(session, series)
+        moment = series.next_attempt_at
+    assert series.status == ReminderStatus.PENDING
+    assert series.attempts == 0
+    assert series.due_at == datetime(2026, 9, 29, 11, 59, tzinfo=UTC)
+
+
+async def test_the_digest_lists_todays_firing_of_a_repeat(
+    scheduler, session, make_user, fake
+) -> None:
+    user = await make_user(morning_time="08:00")
+    at_0800 = datetime(2026, 9, 28, 5, 0, tzinfo=UTC)
+    rule = Rule(repeat=Repeat.DAILY, time_local="21:00", anchor_date=date(2026, 9, 28))
+    await reminders.create_repeating(session, user, "таблетки", rule, at_0800)
+    await session.commit()
+    assert await scheduler.send_digests(at_0800) == 1
+    assert "• 21:00 — таблетки" in fake.sent_texts()[0]

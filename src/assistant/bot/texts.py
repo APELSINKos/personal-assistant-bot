@@ -8,9 +8,20 @@ from zoneinfo import ZoneInfo
 from babel.dates import format_date, format_datetime
 
 from assistant.core.clients.cbr import Rates
-from assistant.core.i18n import Translator, format_day, format_number, format_weekday
+from assistant.core.i18n import (
+    Translator,
+    format_day,
+    format_number,
+    format_short_day,
+    format_weekday,
+)
+from assistant.core.models import Reminder
+from assistant.core.services import reminders
 from assistant.core.services.digest import TodayData
-from assistant.core.services.weather import Tip, WeatherNow, describe
+from assistant.core.services.phrases import Parsed
+from assistant.core.services.recurrence import describe, local_days
+from assistant.core.services.weather import Tip, WeatherNow
+from assistant.core.services.weather import describe as describe_weather
 from assistant.core.timeutil import to_local, utcnow
 
 NO_VALUE = "—"
@@ -42,7 +53,7 @@ def tip_lines(tips: list[Tip], t: Translator) -> list[str]:
 
 
 def _now_line(weather: WeatherNow, t: Translator) -> str:
-    emoji, key = describe(weather.code)
+    emoji, key = describe_weather(weather.code)
     return t(
         "weather-now",
         emoji=emoji,
@@ -175,3 +186,53 @@ def long_day(day: date, lang: str, current_year: int) -> str:
     if day.year == current_year:
         return format_day(day, lang)
     return str(format_date(day, "d MMMM y" if lang == "ru" else "MMMM d, y", locale=lang))
+
+
+def day_label(day: date, today: date, t: Translator) -> str:
+    offset = (day - today).days
+    if offset == 0:
+        return t("day-today")
+    if offset == 1:
+        return t("day-tomorrow")
+    if offset == 2:
+        return t("day-after-tomorrow")
+    if day.year != today.year:
+        return str(format_date(day, "EEE, d MMM y", locale=t.lang))
+    return format_short_day(day, t.lang)
+
+
+def card_text(parsed: Parsed, local_now: datetime, t: Translator) -> str:
+    """The confirmation card: what was understood, before anything is created."""
+    today = local_now.date()
+    rule = parsed.rule(local_now)
+    if rule is not None:
+        wall = local_now.replace(tzinfo=None)
+        first = next(d for d in local_days(rule, today) if datetime.combine(d, rule.clock) > wall)
+        return t(
+            "reminder-card-repeat",
+            rule=describe(rule, t),
+            text=parsed.text,
+            first=f"{day_label(first, today, t)}, {rule.time_local}",
+        )
+    when = parsed.when(local_now)
+    if when is None:
+        raise ValueError("a card needs a time")
+    return t(
+        "reminder-card",
+        when=day_label(when.date(), today, t),
+        time=when.strftime("%H:%M"),
+        text=parsed.text,
+    )
+
+
+def saved_text(reminder: Reminder, tz: str, local_now: datetime, t: Translator) -> str:
+    rule = reminders.rule_of(reminder)
+    if rule is not None:
+        return t("reminder-saved-repeat", rule=describe(rule, t), text=reminder.text)
+    local = to_local(reminder.due_at, tz)
+    return t(
+        "reminder-saved",
+        date=long_day(local.date(), t.lang, local_now.year),
+        time=local.strftime("%H:%M"),
+        text=reminder.text,
+    )
