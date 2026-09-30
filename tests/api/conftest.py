@@ -27,10 +27,12 @@ def make_init_data(
     signed_at: datetime = NOW,
     token: str = TOKEN,
     extra: dict[str, str] | None = None,
+    user_extra: dict[str, Any] | None = None,
 ) -> str:
     user: dict[str, Any] = {"id": user_id, "first_name": first_name}
     if lang is not None:
         user["language_code"] = lang
+    user.update(user_extra or {})
     fields = {
         "auth_date": str(int(signed_at.timestamp())),
         "query_id": "q1",

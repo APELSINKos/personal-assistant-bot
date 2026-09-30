@@ -37,6 +37,16 @@ async def put_city(body: CityIn, user: CurrentUser, db: Session) -> MeOut:
     return me_out(user)
 
 
+@router.post("/me/write-access", response_model=MeOut)
+async def allow_write(user: CurrentUser, db: Session) -> MeOut:
+    """The app got Telegram's permission for the bot to write; Telegram does not re-sign
+    initData after that, so the app tells us. A wrong claim only affects this user's own
+    deliveries (the bot would get 403 and mark them blocked)."""
+    await users.allow_write(db, user)
+    await db.commit()
+    return me_out(user)
+
+
 @router.get("/cities", response_model=list[CityOut])
 async def search_cities(
     q: Annotated[str, Query(min_length=2, max_length=50)],

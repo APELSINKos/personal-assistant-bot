@@ -12,6 +12,7 @@ from assistant.api.schemas import (
     RateOut,
     RatesOut,
     ReminderOut,
+    RuleOut,
     TodayHabits,
     TodayOut,
     TodayReminder,
@@ -20,9 +21,12 @@ from assistant.api.schemas import (
 from assistant.core.clients.cbr import Rates
 from assistant.core.i18n import Translator, resolve_language, translator
 from assistant.core.models import Note, Reminder, User
+from assistant.core.services import reminders
 from assistant.core.services.digest import TodayData
 from assistant.core.services.habits import HabitStats
-from assistant.core.services.weather import WeatherNow, describe
+from assistant.core.services.recurrence import Rule, describe
+from assistant.core.services.weather import WeatherNow
+from assistant.core.services.weather import describe as describe_weather
 from assistant.core.timeutil import to_local
 
 
@@ -42,11 +46,12 @@ def me_out(user: User) -> MeOut:
         language_setting=user.language or "auto",  # type: ignore[arg-type]
         city=CityOut(name=user.city, lat=user.lat, lon=user.lon, timezone=user.timezone),
         morning=MorningOut(enabled=user.morning_enabled, time=user.morning_time),
+        can_write=user.can_write,
     )
 
 
 def weather_out(now: WeatherNow, t: Translator) -> WeatherOut:
-    emoji, key = describe(now.code)
+    emoji, key = describe_weather(now.code)
     return WeatherOut(
         city=now.city,
         temperature=now.temperature,
@@ -88,14 +93,31 @@ def note_out(note: Note) -> NoteOut:
     )
 
 
-def reminder_out(reminder: Reminder, tz: str) -> ReminderOut:
+def rule_out(rule: Rule | None) -> RuleOut | None:
+    if rule is None:
+        return None
+    return RuleOut(
+        repeat=rule.repeat.value,  # type: ignore[arg-type]
+        time_local=rule.time_local,
+        weekdays=rule.weekdays,
+        interval_weeks=rule.interval_weeks,
+        month_day=rule.month_day,
+        anchor_date=rule.anchor_date,
+    )
+
+
+def reminder_out(reminder: Reminder, tz: str, t: Translator) -> ReminderOut:
     local = to_local(reminder.due_at, tz)
+    rule = reminders.rule_of(reminder)
     return ReminderOut(
         id=reminder.id,
         text=reminder.text,
         due_at=reminder.due_at,
         due_local=local.strftime("%Y-%m-%dT%H:%M"),
         status=str(reminder.status),
+        repeat=reminder.repeat.value,
+        rule=rule_out(rule),
+        description=describe(rule, t) if rule else None,
     )
 
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -37,6 +37,7 @@ class MeOut(BaseModel):
     language_setting: Literal["auto", "ru", "en"]
     city: CityOut
     morning: MorningOut
+    can_write: bool
 
 
 class MePatch(BaseModel):
@@ -133,11 +134,45 @@ class NoteOut(BaseModel):
     updated_at: datetime
 
 
+RepeatName = Literal["none", "daily", "weekly", "monthly"]
+Clock = Annotated[str, Field(pattern=r"^\d{2}:\d{2}$")]
+LocalMoment = Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$")]
+
+
+class RuleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    repeat: Literal["daily", "weekly", "monthly"]
+    time_local: Clock
+    weekdays: int | None = Field(default=None, ge=1, le=127)
+    interval_weeks: Literal[1, 2] = 1
+    month_day: int | None = Field(default=None, ge=1, le=31)
+    anchor_date: date | None = None
+
+
+class RuleOut(BaseModel):
+    repeat: Literal["daily", "weekly", "monthly"]
+    time_local: str
+    weekdays: int | None
+    interval_weeks: int
+    month_day: int | None
+    anchor_date: date
+
+
 class ReminderIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     text: str = Field(max_length=1_000)
-    due_local: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$")
+    due_local: LocalMoment | None = None
+    rule: RuleIn | None = None
+
+
+class ReminderPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str | None = Field(default=None, max_length=1_000)
+    due_local: LocalMoment | None = None
+    rule: RuleIn | None = None
 
 
 class ReminderOut(BaseModel):
@@ -146,6 +181,50 @@ class ReminderOut(BaseModel):
     due_at: datetime
     due_local: str
     status: str
+    repeat: RepeatName
+    rule: RuleOut | None
+    description: str | None
+
+
+class ParseIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(max_length=1_000)
+
+
+class ParseOut(BaseModel):
+    text: str
+    repeat: RepeatName
+    date: date | None
+    time: str | None
+    weekdays: int | None
+    interval_weeks: int
+    month_day: int | None
+    description: str | None
+
+
+class SnoozeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["10m", "1h", "tomorrow"]
+
+
+class AgendaItemOut(BaseModel):
+    kind: Literal["reminder"]
+    id: int
+    time: str
+    text: str
+    repeat: RepeatName
+    description: str | None
+
+
+class AgendaDayOut(BaseModel):
+    date: date
+    items: list[AgendaItemOut]
+
+
+class AgendaOut(BaseModel):
+    days: list[AgendaDayOut]
 
 
 class HabitIn(BaseModel):
