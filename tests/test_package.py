@@ -8,8 +8,8 @@ import assistant.core.clients
 import assistant.core.services
 
 
-def test_version_is_v2_1() -> None:
-    assert assistant.__version__.startswith("2.1.0")
+def test_version_is_v2_2() -> None:
+    assert assistant.__version__.startswith("2.2.0")
 
 
 def test_subpackages_import_cleanly() -> None:
