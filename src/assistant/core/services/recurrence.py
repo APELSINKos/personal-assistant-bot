@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import calendar
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 
 from assistant.core.errors import InvalidInput
@@ -109,6 +109,23 @@ def next_after(rule: Rule, after: datetime, tz: str) -> datetime:
         if moment > after:
             return moment
     raise InvalidInput(field="repeat", reason="repeat_invalid")
+
+
+def first_matching_day(rule: Rule, start: date, after: datetime) -> date | None:
+    """The first date on/after `start`, within two weeks, whose weekday matches the rule's own
+    weekday pattern (ignoring `interval_weeks`) and whose local clock moment falls after the
+    naive local `after`. `None` when the rule's weekdays never match (an empty mask).
+
+    Anchoring a rule to this date makes that day its own "on" week, so a fresh every-other-week
+    rule fires at the very next matching weekday instead of skipping to the "off" week's twin
+    two weeks later. Two weeks is enough for any weekly pattern to repeat at least once.
+    """
+    weekly = replace(rule, interval_weeks=1)
+    for offset in range(14):
+        day = start + timedelta(days=offset)
+        if fires_on(weekly, day) and datetime.combine(day, rule.clock) > after:
+            return day
+    return None
 
 
 def between(

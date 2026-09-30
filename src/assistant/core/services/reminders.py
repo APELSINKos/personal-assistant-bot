@@ -88,6 +88,19 @@ def _to_utc(when_local: datetime, tz: str) -> datetime:
         raise InvalidInput(field="when", reason="invalid") from error
 
 
+def _biweekly_anchor(rule: Rule, tz: str, moment: datetime) -> Rule:
+    """A fresh every-other-week rule (anchored today or later) starts at the first matching
+    weekday: move the anchor there so that day counts as its own "on" week — the app and the
+    bot then agree on when such a rule starts. An anchor already before local today (an
+    existing series being edited) keeps its parity exactly as it already is.
+    """
+    if rule.interval_weeks != 2 or rule.anchor_date < local_today(tz, moment):
+        return rule
+    local_after = to_local(moment, tz).replace(tzinfo=None)
+    first_day = recurrence.first_matching_day(rule, rule.anchor_date, local_after)
+    return replace(rule, anchor_date=first_day) if first_day is not None else rule
+
+
 async def create(
     session: AsyncSession,
     user: User,
@@ -119,6 +132,7 @@ async def create_repeating(
     rule.validate()
     await _check_limit(session, user.id)
     moment = now or utcnow()
+    rule = _biweekly_anchor(rule, user.timezone, moment)
     first = recurrence.next_after(rule, moment, user.timezone)
     # A series never carries a firing from before it existed: the anchor starts no earlier
     # than the first real firing (still an "on" week for an every-other-week rule).
@@ -173,6 +187,7 @@ async def update_reminder(
     cleaned = clean_text(text) if text is not None else None
     if rule is not None:
         rule.validate()
+        rule = _biweekly_anchor(rule, user.timezone, moment)
         first = recurrence.next_after(rule, moment, user.timezone)
         rule = replace(
             rule, anchor_date=max(rule.anchor_date, to_local(first, user.timezone).date())

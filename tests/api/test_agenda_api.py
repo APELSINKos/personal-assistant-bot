@@ -37,7 +37,9 @@ async def test_agenda_follows_the_city_zone(client, auth) -> None:
 async def test_agenda_range_is_checked(client, auth) -> None:
     backwards = await client.get("/api/agenda?from=2026-10-04&to=2026-09-28", headers=auth())
     too_long = await client.get("/api/agenda?from=2026-01-01&to=2026-12-31", headers=auth())
-    for response in (backwards, too_long):
+    far_future = await client.get("/api/agenda?from=9999-12-31&to=9999-12-31", headers=auth())
+    far_past = await client.get("/api/agenda?from=0001-01-01&to=0001-01-01", headers=auth())
+    for response in (backwards, too_long, far_future, far_past):
         assert response.status_code == 422
         assert (response.json()["field"], response.json()["reason"]) == ("to", "range")
 
@@ -47,6 +49,8 @@ async def test_write_access(client, auth) -> None:
     assert me["can_write"] is False  # opened the app, never wrote to the bot
     allowed = await client.post("/api/me/write-access", headers=auth())
     assert allowed.json()["can_write"] is True
+    still = (await client.get("/api/me", headers=auth())).json()
+    assert still["can_write"] is True  # the permission persists past the one response
 
 
 async def test_signed_permission_marks_the_user_writable(client, auth) -> None:

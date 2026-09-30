@@ -17,6 +17,7 @@ from assistant.core.timeutil import local_to_utc, to_local
 
 router = APIRouter(tags=["agenda"])
 MAX_DAYS = 62
+_MIN_YEAR, _MAX_YEAR = 2000, 2100
 
 
 @router.get("/agenda", response_model=AgendaOut)
@@ -26,6 +27,9 @@ async def agenda(
     start_day: Annotated[date, Query(alias="from")],
     end_day: Annotated[date, Query(alias="to")],
 ) -> AgendaOut:
+    # Checked before any date arithmetic: a year far outside this range can overflow it.
+    if not (_MIN_YEAR <= start_day.year <= _MAX_YEAR and _MIN_YEAR <= end_day.year <= _MAX_YEAR):
+        raise InvalidInput(field="to", reason="range")
     if end_day < start_day or (end_day - start_day).days >= MAX_DAYS:
         raise InvalidInput(field="to", reason="range")
     tz = user.timezone

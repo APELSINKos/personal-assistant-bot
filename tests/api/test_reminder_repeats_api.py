@@ -102,7 +102,15 @@ async def test_snooze_and_done(client, auth) -> None:
     moved = await client.post(
         f"/api/reminders/{one_off['id']}/snooze", json={"kind": "10m"}, headers=auth()
     )
-    assert moved.status_code == 200 and moved.json()["due_local"] == "2026-09-28T15:10"
+    # A pending one-off due at 16:00, snoozed «+10 мин» at 15:00: never earlier than its own
+    # due moment, so this lands at 16:10, not 15:10 (fix round 1, ruling 4).
+    assert moved.status_code == 200 and moved.json()["due_local"] == "2026-09-28T16:10"
+    foreign_snooze = await client.post(
+        f"/api/reminders/{one_off['id']}/snooze", json={"kind": "1h"}, headers=auth(user_id=2)
+    )
+    assert foreign_snooze.status_code == 404
+    listed = {r["id"]: r for r in (await client.get("/api/reminders", headers=auth())).json()}
+    assert listed[one_off["id"]]["due_local"] == "2026-09-28T16:10"  # untouched by the stranger
     series = (await create(client, auth, text="b", rule=WEEKDAYS_0730)).json()
     copy = await client.post(
         f"/api/reminders/{series['id']}/snooze", json={"kind": "1h"}, headers=auth()
@@ -112,3 +120,75 @@ async def test_snooze_and_done(client, auth) -> None:
     assert done.status_code == 204
     foreign = await client.post(f"/api/reminders/{one_off['id']}/done", headers=auth(user_id=2))
     assert foreign.status_code == 404
+    after_done = [r["id"] for r in (await client.get("/api/reminders", headers=auth())).json()]
+    assert one_off["id"] not in after_done
+
+
+async def test_biweekly_rule_starts_at_the_first_matching_day(client, auth) -> None:
+    rule = {"repeat": "weekly", "time_local": "10:00", "weekdays": 1, "interval_weeks": 2}
+    response = await create(client, auth, text="уборка", rule=rule)
+    assert response.status_code == 201
+    body = response.json()
+    assert body["due_local"] == "2026-10-05T10:00"
+    assert body["rule"]["anchor_date"] == "2026-10-05"
+    # An explicit anchor of today gives the very same result as leaving it out.
+    explicit = await create(
+        client, auth, text="уборка2", rule={**rule, "anchor_date": "2026-09-28"}
+    )
+    assert explicit.json()["due_local"] == "2026-10-05T10:00"
+    assert explicit.json()["rule"]["anchor_date"] == "2026-10-05"
+
+
+async def test_biweekly_phrase_and_the_matching_rule_agree(client, auth) -> None:
+    parsed = await client.post(
+        "/api/reminders/parse",
+        json={"text": "раз в две недели по понедельникам в 10:00 уборка"},
+        headers=auth(),
+    )
+    assert parsed.status_code == 200
+    fields = parsed.json()
+    rule = {
+        "repeat": fields["repeat"],
+        "time_local": fields["time"],
+        "weekdays": fields["weekdays"],
+        "interval_weeks": fields["interval_weeks"],
+    }
+    created = await create(client, auth, text=fields["text"], rule=rule)
+    assert created.json()["due_local"] == "2026-10-05T10:00"
+
+
+async def test_rule_stores_only_the_fields_its_kind_uses(client, auth) -> None:
+    response = await create(
+        client,
+        auth,
+        text="таблетки",
+        rule={
+            "repeat": "daily",
+            "time_local": "09:00",
+            "weekdays": 31,
+            "month_day": 5,
+            "interval_weeks": 2,
+        },
+    )
+    assert response.status_code == 201
+    rule = response.json()["rule"]
+    assert (rule["weekdays"], rule["month_day"], rule["interval_weeks"]) == (None, None, 1)
+
+
+async def test_anchor_date_out_of_range_is_rejected(client, auth) -> None:
+    response = await create(
+        client,
+        auth,
+        text="x",
+        rule={"repeat": "daily", "time_local": "09:00", "anchor_date": "9999-12-31"},
+    )
+    assert response.status_code == 422
+    assert response.json()["reason"] == "repeat_invalid"
+
+
+async def test_parse_checks_the_text_length(client, auth) -> None:
+    response = await client.post(
+        "/api/reminders/parse", json={"text": "завтра в 9 " + "x" * 250}, headers=auth()
+    )
+    assert response.status_code == 422
+    assert (response.json()["field"], response.json()["reason"]) == ("text", "length")

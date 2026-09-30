@@ -14,7 +14,13 @@ from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from assistant.core.models import Repeat
-from assistant.core.services.recurrence import ALL_DAYS, WEEKDAYS, WEEKENDS, Rule, fires_on
+from assistant.core.services.recurrence import (
+    ALL_DAYS,
+    WEEKDAYS,
+    WEEKENDS,
+    Rule,
+    first_matching_day,
+)
 
 _RU_WEEKDAYS_ACC = (
     "понедельник",
@@ -382,16 +388,7 @@ class Parsed:
         )
         if self.interval_weeks == 2:
             # Every other week counts from the first firing: find it with a weekly rule.
-            weekly = replace(rule, interval_weeks=1)
-            days = (wall.date() + timedelta(days=ahead) for ahead in range(14))
-            first = next(
-                (
-                    day
-                    for day in days
-                    if fires_on(weekly, day) and datetime.combine(day, rule.clock) > wall
-                ),
-                None,
-            )
+            first = first_matching_day(rule, wall.date(), wall)
             if first is None:
                 return None
             rule = replace(rule, anchor_date=first)

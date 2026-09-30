@@ -25,6 +25,7 @@ from assistant.core.services.recurrence import Rule, describe
 from assistant.core.timeutil import local_today, to_local
 
 router = APIRouter(tags=["reminders"])
+_MIN_YEAR, _MAX_YEAR = 2000, 2100
 
 
 def _wall(due_local: str) -> datetime:
@@ -35,13 +36,18 @@ def _wall(due_local: str) -> datetime:
 
 
 def _rule(body: RuleIn, today: date) -> Rule:
+    anchor = body.anchor_date or today
+    if not _MIN_YEAR <= anchor.year <= _MAX_YEAR:
+        raise InvalidInput(field="rule", reason="repeat_invalid")
+    repeat = Repeat(body.repeat)
     return Rule(
-        repeat=Repeat(body.repeat),
+        repeat=repeat,
         time_local=body.time_local,
-        anchor_date=body.anchor_date or today,
-        weekdays=body.weekdays,
-        interval_weeks=body.interval_weeks,
-        month_day=body.month_day,
+        anchor_date=anchor,
+        # Only the fields the chosen kind actually uses are stored; the rest are noise.
+        weekdays=body.weekdays if repeat is Repeat.WEEKLY else None,
+        interval_weeks=body.interval_weeks if repeat is Repeat.WEEKLY else 1,
+        month_day=body.month_day if repeat is Repeat.MONTHLY else None,
     )
 
 
@@ -98,6 +104,7 @@ async def parse_reminder(body: ParseIn, user: CurrentUser, state: State) -> Pars
     parsed = phrases.parse(body.text, local_now)
     if parsed is None:
         raise InvalidInput(field="text", reason="phrase_not_understood")
+    reminders.clean_text(parsed.text)
     rule = parsed.rule(local_now)
     when = parsed.when(local_now)
     if when is None and parsed.repeat is Repeat.NONE:
@@ -123,7 +130,10 @@ async def snooze_reminder(
     if reminder is None:
         raise NotFound(entity="reminder")
     now = state.clock()
-    until = reminders.snooze_until(body.kind, reminder.due_at, user.timezone, now)
+    # A firing already due (or overdue) never gets "snoozed" into the past: count from
+    # whichever is later, the real clock or the reminder's own due moment.
+    base = max(now, reminder.due_at)
+    until = reminders.snooze_until(body.kind, reminder.due_at, user.timezone, base)
     result = await reminders.snooze(db, user, reminder_id, until, now)
     await db.commit()
     return reminder_out(result, user.timezone, user_translator(user))

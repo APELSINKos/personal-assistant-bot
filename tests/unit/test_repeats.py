@@ -353,6 +353,49 @@ async def test_setting_the_same_city_changes_nothing(session, make_user) -> None
     assert series.attempts == 2 and series.due_at == utc(2026, 9, 28, 18)
 
 
+async def test_biweekly_from_today_starts_at_the_first_matching_day(session, make_user) -> None:
+    user = await make_user()
+    rule = Rule(
+        repeat=Repeat.WEEKLY,
+        time_local="10:00",
+        anchor_date=date(2026, 9, 28),
+        weekdays=1,
+        interval_weeks=2,
+    )
+    reminder = await reminders.create_repeating(session, user, "уборка", rule, NOW)
+    # 07:30 today already passed; the very next Monday (not the "off" week's twin two weeks
+    # later) is the first firing, and it becomes the new anchor (Task 8 fix round 1).
+    assert reminder.due_at == utc(2026, 10, 5, 7)
+    assert reminder.anchor_date == date(2026, 10, 5)
+
+
+async def test_editing_a_biweekly_series_keeps_its_weeks(session, make_user) -> None:
+    user = await make_user()
+    rule = Rule(
+        repeat=Repeat.WEEKLY,
+        time_local="10:00",
+        anchor_date=date(2026, 10, 5),
+        weekdays=1,
+        interval_weeks=2,
+    )
+    series = await reminders.create_repeating(session, user, "уборка", rule, NOW)
+    assert series.anchor_date == date(2026, 10, 5)
+    edited_rule = Rule(
+        repeat=Repeat.WEEKLY,
+        time_local="12:00",
+        anchor_date=date(2026, 10, 5),
+        weekdays=1,
+        interval_weeks=2,
+    )
+    later = utc(2026, 10, 20, 12)
+    edited = await reminders.update_reminder(session, user, series.id, rule=edited_rule, now=later)
+    # 2026-10-19 (Monday) is an "off" week for this anchor; the next "on" Monday is 2026-11-02.
+    assert edited.due_at == utc(2026, 11, 2, 9)
+    # The stored anchor still advances to the first real firing (Task 5), but Nov 2 is exactly
+    # two intervals (28 days) after Oct 5, so the series' on/off week parity is unchanged.
+    assert edited.anchor_date == date(2026, 11, 2)
+
+
 async def test_a_failed_edit_leaves_the_reminder_untouched(session, make_user) -> None:
     user = await make_user()
     one_off = await reminders.create(session, user, "врач", datetime(2026, 9, 29, 10), NOW)
