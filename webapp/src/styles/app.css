@@ -639,3 +639,164 @@ textarea.input {
     transition: none !important;
   }
 }
+
+/* Calendar */
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cal-title {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chip-button {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cal-range {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
+.cal-strip,
+.cal-month__row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.cal-strip {
+  margin: 8px 0 4px;
+  touch-action: pan-y;
+}
+
+.cal-cell {
+  display: flex;
+  min-height: 56px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 0;
+  border: 1.5px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cal-cell__weekday {
+  color: var(--hint);
+  font-size: 11px;
+}
+
+.cal-cell__day {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.cal-cell--today {
+  border-color: var(--accent);
+}
+
+.cal-cell--selected {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.cal-cell--selected .cal-cell__weekday {
+  color: var(--on-accent);
+}
+
+.cal-cell--other {
+  opacity: 0.45;
+}
+
+.cal-dots {
+  display: flex;
+  height: 5px;
+  justify-content: center;
+  gap: 2px;
+}
+
+.cal-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #ffd28a;
+}
+
+/* #ffd28a is ~1.3:1 against the light theme's background (--bg-base: #f7f5f2) — far below the
+   3:1 non-text contrast minimum. #b36b00 (a darker amber) gives ~3.8:1 there; the dark theme
+   keeps the mockup's colour, which already clears ~14:1 against its background. */
+[data-theme="light"] .cal-dot {
+  background: #b36b00;
+}
+
+.cal-cell--selected .cal-dot {
+  background: var(--on-accent);
+}
+
+.cal-month {
+  margin: 8px 0 4px;
+}
+
+.cal-month__title {
+  margin: 4px 2px 8px;
+  font-weight: 700;
+}
+
+.cal-month .cal-cell {
+  min-height: 44px;
+}
+
+.cal-dayhead {
+  margin: 14px 2px 8px;
+}
+
+.cal-dayhead__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.cal-item {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 10px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.cal-item__body {
+  display: flex;
+  flex-direction: column;
+}
+
+.cal-item__sub {
+  font-size: 12px;
+}

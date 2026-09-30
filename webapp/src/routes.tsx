@@ -1,12 +1,17 @@
 import type { ComponentType } from "react";
+import { Redirect } from "wouter";
+import { CalendarScreen } from "./screens/Calendar";
 import { HabitForm } from "./screens/HabitForm";
 import { HabitsScreen } from "./screens/Habits";
 import { MoreScreen } from "./screens/More";
 import { NoteEditor } from "./screens/NoteEditor";
 import { NotesScreen } from "./screens/Notes";
 import { ReminderForm } from "./screens/ReminderForm";
-import { RemindersScreen } from "./screens/Reminders";
 import { TodayScreen } from "./screens/Today";
+
+function ToCalendar() {
+  return <Redirect to="/calendar" replace />;
+}
 
 export interface AppRoute {
   path: string;
@@ -25,8 +30,11 @@ export interface AppRoute {
 /** Screens register themselves here (Tasks 8–10); the first matching path wins. */
 export const ROUTES: AppRoute[] = [
   { path: "/", component: TodayScreen },
-  { path: "/reminders", component: RemindersScreen },
-  { path: "/reminders/new", component: ReminderForm, parent: "/reminders", hideNav: true },
+  { path: "/calendar", component: CalendarScreen },
+  { path: "/calendar/new/:date?", component: ReminderForm, hideNav: true },
+  { path: "/calendar/:id", component: ReminderForm, hideNav: true },
+  { path: "/reminders", component: ToCalendar },
+  { path: "/reminders/new", component: ToCalendar },
   { path: "/habits", component: HabitsScreen },
   { path: "/habits/new", component: HabitForm, parent: "/habits", hideNav: true },
   { path: "/notes", component: NotesScreen },

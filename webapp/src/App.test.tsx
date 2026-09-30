@@ -13,7 +13,7 @@ describe("App shell", () => {
     installTelegram();
     mockApi({ "GET /me": { ...me, language: "en" } });
     render(<App />);
-    expect(await screen.findByRole("link", { name: "Reminders" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Calendar" })).toBeInTheDocument();
     for (const name of ["Today", "Habits", "Notes", "More"]) {
       expect(screen.getByRole("link", { name })).toBeInTheDocument();
     }
