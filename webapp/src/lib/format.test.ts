@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  addDaysIso, bigDate, dayHeading, daysBetween, formatNumber, formatTemp, groupByDay, localTimeHm,
-  localTodayIso, monthGrid, monthTitle, rangeLabel, shortDay, timeOf, weekOf, weekdayShort,
+  addDaysIso, bigDate, dayHeading, daysBetween, formatNumber, formatTemp, localTimeHm,
+  localTodayIso, monthGrid, monthTitle, rangeLabel, weekOf, weekdayShort,
 } from "./format";
 
 describe("format", () => {
@@ -28,20 +28,6 @@ describe("format", () => {
     expect(localTodayIso("Europe/Moscow", late)).toBe("2026-09-29");
     expect(localTodayIso("UTC", late)).toBe("2026-09-28");
     expect(localTimeHm("Europe/Moscow", late)).toBe("01:30");
-  });
-
-  it("groups reminders by day", () => {
-    const items = [
-      { id: 1, due_local: "2026-09-29T09:00" },
-      { id: 2, due_local: "2026-09-28T19:30" },
-      { id: 3, due_local: "2026-10-02T08:00" },
-      { id: 4, due_local: "2026-09-28T08:15" },
-    ];
-    const groups = groupByDay(items, "2026-09-28", "ru", { today: "Сегодня", tomorrow: "Завтра" });
-    expect(groups.map((g) => g.label)).toEqual(["Сегодня", "Завтра", "Пт, 2 окт."]);
-    expect(groups[0]?.items.map((i) => i.id)).toEqual([4, 2]);
-    expect(shortDay("2026-10-02", "en")).toBe("Fri, Oct 2");
-    expect(timeOf("2026-09-28T19:30")).toBe("19:30");
   });
 });
 

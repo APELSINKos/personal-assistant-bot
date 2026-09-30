@@ -7,7 +7,6 @@ function plural(n: number, one: string, other: string): string {
 export const en: Dict = {
   tabs: {
     today: "Today",
-    reminders: "Reminders",
     calendar: "Calendar",
     habits: "Habits",
     notes: "Notes",
@@ -33,19 +32,6 @@ export const en: Dict = {
     notes: (count: number) => `${count} ${plural(count, "note", "notes")}`,
     pull: "Pull to refresh",
     refreshing: "Refreshing…",
-  },
-  reminders: {
-    empty: "No reminders. Tap “+” to add one.",
-    today: "Today",
-    tomorrow: "Tomorrow",
-    newTitle: "New reminder",
-    text: "What to remind you about",
-    date: "Date",
-    time: "Time",
-    confirmDelete: "Delete the reminder?",
-    delete: "Delete the reminder",
-    add: "Add a reminder",
-    saved: "I'll remind you!",
   },
   calendar: {
     title: "Calendar",

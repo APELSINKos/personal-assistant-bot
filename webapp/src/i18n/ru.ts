@@ -9,7 +9,6 @@ function plural(n: number, one: string, few: string, many: string): string {
 export const ru = {
   tabs: {
     today: "Сегодня",
-    reminders: "Напоминания",
     calendar: "Календарь",
     habits: "Привычки",
     notes: "Заметки",
@@ -36,19 +35,6 @@ export const ru = {
     notes: (count: number) => `${count} ${plural(count, "заметка", "заметки", "заметок")}`,
     pull: "Потяни, чтобы обновить",
     refreshing: "Обновляю…",
-  },
-  reminders: {
-    empty: "Напоминаний нет. Нажми «+», чтобы добавить.",
-    today: "Сегодня",
-    tomorrow: "Завтра",
-    newTitle: "Новое напоминание",
-    text: "О чём напомнить",
-    date: "Дата",
-    time: "Время",
-    confirmDelete: "Удалить напоминание?",
-    delete: "Удалить напоминание",
-    add: "Добавить напоминание",
-    saved: "Напомню!",
   },
   calendar: {
     title: "Календарь",

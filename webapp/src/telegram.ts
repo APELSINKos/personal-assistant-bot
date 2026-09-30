@@ -159,11 +159,6 @@ export function openLink(url: string): void {
   else window.open(url, "_blank", "noopener");
 }
 
-/** The user allowed the bot to write when opening the app (or earlier, from the app). */
-export function allowsWriteToPm(): boolean {
-  return webApp()?.initDataUnsafe.user?.allows_write_to_pm === true;
-}
-
 /** Telegram's own "Allow the bot to message you?" dialog; a soft `false` where unsupported. */
 export function requestWriteAccess(): Promise<boolean> {
   const app = webApp();

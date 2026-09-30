@@ -60,23 +60,6 @@ export function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-export function shortDay(iso: string, lang: Lang): string {
-  const text = new Intl.DateTimeFormat(lang, {
-    timeZone: "UTC", weekday: "short", day: "numeric", month: "short",
-  }).format(parseIsoDate(iso));
-  return capitalize(text);
-}
-
-export function timeOf(dueLocal: string): string {
-  return dueLocal.slice(11, 16);
-}
-
-export interface DayGroup<T> {
-  day: string;
-  label: string;
-  items: T[];
-}
-
 export function daysBetween(fromIso: string, toIso: string): number {
   return Math.round((parseIsoDate(toIso).getTime() - parseIsoDate(fromIso).getTime()) / 86_400_000);
 }
@@ -142,23 +125,4 @@ export function monthTitle(iso: string, lang: Lang): string {
   const date = parseIsoDate(iso);
   const month = new Intl.DateTimeFormat(lang, { timeZone: "UTC", month: "long" }).format(date);
   return capitalize(`${month} ${date.getUTCFullYear()}`);
-}
-
-export function groupByDay<T extends { due_local: string }>(
-  items: readonly T[],
-  todayIso: string,
-  lang: Lang,
-  labels: { today: string; tomorrow: string },
-): DayGroup<T>[] {
-  const tomorrow = addDaysIso(todayIso, 1);
-  const byDay = new Map<string, T[]>();
-  for (const item of [...items].sort((a, b) => a.due_local.localeCompare(b.due_local))) {
-    const day = item.due_local.slice(0, 10);
-    byDay.set(day, [...(byDay.get(day) ?? []), item]);
-  }
-  return [...byDay.entries()].map(([day, dayItems]) => ({
-    day,
-    items: dayItems,
-    label: day === todayIso ? labels.today : day === tomorrow ? labels.tomorrow : shortDay(day, lang),
-  }));
 }

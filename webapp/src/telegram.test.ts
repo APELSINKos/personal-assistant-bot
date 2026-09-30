@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { installTelegram, oldHeaderColor } from "./test/fakeTelegram";
 import {
-  allowsWriteToPm, confirmAction, haptic, initData, normalizeLaunchHash, paintTelegram,
+  confirmAction, haptic, initData, normalizeLaunchHash, paintTelegram,
   requestWriteAccess, startTelegram, webApp,
 } from "./telegram";
 
@@ -87,13 +87,6 @@ describe("telegram", () => {
   });
 
   describe("write access", () => {
-    it("reads the permission from the launch data", () => {
-      installTelegram({ initDataUnsafe: { user: { id: 1, allows_write_to_pm: true } } });
-      expect(allowsWriteToPm()).toBe(true);
-      installTelegram();
-      expect(allowsWriteToPm()).toBe(false);
-    });
-
     it("asks Telegram on 6.9+ and reports the answer", async () => {
       const app = installTelegram({
         requestWriteAccess: vi.fn((callback?: (allowed: boolean) => void) => callback?.(true)),
