@@ -76,3 +76,13 @@ async def test_weather_503_when_upstream_down(client, auth, meteo, cbr) -> None:
         assert response.status_code == 503
         assert response.json()["code"] == "upstream_unavailable"
         assert response.headers["content-type"].startswith("application/problem+json")
+
+
+async def test_today_lists_todays_firing_of_a_repeat(client, auth) -> None:
+    rule = {"repeat": "daily", "time_local": "21:00"}
+    created = await client.post(
+        "/api/reminders", json={"text": "таблетки", "rule": rule}, headers=auth()
+    )
+    assert created.status_code == 201
+    body = (await client.get("/api/today", headers=auth())).json()
+    assert [(r["text"], r["time"]) for r in body["reminders_today"]] == [("таблетки", "21:00")]

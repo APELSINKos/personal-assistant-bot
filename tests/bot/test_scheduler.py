@@ -21,6 +21,7 @@ from assistant.bot.keyboards import FireCb
 from assistant.bot.scheduler import Scheduler
 from assistant.core.models import FsmState, Reminder, ReminderStatus, Repeat
 from assistant.core.services import reminders
+from assistant.core.services.recurrence import Rule
 
 NOW = datetime(2026, 9, 28, 12, 0, tzinfo=UTC)  # 15:00 in Moscow
 METHOD = SendMessage(chat_id=1, text="x")
@@ -459,3 +460,15 @@ async def test_repeat_survives_an_unexpected_rendering_error(
     assert series.status == ReminderStatus.PENDING
     assert series.attempts == 0
     assert series.due_at == datetime(2026, 9, 29, 11, 59, tzinfo=UTC)
+
+
+async def test_the_digest_lists_todays_firing_of_a_repeat(
+    scheduler, session, make_user, fake
+) -> None:
+    user = await make_user(morning_time="08:00")
+    at_0800 = datetime(2026, 9, 28, 5, 0, tzinfo=UTC)
+    rule = Rule(repeat=Repeat.DAILY, time_local="21:00", anchor_date=date(2026, 9, 28))
+    await reminders.create_repeating(session, user, "таблетки", rule, at_0800)
+    await session.commit()
+    assert await scheduler.send_digests(at_0800) == 1
+    assert "• 21:00 — таблетки" in fake.sent_texts()[0]

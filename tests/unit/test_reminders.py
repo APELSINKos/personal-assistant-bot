@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
 
 from assistant.core.errors import InvalidInput, LimitReached
-from assistant.core.models import Reminder, ReminderStatus
+from assistant.core.models import Reminder, ReminderStatus, Repeat
 from assistant.core.services import reminders
+from assistant.core.services.recurrence import Rule
 
 NOW = datetime(2026, 9, 28, 12, 0, tzinfo=UTC)  # the same moment in UTC
 
@@ -120,3 +121,11 @@ async def test_create_rejects_a_moment_outside_the_calendar(session, make_user) 
     with pytest.raises(InvalidInput) as error:
         await reminders.create(session, user, "x", datetime(9999, 12, 31, 23, 59), now=NOW)
     assert error.value.params["reason"] == "invalid"
+
+
+async def test_today_for_includes_todays_firing_of_a_repeat(session, make_user) -> None:
+    user = await make_user()  # Moscow
+    morning = datetime(2026, 9, 28, 5, 0, tzinfo=UTC)  # 08:00 in Moscow
+    rule = Rule(repeat=Repeat.DAILY, time_local="21:00", anchor_date=date(2026, 9, 28))
+    await reminders.create_repeating(session, user, "таблетки", rule, morning)
+    assert [r.text for r in await reminders.today_for(session, user, morning)] == ["таблетки"]
