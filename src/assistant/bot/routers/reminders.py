@@ -26,6 +26,7 @@ from assistant.bot.keyboards import (
     preview,
     time_choices,
 )
+from assistant.bot.routers import fallback
 from assistant.bot.sections import section
 from assistant.bot.states import ReminderForm
 from assistant.core.config import LIMITS
@@ -35,7 +36,7 @@ from assistant.core.models import Reminder, ReminderStatus, Repeat, User
 from assistant.core.services import phrases, reminders
 from assistant.core.services.phrases import Parsed
 from assistant.core.services.recurrence import describe
-from assistant.core.timeutil import to_local, utcnow
+from assistant.core.timeutil import parse_hhmm, to_local, utcnow
 
 # Replaced in tests to freeze time.
 clock: Callable[[], datetime] = utcnow
@@ -224,9 +225,23 @@ async def got_phrase(message: Message, ctx: Ctx) -> None:
     await _offer(_answer(message), ctx, parsed, local_now)
 
 
+async def _no_dialog(message: Message, ctx: Ctx, local_now: datetime) -> None:
+    """A prompt or card that is gone: handle the message as if no dialog were open."""
+    await ctx.state.clear()
+    parsed = phrases.parse(message.text or "", local_now)
+    if parsed is not None:
+        await _offer(_answer(message), ctx, parsed, local_now)
+    else:
+        await fallback.unknown(message, ctx)
+
+
 async def got_reply_while_confirm(message: Message, ctx: Ctx) -> None:
     """A card is open: a new phrase replaces it; anything else just points back to it."""
     local_now = _local_now(ctx)
+    draft = await _draft(ctx)
+    if draft is None or _expired(draft):
+        await _no_dialog(message, ctx, local_now)
+        return
     parsed = phrases.parse(message.text or "", local_now)
     if parsed is not None:
         await _offer(_answer(message), ctx, parsed, local_now)
@@ -251,6 +266,24 @@ async def _draft(ctx: Ctx) -> _Draft | None:
     return _Draft(parsed=phrases.load(raw), at=datetime.fromisoformat(at), card=card)
 
 
+def _expired(draft: _Draft) -> bool:
+    return clock() - draft.at > CARD_TTL
+
+
+def _is_new_phrase(answer: Parsed) -> bool:
+    """A reply at the time prompt with its own text and its own day or repeat is a phrase of
+    its own, not an answer: «завтра в 9 купить молоко». Bare answers («18:30», «завтра в 10»,
+    «в 18 обязательно») complete the waiting draft instead."""
+    anchored = (
+        answer.day is not None
+        or answer.weekday is not None
+        or answer.repeat is not Repeat.NONE
+        or answer.delta is not None
+        or answer.delta_days is not None
+    )
+    return anchored and bool(answer.text.strip())
+
+
 async def _verified(
     query: CallbackQuery, callback_data: ReminderCb, ctx: Ctx, bot: Bot
 ) -> _Draft | None:
@@ -265,7 +298,7 @@ async def _verified(
       it): the state is left untouched, since that newer draft may still be alive under it.
     """
     draft = await _draft(ctx)
-    expired = draft is not None and clock() - draft.at > CARD_TTL
+    expired = draft is not None and _expired(draft)
     if draft is None or expired or draft.card != callback_data.id:
         await replies.answer_quietly(query, ctx.t("already-deleted"))
         await replies.drop_buttons(bot, query)
@@ -278,26 +311,36 @@ async def _verified(
 async def got_time(message: Message, ctx: Ctx) -> None:
     draft = await _draft(ctx)
     local_now = _local_now(ctx)
+    if draft is None or _expired(draft):
+        await _no_dialog(message, ctx, local_now)
+        return
     text = (message.text or "").strip()
-    answer = phrases.parse(text, local_now) or phrases.parse(f"в {text}", local_now)
-    if draft is not None and answer is not None:
+    answer = phrases.parse(text, local_now)
+    if answer is not None and _is_new_phrase(answer):
+        await _offer(_answer(message), ctx, answer, local_now)
+        return
+    answer = answer or phrases.parse(f"в {text}", local_now)
+    if answer is not None:
         merged = phrases.merge(draft.parsed, answer)
         if not merged.needs_time:
             await _offer(_answer(message), ctx, merged, local_now)
             return
-    parsed = draft.parsed if draft is not None else Parsed(text="")
-    await _ask_time(_answer(message), ctx, parsed, local_now)
+    await _ask_time(_answer(message), ctx, draft.parsed, local_now)
 
 
 async def on_time_choice(
     query: CallbackQuery, callback_data: ReminderCb, ctx: Ctx, bot: Bot
 ) -> None:
+    hhmm = parse_hhmm(callback_data.value)
+    if hhmm is None:  # not one of our buttons: nothing changes
+        await replies.answer_quietly(query, ctx.t("already-deleted"))
+        return
     draft = await _verified(query, callback_data, ctx, bot)
     if draft is None:
         return
     await query.answer()
     await replies.drop_buttons(bot, query)
-    parsed = draft.parsed.with_time(callback_data.value)
+    parsed = draft.parsed.with_time(hhmm)
     await _offer(_send_to(bot, query), ctx, parsed, _local_now(ctx))
 
 

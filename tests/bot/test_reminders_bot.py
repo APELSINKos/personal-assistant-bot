@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from aiogram.fsm.storage.base import StorageKey
 from aiogram.methods import AnswerCallbackQuery, SendMessage
 from sqlalchemy import select
 
@@ -221,6 +222,73 @@ async def test_a_reply_while_a_card_is_open_points_to_it(feed, fake) -> None:
     await feed(message_update("завтра в 9 купить молоко"))
     await feed(message_update("ок"))
     assert fake.sent_texts()[-1] == "Нажми «✅ Создать» под карточкой — или напиши новую фразу."
+
+
+async def state_of(dp, bot) -> str | None:
+    return await dp.storage.get_state(StorageKey(bot_id=bot.id, chat_id=1, user_id=1))
+
+
+async def test_a_new_phrase_at_the_time_prompt_gets_its_own_card(feed, fake, session) -> None:
+    await feed(message_update("завтра экзамен, волнуюсь"))
+    assert fake.sent_texts()[-1] == ASK_TIME
+    prompt_card = ReminderCb.unpack(button_data(fake, "18:00")).id
+    await feed(message_update("завтра в 9 купить молоко"))
+    assert fake.sent_texts()[-1] == "⏰ Завтра, 09:00 — купить молоко"
+    ok = button_data(fake, "✅ Создать")
+    assert ReminderCb.unpack(ok).id != prompt_card
+    await feed(callback_update(ok))
+    (stored,) = await all_reminders(session)
+    assert (stored.text, stored.due_at) == (
+        "купить молоко",
+        datetime(2026, 9, 29, 6, 0, tzinfo=UTC),
+    )
+
+
+@pytest.mark.parametrize(
+    ("answer", "card"),
+    [
+        ("18:30", "⏰ Завтра, 18:30 — экзамен, волнуюсь"),
+        ("в 18", "⏰ Завтра, 18:00 — экзамен, волнуюсь"),
+        ("завтра в 10", "⏰ Завтра, 10:00 — экзамен, волнуюсь"),
+        ("в 18 обязательно", "⏰ Завтра, 18:00 — экзамен, волнуюсь"),
+    ],
+)
+async def test_a_bare_answer_completes_the_first_draft(feed, fake, answer, card) -> None:
+    await feed(message_update("завтра экзамен, волнуюсь"))
+    await feed(message_update(answer))
+    assert fake.sent_texts()[-1] == card
+
+
+async def test_an_old_time_prompt_is_no_dialog(feed, fake, dp, bot, monkeypatch) -> None:
+    await feed(message_update("завтра экзамен, волнуюсь"))
+    assert await state_of(dp, bot) is not None
+    monkeypatch.setattr(reminders_router, "clock", lambda: NOW + timedelta(hours=25))
+    await feed(message_update("привет"))
+    assert fake.sent_texts()[-1].startswith("🤔 Не понял.")
+    assert await state_of(dp, bot) is None
+
+
+async def test_an_old_card_does_not_take_a_reply(feed, fake, dp, bot, monkeypatch) -> None:
+    await feed(message_update("завтра в 9 купить молоко"))
+    monkeypatch.setattr(reminders_router, "clock", lambda: NOW + timedelta(hours=25))
+    await feed(message_update("ок"))
+    assert fake.sent_texts()[-1].startswith("🤔 Не понял.")
+    assert await state_of(dp, bot) is None
+    await feed(message_update("послезавтра в 10 кино"))  # a phrase still makes a card
+    assert fake.sent_texts()[-1] == "⏰ Послезавтра, 10:00 — кино"
+
+
+@pytest.mark.parametrize("value", ["25:99", "abc", ""])
+async def test_a_forged_time_button_changes_nothing(feed, fake, dp, bot, value) -> None:
+    await feed(message_update("завтра позвонить маме"))
+    card = ReminderCb.unpack(button_data(fake, "18:00")).id
+    sent = len(fake.sent_texts())
+    await feed(callback_update(ReminderCb(action="t", id=card, value=value).pack()))
+    assert fake.of(AnswerCallbackQuery)[-1].text == "Этого уже нет."
+    assert len(fake.sent_texts()) == sent
+    assert await state_of(dp, bot) == "ReminderForm:time"
+    await feed(callback_update(button_data(fake, "18:00")))  # the real buttons still work
+    assert fake.sent_texts()[-1] == "⏰ Завтра, 18:00 — позвонить маме"
 
 
 async def test_the_time_prompt_can_be_cancelled(feed, fake) -> None:
