@@ -99,6 +99,22 @@ describe("Calendar", () => {
     );
   });
 
+  it("titles the screen and names all seven weekdays in the month", async () => {
+    at("2026-09-29T09:00:00Z");
+    installTelegram();
+    mockApi({
+      "GET /me": me,
+      "GET /agenda?from=2026-09-28&to=2026-10-04": week("2026-09-28"),
+      "GET /agenda?from=2026-08-31&to=2026-10-04": { days: [] },
+    });
+    renderWithApp(<CalendarScreen />, { path: "/calendar" });
+    expect(await screen.findByRole("heading", { level: 1, name: /Календарь/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Календарь Показать месяц" }));
+    for (const name of ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]) {
+      expect(screen.getByText(name)).toBeInTheDocument();
+    }
+  });
+
   it("unfolds the month and picks a day from it", async () => {
     at("2026-09-29T09:00:00Z");
     installTelegram();

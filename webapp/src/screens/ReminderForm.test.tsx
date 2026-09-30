@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Reminder } from "../api/types";
 import { Toasts } from "../components/Toasts";
@@ -259,6 +259,61 @@ describe("ReminderForm", () => {
     expect(screen.getByText("Укажи время")).toBeInTheDocument();
     pressMainButton(app);
     expect(calls.filter((call) => call.method === "POST" && call.path === "/reminders")).toEqual([]);
+  });
+
+  it("names the day toggles in full in English", async () => {
+    at("2026-09-29T09:00:00Z");
+    installTelegram();
+    mockApi({ "GET /me": { ...me, language: "en" } });
+    const { client } = renderWithApp(<ReminderForm />, { path: "/calendar/new", lang: "en" });
+    await ready(client);
+    fireEvent.click(screen.getByRole("button", { name: "Days of the week" }));
+    const group = screen.getByRole("group", { name: "Days of the week" });
+    expect(within(group).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+      "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+    ]);
+  });
+
+  it("keeps the typed text when the phrase has none and fills the rest", async () => {
+    at("2026-09-29T09:00:00Z");
+    installTelegram();
+    mockApi({
+      "GET /me": me,
+      "POST /reminders/parse": {
+        text: "", repeat: "none", date: "2026-09-30", time: "09:00",
+        weekdays: null, interval_weeks: 1, month_day: null, description: null,
+      },
+    });
+    const { client } = renderWithApp(<ReminderForm />, { path: "/calendar/new" });
+    await ready(client);
+    fireEvent.change(screen.getByLabelText("О чём напомнить"), { target: { value: "Врач" } });
+    fireEvent.change(screen.getByLabelText("Напиши, например: завтра в 9 купить молоко"), {
+      target: { value: "завтра в 9" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Понять" }));
+    await waitFor(() => expect(screen.getByLabelText("Время")).toHaveValue("09:00"));
+    expect(screen.getByLabelText("Дата")).toHaveValue("2026-09-30");
+    expect(screen.getByLabelText("О чём напомнить")).toHaveValue("Врач");
+  });
+
+  it("shows the first day of an every-other-week phrase", async () => {
+    at("2026-09-28T12:00:00Z");
+    installTelegram();
+    mockApi({
+      "GET /me": me,
+      "POST /reminders/parse": {
+        text: "практика", repeat: "weekly", date: "2026-09-30", time: "09:00", weekdays: 4,
+        interval_weeks: 2, month_day: null, description: "раз в две недели по средам в 09:00",
+      },
+    });
+    const { client } = renderWithApp(<ReminderForm />, { path: "/calendar/new" });
+    await ready(client);
+    fireEvent.change(screen.getByLabelText("Напиши, например: завтра в 9 купить молоко"), {
+      target: { value: "раз в две недели по средам в 9 практика" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Понять" }));
+    await waitFor(() => expect(screen.getByLabelText("Первый раз")).toHaveValue("2026-09-30"));
+    expect(screen.getByRole("button", { name: "Раз в 2 недели" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("keeps typed changes and shows progress while «Понять» is pending", async () => {
