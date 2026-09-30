@@ -407,8 +407,16 @@ async def on_fired(query: CallbackQuery, callback_data: FireCb, ctx: Ctx, bot: B
     else:
         await gone()
         return
-    await replies.answer_quietly(query)
+    if not shown_text:
+        # An InaccessibleMessage (too old for Bot API to return its text) must not turn
+        # the edit into a bare confirmation: fall back to the reminder's own fire text.
+        source = await reminders.get_owned(ctx.session, ctx.user.id, callback_data.id)
+        if source is None:
+            await gone()
+            return
+        shown_text = ctx.t("reminder-fire", text=source.text)
     await replies.edit(bot, query, f"{shown_text}\n\n{result}", None)
+    await replies.answer_quietly(query)
 
 
 def create_router() -> Router:

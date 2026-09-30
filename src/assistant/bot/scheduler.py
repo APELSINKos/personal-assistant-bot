@@ -52,8 +52,9 @@ def _translator(user: User) -> Translator:
     return translator(resolve_language(user.language, user.tg_language))
 
 
-def reminder_text(reminder: Reminder, user: User, now: datetime, t: Translator) -> str:
-    shown = reminders.shown_at(reminder, user.timezone, now)
+def reminder_text(
+    reminder: Reminder, user: User, shown: datetime, now: datetime, t: Translator
+) -> str:
     if now - shown <= LATE_AFTER:
         return t("reminder-fire", text=reminder.text)
     same_day = to_local(shown, user.timezone).date() == to_local(now, user.timezone).date()
@@ -172,7 +173,7 @@ class Scheduler:
                 shown = reminders.shown_at(reminder, user.timezone, now)
                 delivery = await self._send(
                     user.id,
-                    reminder_text(reminder, user, now, t),
+                    reminder_text(reminder, user, shown, now, t),
                     fired_markup(t, reminder.id, shown),
                 )
                 if delivery.retry_after is not None:

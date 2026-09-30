@@ -225,6 +225,16 @@ async def snooze(
         ):
             # The series itself already fires exactly then: nothing to snooze, no duplicate.
             return reminder
+        existing = await session.scalar(
+            select(Reminder).where(
+                Reminder.parent_id == reminder.id,
+                Reminder.status == ReminderStatus.PENDING,
+                Reminder.due_at == until,
+            )
+        )
+        if existing is not None:
+            # A double tap (or a retried callback) must not pile up duplicate copies.
+            return existing
         # The series keeps its own schedule; the snoozed firing becomes a one-off copy.
         await _check_limit(session, user.id)
         copy = Reminder(
