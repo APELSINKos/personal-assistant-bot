@@ -3,9 +3,10 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from sqlalchemy import select
 
 from assistant.core.errors import InvalidInput, LimitReached, NotFound
-from assistant.core.models import ReminderStatus, Repeat
+from assistant.core.models import Reminder, ReminderStatus, Repeat
 from assistant.core.services import phrases, reminders, users
 from assistant.core.services.recurrence import WEEKDAYS, Rule
 
@@ -248,6 +249,47 @@ async def test_ten_minutes_on_a_repeat_makes_one_copy(session, make_user) -> Non
         (copy.id, utc(2026, 9, 28, 18, 10, 5)),
         (series.id, utc(2026, 9, 29, 18)),
     ]
+
+
+async def test_double_tap_on_a_repeat_snooze_within_a_minute_returns_the_same_copy(
+    session, make_user
+) -> None:
+    """Two presses of the same button a few seconds apart target slightly different `until`
+    moments (both computed from the press time) — close enough still counts as the same
+    snooze and shares one copy; a different kind still gets its own, distinct moment."""
+    user = await make_user()
+    series = await reminders.create_repeating(session, user, "таблетки", DAILY_21, NOW)
+    fired = utc(2026, 9, 28, 18)
+    t1 = utc(2026, 9, 28, 18, 0, 5)
+    reminders.mark_delivered(series, t1, user.timezone)
+
+    until1 = reminders.snooze_until("10m", fired, user.timezone, t1)
+    first = await reminders.snooze(session, user, series.id, until1, t1)
+
+    t2 = t1 + timedelta(seconds=2)
+    until2 = reminders.snooze_until("10m", fired, user.timezone, t2)
+    second = await reminders.snooze(session, user, series.id, until2, t2)
+    assert second.id == first.id
+    copies = (
+        await session.scalars(
+            select(Reminder).where(
+                Reminder.parent_id == series.id, Reminder.status == ReminderStatus.PENDING
+            )
+        )
+    ).all()
+    assert len(copies) == 1
+
+    until3 = reminders.snooze_until("1h", fired, user.timezone, t2)
+    third = await reminders.snooze(session, user, series.id, until3, t2)
+    assert third.id not in (first.id, series.id)
+    copies = (
+        await session.scalars(
+            select(Reminder).where(
+                Reminder.parent_id == series.id, Reminder.status == ReminderStatus.PENDING
+            )
+        )
+    ).all()
+    assert len(copies) == 2
 
 
 async def test_snoozing_a_sent_one_off_respects_the_limit(session, make_user) -> None:

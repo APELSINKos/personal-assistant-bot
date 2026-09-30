@@ -25,6 +25,9 @@ MAX_FAILURES = len(BACKOFF) + 1
 
 SNOOZE_KINDS = ("10m", "1h", "tomorrow")
 _SNOOZE_DELAYS = {"10m": timedelta(minutes=10), "1h": timedelta(hours=1)}
+# Two presses of the same button a few seconds apart (a double tap, a retried callback)
+# target slightly different `until` moments; treat anything this close as the same snooze.
+_SAME_SNOOZE = timedelta(seconds=60)
 
 
 def clean_text(text: str) -> str:
@@ -229,7 +232,8 @@ async def snooze(
             select(Reminder).where(
                 Reminder.parent_id == reminder.id,
                 Reminder.status == ReminderStatus.PENDING,
-                Reminder.due_at == until,
+                Reminder.due_at >= until - _SAME_SNOOZE,
+                Reminder.due_at <= until + _SAME_SNOOZE,
             )
         )
         if existing is not None:
