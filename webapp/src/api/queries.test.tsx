@@ -8,9 +8,10 @@ import { LangProvider } from "../i18n";
 import { habit, me, note } from "../test/fixtures";
 import { installTelegram } from "../test/fakeTelegram";
 import { mockApi } from "../test/mockApi";
-import type { Habit, Me, Note } from "./types";
+import type { Agenda, Habit, Me, Note } from "./types";
 import {
-  createQueryClient, keys, useDeleteNote, useHabits, useNotes, useSetCity, useSetMark, useUpdateMe,
+  createQueryClient, keys, useDeleteNote, useDeleteReminder, useHabits, useNotes, useSetCity, useSetMark,
+  useUpdateMe,
 } from "./queries";
 
 // Every mutation goes through `api()`, which needs a session (`initData()` non-null) before it
@@ -293,5 +294,20 @@ describe("useUpdateMe", () => {
       resolveAt(1, 200, last);
     });
     await waitFor(() => expect(client.getQueryData<Me>(keys.me)).toEqual(last));
+  });
+});
+
+describe("useDeleteReminder", () => {
+  it("removes the item from every cached week at once", async () => {
+    installTelegram();
+    const week = (id: number) => ({ days: [{ date: "2026-09-29", items: [{ kind: "reminder", id, time: "09:00", text: "x", repeat: "none", description: null }] }] });
+    mockApi({ "DELETE /reminders/5": () => ({ status: 204 }), "GET /agenda?from=2026-09-28&to=2026-10-04": { days: [] } });
+    const client = createQueryClient();
+    client.setQueryData(keys.agenda("2026-09-28", "2026-10-04"), week(5));
+    const { result } = renderHook(() => useDeleteReminder(), { wrapper: wrapperFor(client) });
+    act(() => result.current.mutate(5));
+    await waitFor(() =>
+      expect(client.getQueryData<Agenda>(keys.agenda("2026-09-28", "2026-10-04"))?.days[0]?.items ?? []).toEqual([]),
+    );
   });
 });

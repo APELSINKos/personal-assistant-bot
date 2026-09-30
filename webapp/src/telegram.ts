@@ -4,6 +4,7 @@ export interface TgUser {
   id: number;
   first_name?: string;
   language_code?: string;
+  allows_write_to_pm?: boolean;
 }
 
 interface TgButton {
@@ -35,6 +36,8 @@ export interface TgWebApp {
   disableClosingConfirmation?(): void;
   showConfirm?(message: string, callback: (ok: boolean) => void): void;
   openLink?(url: string): void;
+  requestWriteAccess?(callback?: (allowed: boolean) => void): void;
+  openTelegramLink?(url: string): void;
   onEvent(event: "themeChanged", callback: () => void): void;
   offEvent(event: "themeChanged", callback: () => void): void;
   BackButton: TgButton;
@@ -153,6 +156,24 @@ export function confirmAction(message: string): Promise<boolean> {
 export function openLink(url: string): void {
   const app = webApp();
   if (app?.openLink) app.openLink(url);
+  else window.open(url, "_blank", "noopener");
+}
+
+/** The user allowed the bot to write when opening the app (or earlier, from the app). */
+export function allowsWriteToPm(): boolean {
+  return webApp()?.initDataUnsafe.user?.allows_write_to_pm === true;
+}
+
+/** Telegram's own "Allow the bot to message you?" dialog; a soft `false` where unsupported. */
+export function requestWriteAccess(): Promise<boolean> {
+  const app = webApp();
+  if (!app?.requestWriteAccess || !supports("6.9")) return Promise.resolve(false);
+  return new Promise((resolve) => app.requestWriteAccess?.((allowed) => resolve(allowed)));
+}
+
+export function openTelegramLink(url: string): void {
+  const app = webApp();
+  if (app?.openTelegramLink && supports("6.1")) app.openTelegramLink(url);
   else window.open(url, "_blank", "noopener");
 }
 

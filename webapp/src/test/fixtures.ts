@@ -7,6 +7,7 @@ export const me: Me = {
   language_setting: "auto",
   city: { name: "Москва", lat: 55.75, lon: 37.62, timezone: "Europe/Moscow" },
   morning: { enabled: true, time: "08:00" },
+  can_write: true,
 };
 
 export const habit: Habit = {
@@ -43,4 +44,5 @@ export const note: Note = {
 
 export const reminder: Reminder = {
   id: 3, text: "Созвон", due_at: "2026-09-28T16:30:00Z", due_local: "2026-09-28T19:30", status: "pending",
+  repeat: "none", rule: null, description: null,
 };

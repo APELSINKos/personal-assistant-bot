@@ -14,6 +14,7 @@ export interface Me {
   language_setting: "auto" | "ru" | "en";
   city: City;
   morning: { enabled: boolean; time: string };
+  can_write: boolean;
 }
 
 export interface Weather {
@@ -76,12 +77,70 @@ export interface Note {
   updated_at: string;
 }
 
+export type RepeatName = "none" | "daily" | "weekly" | "monthly";
+
+export interface RepeatRule {
+  repeat: Exclude<RepeatName, "none">;
+  time_local: string;
+  weekdays: number | null;
+  interval_weeks: number;
+  month_day: number | null;
+  anchor_date: string;
+}
+
+export interface RuleInput {
+  repeat: Exclude<RepeatName, "none">;
+  time_local: string;
+  weekdays?: number | null;
+  interval_weeks?: 1 | 2;
+  month_day?: number | null;
+  anchor_date?: string | null;
+}
+
+export interface ReminderInput {
+  text: string;
+  due_local?: string;
+  rule?: RuleInput;
+}
+
+export interface AgendaItem {
+  kind: "reminder";
+  id: number;
+  time: string;
+  text: string;
+  repeat: RepeatName;
+  description: string | null;
+}
+
+export interface AgendaDay {
+  date: string;
+  items: AgendaItem[];
+}
+
+export interface Agenda {
+  days: AgendaDay[];
+}
+
+export interface ParsedPhrase {
+  text: string;
+  repeat: RepeatName;
+  date: string | null;
+  time: string | null;
+  weekdays: number | null;
+  interval_weeks: number;
+  month_day: number | null;
+  description: string | null;
+}
+
 export interface Reminder {
   id: number;
   text: string;
   due_at: string;
   due_local: string;
   status: string;
+  repeat: RepeatName;
+  rule: RepeatRule | null;
+  description: string | null;
 }
 
 export interface Health {

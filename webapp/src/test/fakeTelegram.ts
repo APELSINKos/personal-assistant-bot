@@ -32,6 +32,8 @@ export function installTelegram(overrides: Partial<TgWebApp> = {}, version = "8.
     disableClosingConfirmation: vi.fn(),
     showConfirm: vi.fn((_message: string, callback: (ok: boolean) => void) => callback(true)),
     openLink: vi.fn(),
+    requestWriteAccess: vi.fn((callback?: (allowed: boolean) => void) => callback?.(true)),
+    openTelegramLink: vi.fn(),
     onEvent: vi.fn(),
     offEvent: vi.fn(),
     BackButton: button(),

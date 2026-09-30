@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  addDaysIso, bigDate, formatNumber, formatTemp, groupByDay, localTimeHm, localTodayIso,
-  shortDay, timeOf,
+  addDaysIso, bigDate, dayHeading, daysBetween, formatNumber, formatTemp, groupByDay, localTimeHm,
+  localTodayIso, monthGrid, monthTitle, rangeLabel, shortDay, timeOf, weekOf, weekdayShort,
 } from "./format";
 
 describe("format", () => {
@@ -42,5 +42,39 @@ describe("format", () => {
     expect(groups[0]?.items.map((i) => i.id)).toEqual([4, 2]);
     expect(shortDay("2026-10-02", "en")).toBe("Fri, Oct 2");
     expect(timeOf("2026-09-28T19:30")).toBe("19:30");
+  });
+});
+
+describe("calendar helpers", () => {
+  const labels = { today: "Сегодня", tomorrow: "Завтра", afterTomorrow: "Послезавтра", yesterday: "Вчера" };
+
+  it("builds the week around a day, Monday first", () => {
+    expect(weekOf("2026-09-30")).toEqual([
+      "2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04",
+    ]);
+    expect(weekOf("2026-10-04")[0]).toBe("2026-09-28"); // Sunday belongs to the week before
+  });
+
+  it("builds a month grid of whole weeks", () => {
+    const grid = monthGrid("2026-09-15");
+    expect(grid[0]?.[0]).toBe("2026-08-31");
+    expect(grid.at(-1)?.at(-1)).toBe("2026-10-04");
+    expect(grid.every((week) => week.length === 7)).toBe(true);
+  });
+
+  it("names the day relative to today", () => {
+    expect(dayHeading("2026-09-29", "2026-09-29", "ru", labels)).toBe("Сегодня · вторник, 29 сентября");
+    expect(dayHeading("2026-10-01", "2026-09-29", "ru", labels)).toBe("Послезавтра · четверг, 1 октября");
+    expect(dayHeading("2026-09-28", "2026-09-29", "ru", labels)).toBe("Вчера · понедельник, 28 сентября");
+    expect(dayHeading("2026-10-06", "2026-09-29", "ru", labels)).toBe("Вторник, 6 октября");
+    expect(daysBetween("2026-09-29", "2026-10-06")).toBe(7);
+  });
+
+  it("formats short labels", () => {
+    expect(weekdayShort("2026-09-28", "ru")).toBe("пн");
+    expect(weekdayShort("2026-09-28", "en")).toBe("Mon");
+    expect(rangeLabel("2026-09-28", "2026-10-04", "ru")).toBe("28 сент. – 4 окт.");
+    expect(monthTitle("2026-09-15", "ru")).toBe("Сентябрь 2026");
+    expect(monthTitle("2026-09-15", "en")).toBe("September 2026");
   });
 });
