@@ -458,6 +458,12 @@ textarea.input {
   font-size: 12px;
 }
 
+.field__hint {
+  margin: -8px 0 14px;
+  color: var(--error);
+  font-size: 13px;
+}
+
 .button {
   min-height: 48px;
   padding: 0 18px;
@@ -502,6 +508,10 @@ textarea.input {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.segmented--week {
+  grid-template-columns: repeat(7, 1fr);
 }
 
 .segmented__option {

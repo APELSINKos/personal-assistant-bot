@@ -7,6 +7,7 @@ import { Fab } from "../components/Fab";
 import { ErrorState, Loader } from "../components/States";
 import { SwipeRow } from "../components/SwipeRow";
 import { useLang, useT } from "../i18n";
+import { getCalendarDay, setCalendarDay } from "../lib/calendarDay";
 import {
   addDaysIso,
   dayHeading,
@@ -48,7 +49,7 @@ export function CalendarScreen() {
   const lang = useLang();
   const me = useMe();
   const remove = useDeleteReminder();
-  const [picked, setPicked] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string | null>(() => getCalendarDay());
   const [monthOpen, setMonthOpen] = useState(false);
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
 
@@ -74,7 +75,9 @@ export function CalendarScreen() {
     return `${heading(iso)}, ${items.length ? t.calendar.count(items.length) : t.calendar.empty}`;
   };
   const pick = (iso: string) => {
-    setPicked(iso === today ? null : iso);
+    const value = iso === today ? null : iso;
+    setPicked(value);
+    setCalendarDay(value);
     haptic("select");
   };
   const shiftWeek = (weeks: number) => pick(addDaysIso(day, 7 * weeks));
@@ -121,6 +124,7 @@ export function CalendarScreen() {
             className="chip-button"
             onClick={() => {
               setPicked(null);
+              setCalendarDay(null);
               setMonthOpen(false);
             }}
           >

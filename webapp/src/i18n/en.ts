@@ -77,6 +77,7 @@ export const en: Dict = {
     },
     weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     monthDay: "Day of the month",
+    firstDate: "First time",
     saved: "I'll remind you!",
     confirmDiscard: "Leave without saving?",
     writeTitle: "Allow the bot to message you?",

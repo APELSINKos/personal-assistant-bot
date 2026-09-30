@@ -80,6 +80,7 @@ export const ru = {
     },
     weekdays: ["пн", "вт", "ср", "чт", "пт", "сб", "вс"],
     monthDay: "Число месяца",
+    firstDate: "Первый раз",
     saved: "Напомню!",
     confirmDiscard: "Выйти без сохранения?",
     writeTitle: "Разрешить боту писать?",
