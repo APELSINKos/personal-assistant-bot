@@ -498,6 +498,12 @@ textarea.input {
   border-radius: var(--radius-pill);
 }
 
+.segmented--wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .segmented__option {
   min-height: 44px;
   border: 0;

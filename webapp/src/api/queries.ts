@@ -17,7 +17,7 @@ export const keys = {
   agenda: (from: string, to: string) => ["agenda", from, to] as const,
 } as const;
 
-const OWN_TEXT_REASONS = new Set(["past", "duplicate", "phrase_not_understood", "repeat_invalid", "needs_time", "schedule"]);
+const OWN_TEXT_REASONS = new Set(["past", "duplicate", "phrase_not_understood", "repeat_invalid", "needs_time", "schedule", "length"]);
 
 /** The key in the `errors` dictionary that explains a failed request. */
 export function errorCode(error: unknown): string {

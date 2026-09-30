@@ -134,6 +134,7 @@ export const en: Dict = {
     repeat_invalid: "Pick at least one day",
     needs_time: "Set a time",
     schedule: "Set a date and time or a repeat",
+    length: "Too long — make it shorter",
   },
   auth: {
     title: "Open the app again",

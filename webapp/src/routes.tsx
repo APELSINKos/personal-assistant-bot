@@ -36,7 +36,7 @@ export const ROUTES: AppRoute[] = [
   { path: "/reminders", component: ToCalendar },
   { path: "/reminders/new", component: ToCalendar },
   { path: "/habits", component: HabitsScreen },
-  { path: "/habits/new", component: HabitForm, parent: "/habits", hideNav: true },
+  { path: "/habits/new", component: HabitForm, hideNav: true },
   { path: "/notes", component: NotesScreen },
   { path: "/notes/new", component: NoteEditor, hideNav: true },
   { path: "/notes/:id", component: NoteEditor, hideNav: true },
