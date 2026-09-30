@@ -192,3 +192,25 @@ async def test_parse_checks_the_text_length(client, auth) -> None:
     )
     assert response.status_code == 422
     assert (response.json()["field"], response.json()["reason"]) == ("text", "length")
+
+
+async def test_parse_a_phrase_with_no_text_left(client, auth) -> None:
+    # The form keeps its own text field: a phrase that is all schedule still fills the rest.
+    response = await client.post(
+        "/api/reminders/parse", json={"text": "завтра в 9"}, headers=auth()
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["text"], body["date"], body["time"]) == ("", "2026-09-29", "09:00")
+
+
+async def test_parse_gives_the_first_day_of_a_repeat(client, auth) -> None:
+    # Monday 15:00 in Moscow: the first Wednesday of an every-other-week rule is this week's.
+    response = await client.post(
+        "/api/reminders/parse",
+        json={"text": "раз в две недели по средам в 9 практика"},
+        headers=auth(),
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["repeat"], body["interval_weeks"], body["date"]) == ("weekly", 2, "2026-09-30")

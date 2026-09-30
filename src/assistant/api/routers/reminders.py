@@ -18,14 +18,14 @@ from assistant.api.schemas import (
     SnoozeIn,
 )
 from assistant.api.views import reminder_out, user_translator
+from assistant.core.config import LIMITS
 from assistant.core.errors import InvalidInput, NotFound
 from assistant.core.models import Repeat
-from assistant.core.services import phrases, reminders
+from assistant.core.services import phrases, recurrence, reminders
 from assistant.core.services.recurrence import Rule, describe
-from assistant.core.timeutil import local_today, to_local
+from assistant.core.timeutil import SUPPORTED_YEARS, local_today, to_local
 
 router = APIRouter(tags=["reminders"])
-_MIN_YEAR, _MAX_YEAR = 2000, 2100
 
 
 def _wall(due_local: str) -> datetime:
@@ -37,7 +37,7 @@ def _wall(due_local: str) -> datetime:
 
 def _rule(body: RuleIn, today: date) -> Rule:
     anchor = body.anchor_date or today
-    if not _MIN_YEAR <= anchor.year <= _MAX_YEAR:
+    if anchor.year not in SUPPORTED_YEARS:
         raise InvalidInput(field="rule", reason="repeat_invalid")
     repeat = Repeat(body.repeat)
     return Rule(
@@ -98,22 +98,35 @@ async def patch_reminder(
     return reminder_out(reminder, user.timezone, user_translator(user))
 
 
+def _first_day(rule: Rule, now: datetime, tz: str) -> date | None:
+    """The local day a repeat first fires on, counted from now (the form's «Первый раз»)."""
+    try:
+        return to_local(recurrence.next_after(rule, now, tz), tz).date()
+    except InvalidInput:  # a rule that never fires: no first day to show
+        return None
+
+
 @router.post("/reminders/parse", response_model=ParseOut)
 async def parse_reminder(body: ParseIn, user: CurrentUser, state: State) -> ParseOut:
-    local_now = to_local(state.clock(), user.timezone)
+    now = state.clock()
+    local_now = to_local(now, user.timezone)
     parsed = phrases.parse(body.text, local_now)
     if parsed is None:
         raise InvalidInput(field="text", reason="phrase_not_understood")
-    reminders.clean_text(parsed.text)
+    text = parsed.text.strip()
+    # No text left is fine — the form keeps its own text field; only too long is refused.
+    if len(text) > LIMITS.reminder_length:
+        raise InvalidInput(field="text", reason="length", limit=LIMITS.reminder_length)
     rule = parsed.rule(local_now)
     when = parsed.when(local_now)
     if when is None and parsed.repeat is Repeat.NONE:
         # No time yet: still tell the form which day was meant.
         when = parsed.with_time("12:00").when(local_now)
+    day = _first_day(rule, now, user.timezone) if rule else (when.date() if when else None)
     return ParseOut(
-        text=parsed.text,
+        text=text,
         repeat=parsed.repeat.value,
-        date=when.date() if when else None,
+        date=day,
         time=parsed.time if parsed.delta is None else (when.strftime("%H:%M") if when else None),
         weekdays=parsed.weekdays,
         interval_weeks=parsed.interval_weeks,

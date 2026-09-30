@@ -7,6 +7,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 __all__ = [
+    "SUPPORTED_YEARS",
     "UTC",
     "digest_window_date",
     "is_valid_timezone",
@@ -19,6 +20,9 @@ __all__ = [
 ]
 
 _HHMM = re.compile(r"^\s*(\d{1,2}):(\d{1,2})\s*$")
+# The calendar dates from the outside may use; checked before any date arithmetic, since a
+# year far outside it can overflow it.
+SUPPORTED_YEARS = range(2000, 2101)
 
 
 def utcnow() -> datetime:
