@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import threading
+import time
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
@@ -8,7 +11,7 @@ from sqlalchemy import func, select
 
 from assistant.core.errors import InvalidInput, NotFound
 from assistant.core.models import Lesson, ScheduleKind, WeekLabel
-from assistant.core.services import groups, schedule
+from assistant.core.services import groups, ical, schedule
 from assistant.core.services.group_names import GroupHeader
 from tests.stubs import StubCalendars
 
@@ -283,3 +286,23 @@ async def test_a_day_is_the_users_own_day(session, make_user) -> None:
     assert await schedule.lessons_on(session, user, date(2026, 9, 30)) == []
     (lesson,) = await schedule.lessons_on(session, user, date(2026, 10, 1))
     assert lesson.starts_at == utc(2026, 9, 30, 20, 30)
+
+
+async def test_calendars_are_parsed_one_at_a_time(make_user, monkeypatch) -> None:
+    running = most = 0
+    lock = threading.Lock()
+
+    def slow_parse(body: bytes, start: datetime, end: datetime, tz: str) -> ical.Timetable:
+        nonlocal running, most
+        with lock:
+            running += 1
+            most = max(most, running)
+        time.sleep(0.05)
+        with lock:
+            running -= 1
+        return ical.Timetable(None, [], [])
+
+    monkeypatch.setattr(ical, "parse_isolated", slow_parse)
+    user = await make_user()
+    await asyncio.gather(*(schedule._timetable(b"", user, NOW) for _ in range(4)))
+    assert most == 1

@@ -8,7 +8,9 @@ has been downloaded and parsed, so a failure never touches what was there before
 from __future__ import annotations
 
 import asyncio
+import functools
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import delete, func, select
@@ -38,6 +40,10 @@ ALERT_LATE = timedelta(minutes=10)  # an alert this late (the bot was down) is n
 FILE_LIMIT = 2 * 1024 * 1024
 TITLE_LENGTH = 100
 
+# One calendar parse at a time per process: each child may take 15 s and 256 MiB, and uploads can
+# arrive together; queued parses wait here, not in the default thread pool.
+_PARSER = ThreadPoolExecutor(max_workers=1, thread_name_prefix="calendar-parser")
+
 
 def window(now: datetime) -> tuple[datetime, datetime]:
     return now - WINDOW_BEFORE, now + WINDOW_AFTER
@@ -55,7 +61,8 @@ async def get_source(session: AsyncSession, user_id: int) -> ScheduleSource | No
 async def _timetable(body: bytes, user: User, now: datetime) -> ical.Timetable:
     start, end = window(now)
     # The parser runs in a child process with a time limit; wait for it off the event loop.
-    return await asyncio.to_thread(ical.parse_isolated, body, start, end, user.timezone)
+    parse = functools.partial(ical.parse_isolated, body, start, end, user.timezone)
+    return await asyncio.get_running_loop().run_in_executor(_PARSER, parse)
 
 
 async def _replace(session: AsyncSession, user_id: int, table: ical.Timetable) -> None:
