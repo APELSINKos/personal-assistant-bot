@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -164,6 +165,110 @@ async def test_without_a_downloader_nothing_is_refreshed(
     due = CONNECTED + timedelta(hours=7)
     scheduler = Scheduler(bot, sessionmaker, meteo, cbr, clock=lambda: due)
     assert await scheduler.refresh_schedules(due) == 0
+
+
+async def test_a_tick_does_not_wait_for_the_refresh(
+    bot, sessionmaker, session, meteo, cbr, calendars, make_user, fake, monkeypatch
+) -> None:
+    await connected(session, make_user, calendars)
+    moment = LESSON - timedelta(minutes=15)
+    scheduler = at(moment, bot, sessionmaker, meteo, cbr, calendars)
+    passes: list[datetime] = []
+    release, over = asyncio.Event(), asyncio.Event()
+
+    async def slow_refresh(now: datetime) -> int:
+        passes.append(now)
+        await release.wait()  # a slow download, or a parse queued behind users' uploads
+        over.set()
+        return 1
+
+    monkeypatch.setattr(scheduler, "refresh_schedules", slow_refresh)
+    await asyncio.wait_for(scheduler.tick(), 1)
+    assert fake.sent_texts() == [ALERT]  # the lesson alert went out on time
+    await asyncio.wait_for(scheduler.tick(), 1)
+    assert passes == [moment]  # no second refresh beside the one in flight
+    release.set()
+    await asyncio.wait_for(over.wait(), 1)
+    over.clear()
+    await scheduler.tick()
+    await asyncio.wait_for(over.wait(), 1)
+    assert passes == [moment, moment]  # once it is over, the next tick starts the next one
+
+
+async def test_a_failing_refresh_is_logged(
+    bot, sessionmaker, meteo, cbr, calendars, monkeypatch, caplog
+) -> None:
+    scheduler = at(CONNECTED, bot, sessionmaker, meteo, cbr, calendars)
+    failed = asyncio.Event()
+
+    async def broken(now: datetime) -> int:
+        failed.set()
+        raise RuntimeError("db is on fire")
+
+    monkeypatch.setattr(scheduler, "refresh_schedules", broken)
+    with caplog.at_level(logging.ERROR, logger="assistant.bot.scheduler"):
+        await scheduler.tick()
+        await asyncio.wait_for(failed.wait(), 1)
+    [record] = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert record.getMessage() == "scheduler job schedules failed"
+    assert record.exc_info is not None
+
+
+async def test_stop_lets_the_refresh_in_flight_finish(
+    bot, sessionmaker, meteo, cbr, calendars, monkeypatch
+) -> None:
+    scheduler = Scheduler(
+        bot, sessionmaker, meteo, cbr, interval=3600, clock=lambda: CONNECTED, calendars=calendars
+    )
+    started, release, finished = asyncio.Event(), asyncio.Event(), []
+
+    async def slow_refresh(now: datetime) -> int:
+        started.set()
+        await release.wait()
+        finished.append(now)  # its writes
+        return 1
+
+    monkeypatch.setattr(scheduler, "refresh_schedules", slow_refresh)
+    task = asyncio.create_task(scheduler.run())
+    await asyncio.wait_for(started.wait(), 1)
+    scheduler.stop()
+    await asyncio.sleep(0.05)
+    assert not task.done()  # run() waits for the refresh instead of leaving it behind
+    release.set()
+    await asyncio.wait_for(task, 1)
+    assert finished == [CONNECTED] and not task.cancelled()
+
+
+async def test_a_cancelled_run_cancels_the_refresh_too(
+    bot, sessionmaker, meteo, cbr, calendars, monkeypatch
+) -> None:
+    scheduler = Scheduler(
+        bot, sessionmaker, meteo, cbr, interval=3600, clock=lambda: CONNECTED, calendars=calendars
+    )
+    stuck, refreshing, refresh_cancelled = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    async def hanging_reminders(now: datetime) -> int:
+        stuck.set()
+        await asyncio.Event().wait()  # Telegram does not answer
+        return 0
+
+    async def hanging_refresh(now: datetime) -> int:
+        refreshing.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            refresh_cancelled.set()
+            raise
+        return 0
+
+    monkeypatch.setattr(scheduler, "deliver_reminders", hanging_reminders)
+    monkeypatch.setattr(scheduler, "refresh_schedules", hanging_refresh)
+    task = asyncio.create_task(scheduler.run())
+    await asyncio.wait_for(asyncio.gather(stuck.wait(), refreshing.wait()), 1)
+    task.cancel()  # the bot's shutdown grace ran out in the middle of a tick
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await asyncio.wait_for(refresh_cancelled.wait(), 1)  # nothing is left running
 
 
 async def test_cleanup_forgets_old_alerts(

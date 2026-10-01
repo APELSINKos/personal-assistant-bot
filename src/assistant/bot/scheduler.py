@@ -1,4 +1,6 @@
-"""Background delivery inside the bot process: reminders with retries, the morning digest."""
+"""Background delivery inside the bot process: reminders with retries, lesson alerts, the morning
+digest. Schedule refreshes run beside the ticks: a calendar download or parse takes seconds, and
+reminders and lesson alerts must not wait for it."""
 
 from __future__ import annotations
 
@@ -40,7 +42,7 @@ LATE_AFTER = timedelta(minutes=5)
 FSM_TTL = timedelta(hours=24)
 CLEANUP_EVERY = timedelta(hours=1)
 ALERTS_KEPT = timedelta(days=2)  # sent lesson alerts are remembered this long
-REFRESH_BATCH = 2  # schedule sources refreshed per tick: a download each, keep ticks short
+REFRESH_BATCH = 2  # sources per refresh pass, a download each: stop() waits for the pass in flight
 
 
 @dataclass(frozen=True)
@@ -91,27 +93,36 @@ class Scheduler:
         self._clock = clock
         self._last_cleanup: datetime | None = None
         self._stopping = asyncio.Event()
+        self._refreshing: asyncio.Task[None] | None = None
 
     async def run(self) -> None:
         log.info("Scheduler started, every %.0f s", self._interval)
-        while not self._stopping.is_set():
-            await self.tick()
-            # Sleep until the next tick, but wake up at once when stop() is called.
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(self._stopping.wait(), timeout=self._interval)
+        try:
+            while not self._stopping.is_set():
+                await self.tick()
+                # Sleep until the next tick, but wake up at once when stop() is called.
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(self._stopping.wait(), timeout=self._interval)
+            if self._refreshing is not None:
+                await self._refreshing
+        finally:
+            # Cancelled (the shutdown grace ran out): the refresh must not outlive the ticks.
+            if self._refreshing is not None:
+                self._refreshing.cancel()
         log.info("Scheduler stopped")
 
     def stop(self) -> None:
-        """Finish the current tick (its writes included) and return from run()."""
+        """Finish the current tick and the schedule refresh in flight (their writes included)
+        and return from run()."""
         self._stopping.set()
 
     async def tick(self) -> None:
         now = self._clock()
+        self._start_refresh(now)
         jobs: list[tuple[str, Callable[[datetime], Awaitable[int]]]] = [
             ("reminders", self.deliver_reminders),
             ("lessons", self.send_lesson_alerts),
             ("digests", self.send_digests),
-            ("schedules", self.refresh_schedules),
         ]
         if self._last_cleanup is None or now - self._last_cleanup >= CLEANUP_EVERY:
             jobs.append(("cleanup", self.cleanup))
@@ -121,6 +132,22 @@ class Scheduler:
                 await job(now)
             except Exception:
                 log.exception("scheduler job %s failed", name)
+
+    def _start_refresh(self, now: datetime) -> None:
+        # A refresh downloads and parses calendars, and a parse may queue behind users' uploads:
+        # it runs as a task of its own, one at a time; the first tick after it ends starts the
+        # next one.
+        if self._calendars is None:
+            return
+        if self._refreshing is not None and not self._refreshing.done():
+            return
+        self._refreshing = asyncio.create_task(self._refresh(now), name="schedule-refresh")
+
+    async def _refresh(self, now: datetime) -> None:
+        try:
+            await self.refresh_schedules(now)
+        except Exception:
+            log.exception("scheduler job schedules failed")
 
     async def _send(
         self, chat_id: int, text: str, markup: InlineKeyboardMarkup | None = None
@@ -324,7 +351,7 @@ class Scheduler:
             await session.commit()
 
     async def refresh_schedules(self, now: datetime) -> int:
-        """Refresh the schedule sources that are due, a few per tick."""
+        """Refresh the schedule sources that are due, a few per pass."""
         if self._calendars is None:
             return 0
         async with self._sessionmaker() as session:
