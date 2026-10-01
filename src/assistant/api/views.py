@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from assistant.api.schemas import (
     BestStreak,
     CityOut,
@@ -13,15 +15,17 @@ from assistant.api.schemas import (
     RatesOut,
     ReminderOut,
     RuleOut,
+    ScheduleOut,
     TodayHabits,
+    TodayLesson,
     TodayOut,
     TodayReminder,
     WeatherOut,
 )
 from assistant.core.clients.cbr import Rates
 from assistant.core.i18n import Translator, resolve_language, translator
-from assistant.core.models import Note, Reminder, User
-from assistant.core.services import reminders
+from assistant.core.models import Note, Reminder, ScheduleSource, User
+from assistant.core.services import reminders, schedule
 from assistant.core.services.digest import TodayData
 from assistant.core.services.habits import HabitStats
 from assistant.core.services.recurrence import Rule, describe
@@ -146,4 +150,33 @@ def today_out(data: TodayData, t: Translator) -> TodayOut:
         best_streak=BestStreak(name=data.best_streak[0], days=data.best_streak[1])
         if data.best_streak is not None
         else None,
+        has_schedule=data.has_schedule,
+        lessons=[
+            TodayLesson(
+                time=lesson.starts_at.astimezone(zone).strftime("%H:%M"),
+                end=lesson.ends_at.astimezone(zone).strftime("%H:%M"),
+                title=lesson.title,
+                kind=lesson.kind,
+                room=lesson.room,
+                starts_at=lesson.starts_at,
+                ends_at=lesson.ends_at,
+            )
+            for lesson in data.lessons
+        ],
+        week_label=data.week_label,
+    )
+
+
+def schedule_out(source: ScheduleSource, now: datetime, lessons_ahead: int) -> ScheduleOut:
+    return ScheduleOut(
+        kind=source.kind.value,
+        title=source.title,
+        mirea_id=source.mirea_id,
+        url=source.url,
+        fetched_at=source.fetched_at,
+        ok_at=source.ok_at,
+        error=source.error,
+        stale=schedule.is_stale(source, now),
+        lesson_reminder_minutes=source.lesson_reminder_minutes,
+        lessons_ahead=lessons_ahead,
     )

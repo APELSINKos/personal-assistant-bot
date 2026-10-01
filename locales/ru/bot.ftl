@@ -5,6 +5,7 @@ menu-reminders = ⏰ Напоминания
 menu-notes = 📝 Заметки
 menu-habits = 🎯 Привычки
 menu-rates = 💱 Курс валют
+menu-schedule = 🎓 Расписание
 menu-settings = ⚙️ Настройки
 menu-cancel = ❌ Отмена
 
@@ -74,6 +75,7 @@ welcome =
     📝 Заметки — сохраню, чтобы не забыть
     🎯 Привычки — отмечай и держи серию
     💱 Курс валют — доллар и евро по ЦБ РФ
+    🎓 Расписание — пары твоей группы МИРЭА или любого календаря
     ⚙️ Настройки — город, утренняя сводка и язык
 
     Выбери раздел в меню ниже 👇
@@ -83,8 +85,8 @@ app-open = Открой приложение кнопкой ниже 👇
 menu-button = Открыть
 stale-button = Эта кнопка устарела — открой раздел заново из меню.
 bot-name = Личный помощник
-bot-short-description = Погода с советами, напоминания, заметки, привычки и курсы валют — в одном чате.
-bot-description = Личный помощник: умная погода, напоминания, заметки, трекер привычек, курсы валют и утренняя сводка, которую бот присылает сам.
+bot-short-description = Погода с советами, напоминания, расписание пар, заметки, привычки и курсы валют — в одном чате.
+bot-description = Личный помощник: умная погода, напоминания, расписание пар, заметки, трекер привычек, курсы валют и утренняя сводка, которую бот присылает сам.
 cmd-start = Главное меню
 cmd-app = Открыть приложение
 cmd-settings = Настройки
@@ -115,6 +117,11 @@ today-reminders = { $count ->
     }
 list-item-time = • { $time } — { $text }
 list-more = …и ещё { $count }
+today-lessons = 🎓 Пары:
+today-lessons-week = 🎓 Пары · { $week }:
+today-lessons-none = 🎓 Пар сегодня нет
+lesson-line = • { $start }–{ $end } { $lesson }
+lesson-line-start = • { $start } { $lesson }
 today-habits = 🎯 Привычки: { $done } из { $total }
 today-habits-none = 🎯 Привычек пока нет
 today-streak = 🔥 Лучшая серия: «{ $name }» — { $count } { $count ->
@@ -269,3 +276,62 @@ repeat-weekends = по выходным в { $time }
 repeat-weekly = { $days } в { $time }
 repeat-biweekly = раз в 2 недели: { $days } в { $time }
 repeat-monthly = каждый месяц { $day }-го в { $time }
+
+## Schedule
+lesson-alert = 🎓 Через { $minutes } мин: { $lesson }
+day-yesterday = Вчера
+schedule-intro =
+    🎓 Расписание пар
+
+    Подключи расписание — пары появятся здесь, в «Моём дне», утренней сводке и календаре приложения.
+button-find-group = 🔎 Найти группу МИРЭА
+button-by-link = 🔗 По ссылке
+button-by-file = 📎 Файлом .ics
+schedule-ask-group = Напиши название группы, например ИКБО-63-24:
+hint-group = Напиши название группы, например ИКБО-63-24.
+schedule-group-not-found = Не нашёл группу «{ $name }». Проверь название — например, ИКБО-63-24:
+schedule-group-choose = Нашлось несколько групп — выбери свою:
+schedule-directory-empty = Справочник групп МИРЭА ещё не готов — попробуй позже или подключи расписание по ссылке.
+schedule-ask-link = Пришли ссылку на календарь — webcal://… или https://…
+hint-link = Пришли ссылку на календарь, например webcal://…
+schedule-ask-file = Пришли файл календаря .ics (до 2 МБ).
+hint-file = Пришли файл календаря .ics.
+schedule-connected = ✅ Расписание подключено: { $title }. Пар впереди: { $count }.
+schedule-connected-empty = ✅ Расписание подключено: { $title }. Но занятий на ближайшие месяцы в нём нет.
+schedule-error-forbidden_host = ⚠️ Эта ссылка не подходит: нужна ссылка https:// или webcal:// на календарь в интернете.
+schedule-error-unreachable = ⚠️ Не получилось скачать календарь. Проверь ссылку или попробуй позже.
+schedule-error-too_large = ⚠️ Календарь слишком большой или сложный — разобрать его не получится.
+schedule-error-not_calendar = ⚠️ Это не похоже на календарь .ics.
+schedule-error-group = ⚠️ Этой группы уже нет в справочнике — найди её заново.
+schedule-day = 🎓 { $day }
+schedule-day-week = 🎓 { $day } · { $week }
+schedule-week = 🎓 { $range }
+schedule-week-label = 🎓 { $week } · { $range }
+schedule-free = Пар нет 🎉
+schedule-stale = ⚠️ Данные от { $date } — источник пока недоступен.
+button-schedule-today = Сегодня
+button-schedule-tomorrow = Завтра
+button-schedule-week = 📅 Неделя
+button-schedule-day = 📅 День
+button-schedule-source = ⚙️ Источник
+schedule-source-title = ⚙️ Источник расписания
+schedule-source-mirea = Группа МИРЭА: { $title }
+schedule-source-url = По ссылке: { $title }
+schedule-source-file = Файл: { $title }
+schedule-source-untitled = календарь без названия
+schedule-updated = Обновлено: { $when }
+schedule-failed = ⚠️ Последнее обновление не удалось.
+schedule-alerts-off = 🔕 Напоминания о парах выключены
+schedule-alerts-on = 🔔 Напоминаю о парах за { $minutes } мин
+button-refresh = 🔄 Обновить
+button-lesson-alerts = 🔔 Напоминания о парах
+button-change-source = 🔁 Сменить источник
+button-disconnect = 🗑 Отключить
+schedule-refresh-wait = Только что обновлял — подожди минуту
+schedule-too-many = ⏳ Слишком много попыток подряд — попробуй через { $seconds } с.
+schedule-alerts-pick = За сколько минут до пары напоминать?
+button-alerts-off = Не напоминать
+button-alerts-minutes = За { $minutes } мин
+schedule-disconnect-ask = Отключить расписание? Пары пропадут из календаря и «Моего дня».
+button-disconnect-yes = Да, отключить
+schedule-disconnected = Расписание отключено.

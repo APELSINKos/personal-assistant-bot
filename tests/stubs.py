@@ -5,7 +5,7 @@ from typing import Any
 
 from assistant.core.clients.cbr import Rate, Rates
 from assistant.core.clients.openmeteo import City
-from assistant.core.errors import UpstreamUnavailable
+from assistant.core.errors import InvalidInput, UpstreamUnavailable
 
 
 class StubMeteo:
@@ -45,3 +45,23 @@ class StubCbr:
         if self.fail:
             raise UpstreamUnavailable(service="cbr")
         return Rates(date(2026, 9, 28), Rate(84.1975, -0.3118), Rate(96.6671, -0.8313))
+
+
+class StubCalendars:
+    """Calendars by URL; a URL it does not know answers like a dead link."""
+
+    def __init__(self) -> None:
+        self.bodies: dict[str, bytes] = {}
+        self.errors: dict[str, str] = {}  # URL → the reason of InvalidInput(field="url")
+        self.requests: list[str] = []
+
+    async def fetch(self, url: str) -> bytes:
+        self.requests.append(url)
+        if url in self.errors:
+            raise InvalidInput(field="url", reason=self.errors[url])
+        if url not in self.bodies:
+            raise InvalidInput(field="url", reason="unreachable")
+        return self.bodies[url]
+
+    async def head(self, url: str, limit: int = 4096) -> bytes:
+        return (await self.fetch(url))[:limit]

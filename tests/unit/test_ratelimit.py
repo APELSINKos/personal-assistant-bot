@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from assistant.api.ratelimit import RateLimiter
+from assistant.core.ratelimit import RateLimiter
 
 
 def test_limit_answers_the_exact_wait_and_frees_up_after_the_window() -> None:

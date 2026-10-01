@@ -6,7 +6,18 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, Index, MetaData, String, Text, event
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    DateTime,
+    ForeignKey,
+    Index,
+    LargeBinary,
+    MetaData,
+    String,
+    Text,
+    event,
+)
 from sqlalchemy.engine import Dialect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
@@ -76,6 +87,23 @@ class RepeatType(TypeDecorator[Repeat]):
 
     def process_result_value(self, value: str | None, dialect: Dialect) -> Repeat | None:
         return None if value is None else Repeat(value)
+
+
+class ScheduleKind(StrEnum):
+    MIREA = "mirea"
+    URL = "url"
+    FILE = "file"
+
+
+class ScheduleKindType(TypeDecorator[ScheduleKind]):
+    impl = String(8)
+    cache_ok = True
+
+    def process_bind_param(self, value: ScheduleKind | None, dialect: Dialect) -> str | None:
+        return None if value is None else ScheduleKind(value).value
+
+    def process_result_value(self, value: str | None, dialect: Dialect) -> ScheduleKind | None:
+        return None if value is None else ScheduleKind(value)
 
 
 class User(Base):
@@ -181,3 +209,97 @@ class FsmState(Base):
     state: Mapped[str | None] = mapped_column(String(128))
     data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
+
+
+class MireaGroup(Base):
+    """A MIREA group with a current timetable, found by the directory crawl (services/groups)."""
+
+    __tablename__ = "mirea_groups"
+    __table_args__ = (Index("ix_mirea_groups_name_key", "name_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)  # MIREA's own id
+    name: Mapped[str] = mapped_column(String(40))
+    name_key: Mapped[str] = mapped_column(String(40))
+    semester_end: Mapped[date]
+    seen_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class ScheduleSource(Base):
+    """The one timetable of a user: a MIREA group, a link, or an uploaded file."""
+
+    __tablename__ = "schedule_sources"
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+        autoincrement=False,
+    )
+    kind: Mapped[ScheduleKind] = mapped_column(ScheduleKindType())
+    mirea_id: Mapped[int | None]
+    url: Mapped[str | None] = mapped_column(String(2000))
+    title: Mapped[str | None] = mapped_column(String(100))
+    # Only a file keeps its calendar: links and groups are downloaded again on every refresh.
+    body: Mapped[bytes | None] = mapped_column(LargeBinary)
+    fetched_at: Mapped[datetime] = mapped_column(UTCDateTime)  # the last attempt
+    ok_at: Mapped[datetime | None] = mapped_column(UTCDateTime)  # the last success
+    error: Mapped[str | None] = mapped_column(String(32))  # the reason of the last failure
+    next_refresh_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    lesson_reminder_minutes: Mapped[int | None]  # None: no alerts before lessons
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class Lesson(Base):
+    """One lesson of the source's calendar, already expanded; replaced as a whole on refresh."""
+
+    __tablename__ = "lessons"
+    __table_args__ = (Index("ix_lessons_user", "user_id", "starts_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"))
+    uid: Mapped[str] = mapped_column(String(255))  # the calendar's UID of the series
+    starts_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    ends_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    title: Mapped[str] = mapped_column(String(200))
+    kind: Mapped[str | None] = mapped_column(String(8))  # «ЛК», «ПР», … (MIREA only)
+    room: Mapped[str | None] = mapped_column(String(100))
+
+
+class WeekLabel(Base):
+    """An all-day «5 неделя» event of the calendar."""
+
+    __tablename__ = "week_labels"
+    __table_args__ = (Index("ix_week_labels_user", "user_id", "start_date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"))
+    start_date: Mapped[date]
+    end_date: Mapped[date]  # exclusive
+    label: Mapped[str] = mapped_column(String(40))
+
+
+class LessonAlert(Base):
+    """An alert already sent. Keyed by the calendar's UID and the start, it outlives the
+    rebuilds of `lessons`, so a refresh never makes an alert go out twice."""
+
+    __tablename__ = "lesson_alerts"
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+        autoincrement=False,
+    )
+    uid: Mapped[str] = mapped_column(String(255), primary_key=True)
+    starts_at: Mapped[datetime] = mapped_column(UTCDateTime, primary_key=True)
+    sent_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class JobRun(Base):
+    """When a long background job last finished; survives restarts."""
+
+    __tablename__ = "job_runs"
+
+    name: Mapped[str] = mapped_column(String(32), primary_key=True)
+    finished_at: Mapped[datetime] = mapped_column(UTCDateTime)
+    info: Mapped[str | None] = mapped_column(String(200))

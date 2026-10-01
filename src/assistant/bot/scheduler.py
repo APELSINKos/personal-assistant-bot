@@ -1,10 +1,13 @@
-"""Background delivery inside the bot process: reminders with retries, the morning digest."""
+"""Background delivery inside the bot process: reminders with retries, lesson alerts, the morning
+digest. Schedule refreshes run beside the ticks: a calendar download or parse takes seconds, and
+reminders and lesson alerts must not wait for it."""
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
 import logging
+import math
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -25,11 +28,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from assistant.bot import texts
 from assistant.bot.keyboards import fired_markup
+from assistant.core.clients.calendars import Calendars
 from assistant.core.clients.cbr import CbrClient
 from assistant.core.clients.openmeteo import OpenMeteoClient
+from assistant.core.errors import NotFound
 from assistant.core.i18n import Translator, resolve_language, translator
-from assistant.core.models import FsmState, Reminder, User
-from assistant.core.services import digest, reminders, users
+from assistant.core.models import FsmState, Lesson, Reminder, User
+from assistant.core.services import digest, reminders, schedule, users
 from assistant.core.timeutil import digest_window_date, now_local, to_local, utcnow
 
 log = logging.getLogger(__name__)
@@ -37,6 +42,8 @@ log = logging.getLogger(__name__)
 LATE_AFTER = timedelta(minutes=5)
 FSM_TTL = timedelta(hours=24)
 CLEANUP_EVERY = timedelta(hours=1)
+ALERTS_KEPT = timedelta(days=2)  # sent lesson alerts are remembered this long
+REFRESH_BATCH = 2  # sources per refresh pass, a download each: stop() waits for the pass in flight
 
 
 @dataclass(frozen=True)
@@ -76,8 +83,10 @@ class Scheduler:
         *,
         interval: float = 20.0,
         clock: Callable[[], datetime] = utcnow,
+        calendars: Calendars | None = None,
     ) -> None:
         self._bot = bot
+        self._calendars = calendars
         self._sessionmaker = sessionmaker
         self._meteo = meteo
         self._cbr = cbr
@@ -85,24 +94,38 @@ class Scheduler:
         self._clock = clock
         self._last_cleanup: datetime | None = None
         self._stopping = asyncio.Event()
+        self._refreshing: asyncio.Task[None] | None = None
 
     async def run(self) -> None:
         log.info("Scheduler started, every %.0f s", self._interval)
-        while not self._stopping.is_set():
-            await self.tick()
-            # Sleep until the next tick, but wake up at once when stop() is called.
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(self._stopping.wait(), timeout=self._interval)
+        try:
+            while not self._stopping.is_set():
+                await self.tick()
+                # Sleep until the next tick, but wake up at once when stop() is called.
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(self._stopping.wait(), timeout=self._interval)
+            if self._refreshing is not None:
+                await self._refreshing
+        finally:
+            # Cancelled (the shutdown grace ran out): the refresh must not outlive the ticks, and
+            # run() returns only once it has wound down — its session closes before the engine
+            # is disposed of.
+            if self._refreshing is not None:
+                self._refreshing.cancel()
+                await asyncio.wait({self._refreshing})
         log.info("Scheduler stopped")
 
     def stop(self) -> None:
-        """Finish the current tick (its writes included) and return from run()."""
+        """Finish the current tick and the schedule refresh in flight (their writes included)
+        and return from run()."""
         self._stopping.set()
 
     async def tick(self) -> None:
         now = self._clock()
+        self._start_refresh(now)
         jobs: list[tuple[str, Callable[[datetime], Awaitable[int]]]] = [
             ("reminders", self.deliver_reminders),
+            ("lessons", self.send_lesson_alerts),
             ("digests", self.send_digests),
         ]
         if self._last_cleanup is None or now - self._last_cleanup >= CLEANUP_EVERY:
@@ -113,6 +136,22 @@ class Scheduler:
                 await job(now)
             except Exception:
                 log.exception("scheduler job %s failed", name)
+
+    def _start_refresh(self, now: datetime) -> None:
+        # A refresh downloads and parses calendars, and a parse may queue behind users' uploads:
+        # it runs as a task of its own, one at a time; the first tick after it ends starts the
+        # next one.
+        if self._calendars is None:
+            return
+        if self._refreshing is not None and not self._refreshing.done():
+            return
+        self._refreshing = asyncio.create_task(self._refresh(now), name="schedule-refresh")
+
+    async def _refresh(self, now: datetime) -> None:
+        try:
+            await self.refresh_schedules(now)
+        except Exception:
+            log.exception("scheduler job schedules failed")
 
     async def _send(
         self, chat_id: int, text: str, markup: InlineKeyboardMarkup | None = None
@@ -280,10 +319,83 @@ class Scheduler:
             await session.commit()
         return delivery
 
+    async def send_lesson_alerts(self, now: datetime) -> int:
+        """«🎓 Через 15 мин: …» for the lessons whose alert is due. An alert is remembered only
+        once Telegram took it (or refused it for good); a network failure leaves it for the next
+        tick, as long as it is still in time."""
+        async with self._sessionmaker() as session:
+            due = await schedule.due_alerts(session, now)
+        sent = 0
+        blocked: set[int] = set()
+        for lesson, user, _minutes in due:
+            if user.id in blocked:
+                continue
+            left = max(1, math.ceil((lesson.starts_at - now).total_seconds() / 60))
+            delivery = await self._send(
+                user.id, texts.lesson_alert_text(lesson, left, _translator(user))
+            )
+            if delivery.retry_after is not None:
+                break
+            if delivery.ok or delivery.permanent:
+                await self._remember_alert(lesson, now)
+                sent += int(delivery.ok)
+            elif delivery.blocked:
+                async with self._sessionmaker() as session:
+                    await users.mark_blocked(session, user.id)
+                    await session.commit()
+                blocked.add(user.id)
+            else:
+                log.warning("lesson alert for user %s not delivered: %s", user.id, delivery.error)
+                break
+        return sent
+
+    async def _remember_alert(self, lesson: Lesson, now: datetime) -> None:
+        async with self._sessionmaker() as session:
+            await schedule.mark_alerted(session, lesson, now)
+            await session.commit()
+
+    async def refresh_schedules(self, now: datetime) -> int:
+        """Refresh the schedule sources that are due, a few per pass."""
+        if self._calendars is None:
+            return 0
+        async with self._sessionmaker() as session:
+            due = await schedule.due_sources(session, now, REFRESH_BATCH)
+        refreshed = 0
+        for user_id in due:
+            try:
+                async with self._sessionmaker() as session:
+                    user = await session.get(User, user_id)
+                    if user is None:
+                        continue
+                    source = await schedule.refresh(session, user, self._calendars, now)
+                    error = source.error
+                    await session.commit()
+            except NotFound:
+                continue  # the schedule was disconnected meanwhile
+            except Exception as failure:
+                # An unexpected failure (the parser child did not start, a busy database) would
+                # keep this source first in the queue: every pass would download it again and
+                # fail the same way while the others wait. It waits for its next turn instead.
+                log.warning(
+                    "schedule of user %s not refreshed: %r", user_id, failure, exc_info=True
+                )
+                await self._postpone(user_id, now)
+                continue
+            if error:
+                log.warning("schedule of user %s not refreshed: %s", user_id, error)
+            refreshed += 1
+        return refreshed
+
+    async def _postpone(self, user_id: int, now: datetime) -> None:
+        async with self._sessionmaker() as session:
+            await schedule.postpone(session, user_id, now)
+            await session.commit()
+
     async def cleanup(self, now: datetime) -> int:
         async with self._sessionmaker() as session:
             result = await session.execute(
                 delete(FsmState).where(FsmState.updated_at < now - FSM_TTL)
             )
+            alerts = await schedule.forget_alerts(session, now - ALERTS_KEPT)
             await session.commit()
-        return int(result.rowcount)  # type: ignore[attr-defined]
+        return int(result.rowcount) + alerts  # type: ignore[attr-defined]

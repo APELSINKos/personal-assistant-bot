@@ -7,6 +7,7 @@ import { MoreScreen } from "./screens/More";
 import { NoteEditor } from "./screens/NoteEditor";
 import { NotesScreen } from "./screens/Notes";
 import { ReminderForm } from "./screens/ReminderForm";
+import { ScheduleScreen } from "./screens/Schedule";
 import { TodayScreen } from "./screens/Today";
 
 function ToCalendar() {
@@ -41,4 +42,5 @@ export const ROUTES: AppRoute[] = [
   { path: "/notes/new", component: NoteEditor, hideNav: true },
   { path: "/notes/:id", component: NoteEditor, hideNav: true },
   { path: "/more", component: MoreScreen },
+  { path: "/more/schedule", component: ScheduleScreen, parent: "/more" },
 ];

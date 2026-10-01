@@ -126,3 +126,16 @@ export function monthTitle(iso: string, lang: Lang): string {
   const month = new Intl.DateTimeFormat(lang, { timeZone: "UTC", month: "long" }).format(date);
   return capitalize(`${month} ${date.getUTCFullYear()}`);
 }
+
+/** «ЛК · 10:40–12:10 · А-16» — a lesson's kind, time and room, whichever it has; only the start
+ *  for one that ends when it starts (an event without DTEND or DURATION). */
+export function lessonMeta(kind: string | null, time: string, end: string, room: string | null): string {
+  return [kind, end === time ? time : `${time}–${end}`, room].filter(Boolean).join(" · ");
+}
+
+/** «28 сент., 15:00» — a moment in the city's zone. */
+export function shortMoment(iso: string, timeZone: string, lang: Lang): string {
+  return new Intl.DateTimeFormat(lang, {
+    timeZone, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).format(new Date(iso));
+}

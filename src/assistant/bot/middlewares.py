@@ -69,6 +69,8 @@ class UserContext(BaseMiddleware):
             state=data["state"],
             meteo=data["meteo"],
             cbr=data["cbr"],
+            calendars=data["calendars"],
+            attempts=data["attempts"],
             settings=data["settings"],
         )
         return await handler(event, data)

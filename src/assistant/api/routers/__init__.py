@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from assistant.api.routers import agenda, habits, health, me, notes, reminders, today
+from assistant.api.routers import (
+    agenda,
+    habits,
+    health,
+    me,
+    notes,
+    reminders,
+    schedule,
+    today,
+)
 
 ALL: list[APIRouter] = [
     health.router,
@@ -14,4 +23,5 @@ ALL: list[APIRouter] = [
     reminders.router,
     habits.router,
     agenda.router,
+    schedule.router,
 ]

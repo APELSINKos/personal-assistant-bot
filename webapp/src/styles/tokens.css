@@ -27,6 +27,10 @@
   --accent-text: #7cf5c4;
   --on-accent: #0a0913;
   --error: #ff7a90;
+  /* Error-coloured text. The glows are fixed, so text can scroll over the brightest teal one,
+     where #ff7a90 measures 3.98:1 on the page and 3.60:1 on a card; #ffa3b2 measures at least
+     5.25:1 and 4.75:1 there, and 6.2:1 under the danger button's label. */
+  --error-text: #ffa3b2;
   /* White on #ff7a90 is only ~2.5:1; the dark background gives ~7.9:1. */
   --on-error: #0a0913;
 }
@@ -45,6 +49,9 @@
   --accent-text: #0b7a5c;
   --on-accent: #1c1830;
   --error: #d63b5c;
+  /* Error-coloured text: --error itself measures 3.48:1 over the page's lavender glow; this
+     darker red at least 4.84:1 on the page and 5.73:1 on a card (rendered pixels, worst case). */
+  --error-text: #b62545;
   /* White on #d63b5c is ~4.53:1, which still clears AA. */
   --on-error: #fff;
 }

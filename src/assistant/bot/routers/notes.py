@@ -5,7 +5,7 @@ from __future__ import annotations
 from aiogram import Bot, F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from assistant.bot import replies
+from assistant.bot import replies, texts
 from assistant.bot.context import Ctx
 from assistant.bot.keyboards import (
     PAGE_SIZE,
@@ -42,11 +42,13 @@ def notes_view(items: list[Note], page: int, t: Translator) -> tuple[str, Inline
                 )
             ]
         )
+    tail: list[str] = []
     if pages > 1:
-        lines += ["", t("page", current=page + 1, total=pages)]
+        tail = ["", t("page", current=page + 1, total=pages)]
         rows.append(page_buttons(t, page, pages, lambda p: NoteCb(action="page", page=p).pack()))
     rows.append(add)
-    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+    # Five notes of emoji are past Telegram's limit; each keeps its delete button anyway.
+    return texts.fit(lines, tail), InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def _view(ctx: Ctx, page: int) -> tuple[str, InlineKeyboardMarkup]:

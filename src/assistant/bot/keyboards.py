@@ -24,9 +24,15 @@ MENU_KEYS: tuple[str, ...] = (
     "notes",
     "habits",
     "rates",
+    "schedule",
     "settings",
 )
-_ROWS = (("weather", "today"), ("reminders", "notes"), ("habits", "rates"), ("settings",))
+_ROWS = (
+    ("weather", "today"),
+    ("reminders", "notes"),
+    ("habits", "rates"),
+    ("schedule", "settings"),
+)
 
 
 class NoteCb(CallbackData, prefix="n"):
@@ -56,6 +62,11 @@ class HabitCb(CallbackData, prefix="h"):
     action: str
     id: int = 0
     value: str = ""
+
+
+class ScheduleCb(CallbackData, prefix="sc"):
+    action: str
+    value: str = ""  # an ISO date, a group number or alert minutes
 
 
 class SettingsCb(CallbackData, prefix="s"):

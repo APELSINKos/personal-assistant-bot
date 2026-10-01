@@ -1,4 +1,5 @@
-"""Per-user sliding-window rate limit, kept in the memory of the single API worker."""
+"""Per-user sliding-window rate limit, kept in the memory of the process that checks it (the
+API's single worker, or the bot)."""
 
 from __future__ import annotations
 

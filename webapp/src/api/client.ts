@@ -32,13 +32,16 @@ export async function api<T>(
     throw new ApiError(401, "no_init_data", "Not opened from Telegram");
   }
   const headers: Record<string, string> = { Authorization: `tma ${token}` };
-  if (options.body !== undefined) headers["Content-Type"] = "application/json";
+  // A file (a Blob) goes as it is — the calendar upload; anything else as JSON.
+  const raw = options.body instanceof Blob ? options.body : null;
+  if (raw) headers["Content-Type"] = raw.type || "text/calendar";
+  else if (options.body !== undefined) headers["Content-Type"] = "application/json";
   let response: Response;
   try {
     response = await fetch(`/api${path}`, {
       method: options.method ?? "GET",
       headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body: raw ?? (options.body === undefined ? undefined : JSON.stringify(options.body)),
       signal: options.signal,
     });
   } catch (error) {

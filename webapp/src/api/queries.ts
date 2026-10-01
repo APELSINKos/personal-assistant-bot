@@ -4,7 +4,10 @@ import {
 import { toast } from "../components/toastStore";
 import { haptic } from "../telegram";
 import { api, ApiError } from "./client";
-import type { Agenda, City, Habit, Health, Me, Note, ParsedPhrase, Reminder, ReminderInput, Today } from "./types";
+import type {
+  Agenda, AlertMinutes, City, GroupSearch, Habit, Health, Me, Note, ParsedPhrase, Reminder, ReminderInput,
+  ScheduleState, Today,
+} from "./types";
 
 export const keys = {
   me: ["me"],
@@ -15,9 +18,14 @@ export const keys = {
   health: ["health"],
   cities: (query: string) => ["cities", query] as const,
   agenda: (from: string, to: string) => ["agenda", from, to] as const,
+  schedule: ["schedule"],
+  groups: (query: string) => ["groups", query] as const,
 } as const;
 
-const OWN_TEXT_REASONS = new Set(["past", "duplicate", "phrase_not_understood", "repeat_invalid", "needs_time", "schedule", "length"]);
+const OWN_TEXT_REASONS = new Set([
+  "past", "duplicate", "phrase_not_understood", "repeat_invalid", "needs_time", "schedule", "length",
+  "forbidden_host", "unreachable", "too_large", "not_calendar", "source",
+]);
 
 /** The key in the `errors` dictionary that explains a failed request. */
 export function errorCode(error: unknown): string {
@@ -188,7 +196,12 @@ export function useDeleteReminder() {
       const weeks = client.getQueriesData<Agenda>({ queryKey: ["agenda"] });
       const list = client.getQueryData<Reminder[]>(keys.reminders);
       client.setQueriesData<Agenda>({ queryKey: ["agenda"] }, (agenda) =>
-        agenda && { days: agenda.days.map((day) => ({ ...day, items: day.items.filter((item) => item.id !== id) })) });
+        agenda && {
+          days: agenda.days.map((day) => ({
+            ...day,
+            items: day.items.filter((item) => item.kind !== "reminder" || item.id !== id),
+          })),
+        });
       client.setQueryData<Reminder[]>(keys.reminders, (items) => items?.filter((item) => item.id !== id));
       return { weeks, list };
     },
@@ -328,12 +341,112 @@ export function useSetCity() {
       client.setQueryData(keys.me, me);
       haptic("success");
       // Habits' `done_today` is computed against the city's local date, so a city change can
-      // shift which day "today" is for them too.
+      // shift which day "today" is for them too. Lessons and reminders are shown in the city's zone.
       return Promise.all([
         client.invalidateQueries({ queryKey: keys.today }),
+        client.invalidateQueries({ queryKey: ["agenda"] }),
         client.invalidateQueries({ queryKey: keys.reminders }),
         client.invalidateQueries({ queryKey: keys.habits }),
       ]);
     },
+  });
+}
+
+export const useSchedule = () =>
+  useQuery({ queryKey: keys.schedule, queryFn: () => api<ScheduleState>("/schedule") });
+
+export function useGroups(query: string) {
+  const trimmed = query.trim();
+  return useQuery({
+    queryKey: keys.groups(trimmed),
+    queryFn: ({ signal }) =>
+      api<GroupSearch>(`/schedule/groups?q=${encodeURIComponent(trimmed)}`, { signal }),
+    enabled: trimmed.length >= 2,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** A changed timetable changes the calendar and «Сегодня» too. */
+function useScheduleSaved() {
+  const client = useQueryClient();
+  return (state: ScheduleState) => {
+    client.setQueryData(keys.schedule, state);
+    return Promise.all([
+      client.invalidateQueries({ queryKey: ["agenda"] }),
+      client.invalidateQueries({ queryKey: keys.today }),
+    ]);
+  };
+}
+
+/** The source is gone already (disconnected from the bot or another device): show that at once. */
+function forgetOnGone(saved: ReturnType<typeof useScheduleSaved>) {
+  return (error: Error) =>
+    error instanceof ApiError && error.status === 404 ? saved({ source: null }) : undefined;
+}
+
+// One schedule change at a time: a late answer must never overwrite a newer state.
+export function useConnectSchedule() {
+  const saved = useScheduleSaved();
+  return useMutation({
+    scope: { id: "schedule" },
+    mutationFn: (body: { mirea_id: number; url?: never } | { url: string; mirea_id?: never }) =>
+      api<ScheduleState>("/schedule", { method: "PUT", body }),
+    onSuccess: (state) => {
+      haptic("success");
+      return saved(state);
+    },
+  });
+}
+
+export function useUploadSchedule() {
+  const saved = useScheduleSaved();
+  return useMutation({
+    scope: { id: "schedule" },
+    mutationFn: (file: File) =>
+      api<ScheduleState>(`/schedule/file?name=${encodeURIComponent(file.name)}`, { method: "POST", body: file }),
+    onSuccess: (state) => {
+      haptic("success");
+      return saved(state);
+    },
+    // No onError: POST /schedule/file has no 404 of its own, so one (a proxy's, say) must not
+    // wipe the source the app knows.
+  });
+}
+
+export function useRefreshSchedule() {
+  const saved = useScheduleSaved();
+  return useMutation({
+    scope: { id: "schedule" },
+    mutationFn: () => api<ScheduleState>("/schedule/refresh", { method: "POST" }),
+    onSuccess: (state) => saved(state),
+    onError: forgetOnGone(saved),
+  });
+}
+
+export function useScheduleAlerts() {
+  const client = useQueryClient();
+  const saved = useScheduleSaved();
+  return useMutation({
+    scope: { id: "schedule" },
+    mutationFn: (minutes: AlertMinutes | null) =>
+      api<ScheduleState>("/schedule", { method: "PATCH", body: { lesson_reminder_minutes: minutes } }),
+    onSuccess: (state) => {
+      haptic("select");
+      client.setQueryData(keys.schedule, state);
+    },
+    onError: forgetOnGone(saved),
+  });
+}
+
+export function useDisconnectSchedule() {
+  const saved = useScheduleSaved();
+  return useMutation({
+    scope: { id: "schedule" },
+    mutationFn: () => api<void>("/schedule", { method: "DELETE" }),
+    onSuccess: () => {
+      haptic("success");
+      return saved({ source: null });
+    },
+    onError: forgetOnGone(saved),
   });
 }

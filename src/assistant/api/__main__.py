@@ -10,6 +10,7 @@ import uvicorn
 
 from assistant.api.app import create_app
 from assistant.api.routers.health import read_commit
+from assistant.core.clients.calendars import CalendarFetcher, calendar_client
 from assistant.core.clients.cbr import CbrClient
 from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.config import get_settings
@@ -20,6 +21,7 @@ from assistant.core.logging import setup_logging
 REPO_ROOT = Path(__file__).resolve().parents[3]
 # Open-Meteo and the Bank of Russia get a shorter budget here than in the bot: a screen of
 # the app waits for them, and a quick 503 beats a skeleton that hangs for ten seconds.
+# Calendars have a client of their own (calendar_client), with the full ten seconds.
 UPSTREAM_TIMEOUT = 4.0
 
 
@@ -29,12 +31,16 @@ async def main() -> None:
     check_translations()
     engine = create_engine(settings.database_url)
     try:
-        async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as http:
+        async with (
+            httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as http,
+            calendar_client() as calendar_http,
+        ):
             app = create_app(
                 settings=settings,
                 sessionmaker=make_sessionmaker(engine),
                 meteo=OpenMeteoClient(http),
                 cbr=CbrClient(http),
+                calendars=CalendarFetcher(calendar_http),
                 commit=read_commit(REPO_ROOT),
             )
             config = uvicorn.Config(

@@ -12,10 +12,11 @@ from sqlalchemy import func, select
 import assistant
 from assistant.api import __main__ as entry
 from assistant.api.app import create_app
-from assistant.api.ratelimit import RateLimiter
 from assistant.api.routers.health import read_commit
 from assistant.core.models import User
+from assistant.core.ratelimit import RateLimiter
 from tests.api.conftest import NOW
+from tests.stubs import StubCalendars
 
 PROBLEM = "application/problem+json"
 
@@ -77,6 +78,7 @@ async def test_rate_limit_is_a_429_problem(sessionmaker, api_settings, meteo, cb
         sessionmaker=sessionmaker,
         meteo=meteo,
         cbr=cbr,
+        calendars=StubCalendars(),
         clock=lambda: NOW,
         limiter=RateLimiter(2),
     )
@@ -144,9 +146,9 @@ async def test_api_gives_upstream_services_a_short_time_budget(monkeypatch, api_
     timeouts: list[object] = []
     real_client = httpx.AsyncClient
 
-    def recording_client(*, timeout: float) -> httpx.AsyncClient:
+    def recording_client(*, timeout: float, **options: object) -> httpx.AsyncClient:
         timeouts.append(timeout)
-        return real_client(timeout=timeout)
+        return real_client(timeout=timeout, **options)
 
     class NoServer:
         def __init__(self, config: object) -> None:
@@ -160,5 +162,6 @@ async def test_api_gives_upstream_services_a_short_time_budget(monkeypatch, api_
     monkeypatch.setattr(entry.httpx, "AsyncClient", recording_client)
     monkeypatch.setattr(entry.uvicorn, "Server", NoServer)
     await entry.main()
-    # «Сегодня» must not wait for a hanging upstream as long as the bot may.
-    assert timeouts == [4.0] and api_settings.http_timeout == 10.0
+    # «Сегодня» must not wait for a hanging upstream as long as the bot may; calendars have a
+    # client of their own with the whole ten seconds.
+    assert timeouts == [4.0, 10.0] and api_settings.http_timeout == 10.0

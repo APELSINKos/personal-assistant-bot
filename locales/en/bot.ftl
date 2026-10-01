@@ -5,6 +5,7 @@ menu-reminders = ⏰ Reminders
 menu-notes = 📝 Notes
 menu-habits = 🎯 Habits
 menu-rates = 💱 Exchange rates
+menu-schedule = 🎓 Schedule
 menu-settings = ⚙️ Settings
 menu-cancel = ❌ Cancel
 
@@ -65,6 +66,7 @@ welcome =
     📝 Notes — keep what you don't want to forget
     🎯 Habits — mark them daily and keep the streak
     💱 Exchange rates — USD and EUR by the Bank of Russia
+    🎓 Schedule — your MIREA group's classes or any calendar
     ⚙️ Settings — city, morning digest and language
 
     Pick a section in the menu below 👇
@@ -74,8 +76,8 @@ app-open = Open the app with the button below 👇
 menu-button = Open
 stale-button = This button is outdated — open the section again from the menu.
 bot-name = Personal Assistant
-bot-short-description = Weather with tips, reminders, notes, habits and exchange rates — in one chat.
-bot-description = Personal assistant: smart weather, reminders, notes, a habit tracker, exchange rates and a morning digest the bot sends on its own.
+bot-short-description = Weather with tips, reminders, class schedule, notes, habits and exchange rates — in one chat.
+bot-description = Personal assistant: smart weather, reminders, a class schedule, notes, a habit tracker, exchange rates and a morning digest the bot sends on its own.
 cmd-start = Main menu
 cmd-app = Open the app
 cmd-settings = Settings
@@ -105,6 +107,11 @@ today-reminders = { $count ->
     }
 list-item-time = • { $time } — { $text }
 list-more = …and { $count } more
+today-lessons = 🎓 Classes:
+today-lessons-week = 🎓 Classes · { $week }:
+today-lessons-none = 🎓 No classes today
+lesson-line = • { $start }–{ $end } { $lesson }
+lesson-line-start = • { $start } { $lesson }
 today-habits = 🎯 Habits: { $done } of { $total }
 today-habits-none = 🎯 No habits yet
 today-streak = 🔥 Best streak: “{ $name }” — { $count } { $count ->
@@ -257,3 +264,62 @@ repeat-weekends = on weekends at { $time }
 repeat-weekly = { $days } at { $time }
 repeat-biweekly = every other week: { $days } at { $time }
 repeat-monthly = monthly on day { $day } at { $time }
+
+## Schedule
+lesson-alert = 🎓 In { $minutes } min: { $lesson }
+day-yesterday = Yesterday
+schedule-intro =
+    🎓 Class schedule
+
+    Connect your timetable — classes will appear here, in “My day”, the morning digest and the app's calendar.
+button-find-group = 🔎 Find a MIREA group
+button-by-link = 🔗 By link
+button-by-file = 📎 As an .ics file
+schedule-ask-group = Send the group name, e.g. ИКБО-63-24:
+hint-group = Send the group name, e.g. ИКБО-63-24.
+schedule-group-not-found = I couldn't find the group “{ $name }”. Check the name — e.g. ИКБО-63-24:
+schedule-group-choose = I found several groups — pick yours:
+schedule-directory-empty = The MIREA group directory isn't ready yet — try again later or connect a timetable by link.
+schedule-ask-link = Send a calendar link — webcal://… or https://…
+hint-link = Send a calendar link, e.g. webcal://…
+schedule-ask-file = Send an .ics calendar file (up to 2 MB).
+hint-file = Send an .ics calendar file.
+schedule-connected = ✅ Timetable connected: { $title }. Classes ahead: { $count }.
+schedule-connected-empty = ✅ Timetable connected: { $title }. But it has no classes in the coming months.
+schedule-error-forbidden_host = ⚠️ This link won't do: I need an https:// or webcal:// link to a calendar on the internet.
+schedule-error-unreachable = ⚠️ I couldn't download the calendar. Check the link or try later.
+schedule-error-too_large = ⚠️ The calendar is too big or too complex to read.
+schedule-error-not_calendar = ⚠️ This doesn't look like an .ics calendar.
+schedule-error-group = ⚠️ This group is no longer in the directory — search for it again.
+schedule-day = 🎓 { $day }
+schedule-day-week = 🎓 { $day } · { $week }
+schedule-week = 🎓 { $range }
+schedule-week-label = 🎓 { $week } · { $range }
+schedule-free = No classes 🎉
+schedule-stale = ⚠️ Data from { $date } — the source is unavailable for now.
+button-schedule-today = Today
+button-schedule-tomorrow = Tomorrow
+button-schedule-week = 📅 Week
+button-schedule-day = 📅 Day
+button-schedule-source = ⚙️ Source
+schedule-source-title = ⚙️ Timetable source
+schedule-source-mirea = MIREA group: { $title }
+schedule-source-url = By link: { $title }
+schedule-source-file = File: { $title }
+schedule-source-untitled = an untitled calendar
+schedule-updated = Updated: { $when }
+schedule-failed = ⚠️ The last update failed.
+schedule-alerts-off = 🔕 Class alerts are off
+schedule-alerts-on = 🔔 I alert you { $minutes } min before each class
+button-refresh = 🔄 Update
+button-lesson-alerts = 🔔 Class alerts
+button-change-source = 🔁 Change source
+button-disconnect = 🗑 Disconnect
+schedule-refresh-wait = Just updated — wait a minute
+schedule-too-many = ⏳ Too many attempts in a row — try again in { $seconds } s.
+schedule-alerts-pick = How many minutes before a class should I alert you?
+button-alerts-off = No alerts
+button-alerts-minutes = { $minutes } min before
+schedule-disconnect-ask = Disconnect the timetable? Classes will disappear from the calendar and “My day”.
+button-disconnect-yes = Yes, disconnect
+schedule-disconnected = Timetable disconnected.

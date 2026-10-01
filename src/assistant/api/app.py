@@ -10,12 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from assistant import __version__
 from assistant.api import errors
-from assistant.api.ratelimit import RateLimiter
 from assistant.api.routers import ALL
 from assistant.api.state import AppState
+from assistant.core.clients.calendars import Calendars
 from assistant.core.clients.cbr import CbrClient
 from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.config import Settings
+from assistant.core.ratelimit import RateLimiter
+from assistant.core.services import schedule
 from assistant.core.timeutil import utcnow
 
 
@@ -25,9 +27,11 @@ def create_app(
     sessionmaker: async_sessionmaker[AsyncSession],
     meteo: OpenMeteoClient,
     cbr: CbrClient,
+    calendars: Calendars,
     commit: str | None = None,
     clock: Callable[[], datetime] = utcnow,
     limiter: RateLimiter | None = None,
+    attempts: RateLimiter | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="Personal Assistant API",
@@ -41,7 +45,9 @@ def create_app(
         sessionmaker=sessionmaker,
         meteo=meteo,
         cbr=cbr,
+        calendars=calendars,
         limiter=limiter or RateLimiter(settings.api_rate_limit),
+        attempts=attempts or schedule.attempt_limiter(),
         clock=clock,
         commit=commit,
     )

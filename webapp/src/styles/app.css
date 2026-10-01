@@ -265,7 +265,7 @@ a {
 
 .toggle--skipped {
   border-color: var(--error);
-  color: var(--error);
+  color: var(--error-text);
 }
 
 .icon-button {
@@ -460,7 +460,7 @@ textarea.input {
 
 .field__hint {
   margin: -8px 0 14px;
-  color: var(--error);
+  color: var(--error-text);
   font-size: 13px;
 }
 
@@ -487,6 +487,10 @@ textarea.input {
   cursor: default;
 }
 
+.button--danger {
+  color: var(--error-text);
+}
+
 .main-action {
   position: fixed;
   inset: auto 0 0;
@@ -501,7 +505,8 @@ textarea.input {
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
+  /* Concentric with the options (22px + 4px padding + 1px border); a pill grows rounder with rows. */
+  border-radius: 27px;
 }
 
 .segmented--wrap {
@@ -579,6 +584,11 @@ textarea.input {
 .result:hover,
 .result:focus-visible {
   background: var(--glass);
+}
+
+.result:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* States */
@@ -808,6 +818,20 @@ textarea.input {
   background: #b36b00;
 }
 
+/* Lessons get the mint accent. On the light theme the dots sit on the page's glows (the body's
+   radial gradients), not on the flat --bg-base: there --accent (#0f9d76) measured only 2.8-2.9:1 on
+   rendered pixels (3.16:1 on the flat colour) — under the 3:1 non-text minimum. --accent-text
+   (#0b7a5c) measured >= 4.3:1 at every dot of the strip and the month grid (over 4:1 anywhere on
+   the page), so the light theme uses it. The dark theme keeps --accent: >= 7.4:1 even on its
+   brightest glow. The selected strip cell's rule below is more specific, so it still wins. */
+.cal-dot--lesson {
+  background: var(--accent);
+}
+
+[data-theme="light"] .cal-dot--lesson {
+  background: var(--accent-text);
+}
+
 /* In the strip the fill covers the whole cell, so the dot needs the on-accent colour; in the
    month grid the fill lives on the smaller inner mark (below) and the dot stays on the plain
    page background, so it keeps its normal colour there. */
@@ -878,11 +902,88 @@ textarea.input {
   text-decoration: none;
 }
 
+/* The start time keeps its width: a long title wraps in its own column instead of squeezing the
+   time into «10:» / «40». Both row kinds (a lesson and a reminder) share this. */
+.cal-item .time {
+  flex-shrink: 0;
+}
+
+/* A flex item's minimum width is its content's, so one long unbroken word (a link for an online
+   class) would push the text past the card — and out of a reminder's clipping `.swipe`. Let the
+   column shrink and break such text at the card's edge. */
 .cal-item__body {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .cal-item__sub {
   font-size: 12px;
+}
+
+/* A lesson card: the reminder card's shape with a mint edge; the thicker left border eats into
+   the padding so the text lines up with the reminders around it. */
+.cal-lesson {
+  margin-bottom: 8px;
+  padding: 14px 16px 14px 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-card);
+  background: var(--glass-strong);
+}
+
+@media (hover: hover) {
+  /* Reminder cards leave room for their always-visible delete button; keep the right edge even. */
+  .cal-lesson {
+    margin-right: 64px;
+  }
+}
+
+/* Today's lessons: the start time, then the title over «ЛК · 10:40–12:10 · А-16». */
+.lesson {
+  display: flex;
+  align-items: baseline;
+}
+
+/* The card's `overflow-wrap: anywhere` makes every character a break point, so without this a long
+   title squeezes the time down to «10:» / «40». The body wraps its own text instead. */
+.lesson .time {
+  flex-shrink: 0;
+}
+
+.lesson__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.lesson__meta {
+  font-size: 12px;
+}
+
+/* «Ещё» → «Расписание» */
+.card__sub {
+  display: block;
+  font-size: 13px;
+}
+
+.schedule__intro {
+  margin: 0 4px 12px;
+}
+
+.schedule__title {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.schedule__actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.schedule__cancel {
+  width: 100%;
 }

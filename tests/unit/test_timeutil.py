@@ -76,6 +76,9 @@ def test_parse_hhmm(text: str, expected: str | None) -> None:
 def test_is_valid_timezone() -> None:
     assert timeutil.is_valid_timezone("Asia/Vladivostok")
     assert not timeutil.is_valid_timezone("Mars/Olympus")
+    # Folders of the zone database: opening one fails with an OSError, not a lookup error.
+    assert not timeutil.is_valid_timezone("Europe")
+    assert not timeutil.is_valid_timezone("America/Argentina")
 
 
 def test_supported_years_are_one_core_range() -> None:

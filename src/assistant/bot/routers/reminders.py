@@ -87,13 +87,14 @@ def reminders_view(
                 )
             ]
         )
+    tail: list[str] = []
     if pages > 1:
-        lines += ["", t("page", current=page + 1, total=pages)]
+        tail = ["", t("page", current=page + 1, total=pages)]
         rows.append(
             page_buttons(t, page, pages, lambda p: ReminderCb(action="page", page=p).pack())
         )
     rows.append(add)
-    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+    return texts.fit(lines, tail), InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def _view(ctx: Ctx, page: int) -> tuple[str, InlineKeyboardMarkup]:

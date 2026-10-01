@@ -1,4 +1,5 @@
-"""The calendar: every day of a range with its reminders, in the user's city zone."""
+"""The calendar: every day of a range with its reminders and lessons, in the user's city
+zone, with the timetable's week labels."""
 
 from __future__ import annotations
 
@@ -8,10 +9,16 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from assistant.api.deps import CurrentUser, Session
-from assistant.api.schemas import AgendaDayOut, AgendaItemOut, AgendaOut
+from assistant.api.schemas import (
+    AgendaDayOut,
+    AgendaItemOut,
+    AgendaOut,
+    LessonItemOut,
+    ReminderItemOut,
+)
 from assistant.api.views import user_translator
 from assistant.core.errors import InvalidInput
-from assistant.core.services import reminders
+from assistant.core.services import reminders, schedule
 from assistant.core.services.recurrence import describe
 from assistant.core.timeutil import SUPPORTED_YEARS, local_to_utc, to_local
 
@@ -42,7 +49,7 @@ async def agenda(
         local = to_local(moment, tz)
         rule = reminders.rule_of(reminder)
         days.setdefault(local.date(), []).append(
-            AgendaItemOut(
+            ReminderItemOut(
                 kind="reminder",
                 id=reminder.id,
                 time=local.strftime("%H:%M"),
@@ -51,4 +58,26 @@ async def agenda(
                 description=describe(rule, t) if rule else None,
             )
         )
-    return AgendaOut(days=[AgendaDayOut(date=day, items=items) for day, items in days.items()])
+    for lesson in await schedule.lessons_between(db, user.id, start, end):
+        local = to_local(lesson.starts_at, tz)
+        days.setdefault(local.date(), []).append(
+            LessonItemOut(
+                kind="lesson",
+                time=local.strftime("%H:%M"),
+                end=to_local(lesson.ends_at, tz).strftime("%H:%M"),
+                title=lesson.title,
+                lesson_kind=lesson.kind,
+                room=lesson.room,
+            )
+        )
+    labels = await schedule.week_labels_between(db, user.id, start_day, end_day)
+    return AgendaOut(
+        days=[
+            AgendaDayOut(
+                date=day,
+                label=schedule.label_on(labels, day),
+                items=sorted(items, key=lambda item: item.time),
+            )
+            for day, items in days.items()
+        ]
+    )

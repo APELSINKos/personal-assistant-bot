@@ -9,7 +9,16 @@ from collections.abc import Callable
 
 from aiogram import Router
 
-from assistant.bot.routers import habits, notes, rates, reminders, settings, today, weather
+from assistant.bot.routers import (
+    habits,
+    notes,
+    rates,
+    reminders,
+    schedule,
+    settings,
+    today,
+    weather,
+)
 
 SECTION_ROUTERS: list[Callable[[], Router]] = [
     weather.create_router,
@@ -18,5 +27,6 @@ SECTION_ROUTERS: list[Callable[[], Router]] = [
     notes.create_router,
     reminders.create_router,
     habits.create_router,
+    schedule.create_router,
     settings.create_router,
 ]

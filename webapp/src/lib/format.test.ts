@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  addDaysIso, bigDate, dayHeading, daysBetween, formatNumber, formatTemp, localTimeHm,
-  localTodayIso, monthGrid, monthTitle, rangeLabel, weekOf, weekdayShort,
+  addDaysIso, bigDate, dayHeading, daysBetween, formatNumber, formatTemp, lessonMeta, localTimeHm,
+  localTodayIso, monthGrid, monthTitle, rangeLabel, shortMoment, weekOf, weekdayShort,
 } from "./format";
 
 describe("format", () => {
@@ -62,5 +62,20 @@ describe("calendar helpers", () => {
     expect(rangeLabel("2026-09-28", "2026-10-04", "ru")).toBe("28 сент. – 4 окт.");
     expect(monthTitle("2026-09-15", "ru")).toBe("Сентябрь 2026");
     expect(monthTitle("2026-09-15", "en")).toBe("September 2026");
+  });
+
+  it("describes a lesson with whatever it has", () => {
+    expect(lessonMeta("ЛК", "10:40", "12:10", "А-16")).toBe("ЛК · 10:40–12:10 · А-16");
+    expect(lessonMeta(null, "10:40", "12:10", null)).toBe("10:40–12:10");
+  });
+
+  it("gives a lesson that ends when it starts (no DTEND) its start only", () => {
+    expect(lessonMeta("ЛК", "12:40", "12:40", null)).toBe("ЛК · 12:40");
+    expect(lessonMeta(null, "12:40", "12:40", "А-16")).toBe("12:40 · А-16");
+  });
+
+  it("shows a moment in the city's zone", () => {
+    expect(shortMoment("2026-09-28T12:00:00Z", "Europe/Moscow", "ru")).toBe("28 сент., 15:00");
+    expect(shortMoment("2026-09-28T12:00:00Z", "Asia/Vladivostok", "en")).toBe("Sep 28, 22:00");
   });
 });

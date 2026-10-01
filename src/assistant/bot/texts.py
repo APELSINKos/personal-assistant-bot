@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, tzinfo
+from collections.abc import Callable, Sequence
+from datetime import date, datetime, timedelta, tzinfo
 from zoneinfo import ZoneInfo
 
 from babel.dates import format_date, format_datetime
@@ -15,7 +16,7 @@ from assistant.core.i18n import (
     format_short_day,
     format_weekday,
 )
-from assistant.core.models import Reminder
+from assistant.core.models import Lesson, Reminder, ScheduleSource
 from assistant.core.services import reminders
 from assistant.core.services.digest import TodayData
 from assistant.core.services.phrases import Parsed
@@ -25,10 +26,24 @@ from assistant.core.services.weather import describe as describe_weather
 from assistant.core.timeutil import to_local, utcnow
 
 NO_VALUE = "—"
-# Telegram messages are capped at 4096 characters; with up to 20 pending reminders at
-# 200 characters each, rendering all of them could blow that limit on its own. Cap the
-# rendered list and summarise the rest in one line instead.
+# Telegram takes a message of up to 4096 characters counted in UTF-16 code units, where an emoji
+# outside the BMP is two; a longer one is refused for good. Every message that carries many texts
+# of the user's or of a calendar is kept within this, measured the same way, a margin below.
+TEXT_LIMIT = 3900
+# With up to 20 pending reminders at 200 characters each, rendering all of them could blow the
+# limit on its own. Cap the rendered list and summarise the rest in one line instead.
 DAY_REMINDERS_SHOWN = 10
+# A day has a handful of lessons; a calendar full of events is capped the same way.
+DAY_LESSONS_SHOWN = 10
+# A lesson line keeps its time and as much of the name as fits: titles and rooms come from outside
+# calendars, and ten long ones next to the reminders would push «Мой день» and the morning digest
+# past the limit. 120 still leaves real MIREA lessons whole, room included.
+LESSON_NAME_LIMIT = 120
+
+
+def utf16_len(text: str) -> int:
+    """The length of a message as Telegram counts it."""
+    return len(text.encode("utf-16-le")) // 2
 
 
 def temp(value: float | None) -> str:
@@ -76,14 +91,58 @@ def weather_text(now: WeatherNow, t: Translator) -> str:
     )
 
 
-def _reminder_lines(data: TodayData, t: Translator) -> list[str]:
+def _reminder_lines(data: TodayData, t: Translator, shown: int) -> list[str]:
+    """The first `shown` reminders, then «…и ещё N» for the rest."""
     zone = data.local_now.tzinfo or ZoneInfo("UTC")
-    shown = data.reminders[:DAY_REMINDERS_SHOWN]
-    lines = [t("list-item-time", time=local_time(r.due_at, zone), text=r.text) for r in shown]
-    hidden = len(data.reminders) - len(shown)
+    listed = data.reminders[:shown]
+    lines = [t("list-item-time", time=local_time(r.due_at, zone), text=r.text) for r in listed]
+    hidden = len(data.reminders) - len(listed)
     if hidden > 0:
         lines.append(t("list-more", count=hidden))
     return lines
+
+
+def lesson_line(lesson: Lesson, tz: tzinfo | str, t: Translator) -> str:
+    """«• 12:40–14:10 ПР Разработка баз данных · И-212-б» in the user's zone; «• 12:40 …» for
+    an event that ends when it starts (one without DTEND or DURATION)."""
+    name = lesson_name(lesson)
+    if len(name) > LESSON_NAME_LIMIT:
+        name = name[: LESSON_NAME_LIMIT - 1] + "…"
+    start, end = local_time(lesson.starts_at, tz), local_time(lesson.ends_at, tz)
+    if end == start:
+        return t("lesson-line-start", start=start, lesson=name)
+    return t("lesson-line", start=start, end=end, lesson=name)
+
+
+def _lesson_lines(data: TodayData, t: Translator, shown: int) -> list[str]:
+    """The heading and the first `shown` lessons, then «…и ещё N» for the rest."""
+    if not data.has_schedule:
+        return []
+    if not data.lessons:
+        return [t("today-lessons-none")]
+    zone = data.local_now.tzinfo or ZoneInfo("UTC")
+    head = t("today-lessons-week", week=data.week_label) if data.week_label else t("today-lessons")
+    listed = data.lessons[:shown]
+    lines = [head, *(lesson_line(lesson, zone, t) for lesson in listed)]
+    if len(data.lessons) > len(listed):
+        lines.append(t("list-more", count=len(data.lessons) - len(listed)))
+    return lines
+
+
+def _within_limit(data: TodayData, render: Callable[[int, int], str]) -> str:
+    """`render(reminders, lessons)` showing as many of each as fit TEXT_LIMIT: past it, the
+    reminder list is cut from its end first, then the lesson list, each closed with «…и ещё N».
+    Everything else in the message stays whole."""
+    reminders = min(len(data.reminders), DAY_REMINDERS_SHOWN)
+    lessons = min(len(data.lessons), DAY_LESSONS_SHOWN)
+    text = render(reminders, lessons)
+    while utf16_len(text) > TEXT_LIMIT and reminders + lessons > 0:
+        if reminders > 0:
+            reminders -= 1
+        else:
+            lessons -= 1
+        text = render(reminders, lessons)
+    return text
 
 
 def _rates_line(rates: Rates, t: Translator) -> str:
@@ -95,6 +154,10 @@ def _rates_line(rates: Rates, t: Translator) -> str:
 
 
 def today_text(data: TodayData, name: str, t: Translator) -> str:
+    return _within_limit(data, lambda shown, lessons: _today(data, name, t, shown, lessons))
+
+
+def _today(data: TodayData, name: str, t: Translator, shown: int, lessons: int) -> str:
     day = data.local_now.date()
     lines = [
         t("today-title", part=data.part_of_day, name=name),
@@ -106,7 +169,9 @@ def today_text(data: TodayData, name: str, t: Translator) -> str:
         lines += tip_lines(data.weather.tips[:1], t)
     else:
         lines.append(t("today-weather-unavailable"))
-    lines += ["", t("today-reminders", count=len(data.reminders)), *_reminder_lines(data, t)]
+    lines += ["", t("today-reminders", count=len(data.reminders))]
+    lines += _reminder_lines(data, t, shown)
+    lines += _lesson_lines(data, t, lessons)
     if data.habits_total:
         lines.append(t("today-habits", done=data.habits_done, total=data.habits_total))
     else:
@@ -120,6 +185,10 @@ def today_text(data: TodayData, name: str, t: Translator) -> str:
 
 
 def morning_text(data: TodayData, name: str, t: Translator) -> str:
+    return _within_limit(data, lambda shown, lessons: _morning(data, name, t, shown, lessons))
+
+
+def _morning(data: TodayData, name: str, t: Translator, shown: int, lessons: int) -> str:
     day = data.local_now.date()
     lines = [
         t("morning-title", name=name),
@@ -137,7 +206,9 @@ def morning_text(data: TodayData, name: str, t: Translator) -> str:
         lines += tip_lines(data.weather.tips, t)
     else:
         lines.append(t("today-weather-unavailable"))
-    lines += ["", t("morning-reminders", count=len(data.reminders)), *_reminder_lines(data, t)]
+    lines += ["", t("morning-reminders", count=len(data.reminders))]
+    lines += _reminder_lines(data, t, shown)
+    lines += _lesson_lines(data, t, lessons)
     extra: list[str] = []
     if data.habits_total:
         extra.append(t("morning-habits", count=data.habits_total))
@@ -236,3 +307,104 @@ def saved_text(reminder: Reminder, tz: str, local_now: datetime, t: Translator) 
         time=local.strftime("%H:%M"),
         text=reminder.text,
     )
+
+
+def lesson_name(lesson: Lesson) -> str:
+    """«ЛК Разработка баз данных · А-16»: the type, the subject and the room when known."""
+    name = f"{lesson.kind} {lesson.title}" if lesson.kind else lesson.title
+    return f"{name} · {lesson.room}" if lesson.room else name
+
+
+def lesson_alert_text(lesson: Lesson, minutes: int, t: Translator) -> str:
+    return t("lesson-alert", minutes=minutes, lesson=lesson_name(lesson))
+
+
+_SOURCE_ERRORS = ("forbidden_host", "unreachable", "too_large", "not_calendar")
+
+
+def fit(lines: Sequence[str], tail: Sequence[str] = ()) -> str:
+    """The lines, cut with «…» where they would pass TEXT_LIMIT, then the tail whole: a page
+    line, a legend or the stale warning, which must stay however long the list is."""
+    ending = "".join(f"\n{line}" for line in tail)
+    room = TEXT_LIMIT - utf16_len(ending)
+    text = "\n".join(lines)
+    if utf16_len(text) <= room:
+        return text + ending
+    kept: list[str] = []
+    size = 0
+    for line in lines:
+        if size + utf16_len(line) + 1 > room - 2:
+            break
+        kept.append(line)
+        size += utf16_len(line) + 1
+    return "\n".join([*kept, "…"]) + ending
+
+
+def day_title(day: date, today: date, t: Translator) -> str:
+    """«Сегодня · понедельник, 28 сентября», or «среда, 30 сентября» further away."""
+    full = f"{format_weekday(day, t.lang)}, {format_day(day, t.lang)}"
+    word = {0: "day-today", 1: "day-tomorrow", -1: "day-yesterday"}.get((day - today).days)
+    return f"{t(word)} · {full}" if word else full
+
+
+def _stale_line(stale_since: date | None, t: Translator) -> list[str]:
+    if stale_since is None:
+        return []
+    return ["", t("schedule-stale", date=format_day(stale_since, t.lang))]
+
+
+def schedule_day_text(
+    day: date,
+    today: date,
+    lessons: list[Lesson],
+    week: str | None,
+    tz: str,
+    t: Translator,
+    stale_since: date | None = None,
+) -> str:
+    title = day_title(day, today, t)
+    head = t("schedule-day-week", day=title, week=week) if week else t("schedule-day", day=title)
+    body = [lesson_line(lesson, tz, t) for lesson in lessons] or [t("schedule-free")]
+    return fit([head, "", *body], _stale_line(stale_since, t))
+
+
+def schedule_week_text(
+    monday: date,
+    lessons: list[Lesson],
+    week: str | None,
+    tz: str,
+    t: Translator,
+    stale_since: date | None = None,
+) -> str:
+    span = f"{format_day(monday, t.lang)} – {format_day(monday + timedelta(days=6), t.lang)}"
+    lines = [
+        t("schedule-week-label", week=week, range=span) if week else t("schedule-week", range=span)
+    ]
+    days: dict[date, list[Lesson]] = {}
+    for lesson in lessons:
+        days.setdefault(to_local(lesson.starts_at, tz).date(), []).append(lesson)
+    if not days:
+        lines += ["", t("schedule-free")]
+    for day in sorted(days):
+        lines += [
+            "",
+            format_short_day(day, t.lang),
+            *(lesson_line(item, tz, t) for item in days[day]),
+        ]
+    return fit(lines, _stale_line(stale_since, t))
+
+
+def schedule_source_text(source: ScheduleSource, tz: str, now: datetime, t: Translator) -> str:
+    title = source.title or t("schedule-source-untitled")
+    lines = [t("schedule-source-title"), "", t(f"schedule-source-{source.kind.value}", title=title)]
+    if source.ok_at is not None:
+        lines.append(t("schedule-updated", when=short_moment(source.ok_at, tz, t.lang, now)))
+    if source.error:
+        lines.append(t("schedule-failed"))
+    minutes = source.lesson_reminder_minutes
+    lines.append(t("schedule-alerts-on", minutes=minutes) if minutes else t("schedule-alerts-off"))
+    return "\n".join(lines)
+
+
+def schedule_error_text(reason: str, t: Translator) -> str:
+    return t(f"schedule-error-{reason if reason in _SOURCE_ERRORS else 'unreachable'}")

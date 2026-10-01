@@ -34,7 +34,7 @@ from __future__ import annotations
 from alembic import op
 
 revision = "test_extra"
-down_revision = "0002"
+down_revision = "0003"
 branch_labels = None
 depends_on = None
 
@@ -91,7 +91,20 @@ def test_upgrade_creates_schema_and_matches_models(tmp_path: Path) -> None:
     command.upgrade(cfg, "head")
     with closing(sqlite3.connect(db)) as conn:
         schema = dict(conn.execute("select name, sql from sqlite_master where type='table'"))
-    assert {"users", "notes", "reminders", "habits", "habit_marks", "fsm_state"} <= set(schema)
+    assert {
+        "users",
+        "notes",
+        "reminders",
+        "habits",
+        "habit_marks",
+        "fsm_state",
+        "mirea_groups",
+        "schedule_sources",
+        "lessons",
+        "week_labels",
+        "lesson_alerts",
+        "job_runs",
+    } <= set(schema)
     # AUTOINCREMENT: ids of deleted rows are never reused. `alembic check` does not compare it
     # and a batch rebuild drops it unless given table_kwargs={"sqlite_autoincrement": True}.
     assert "sqlite_sequence" in schema
@@ -225,3 +238,28 @@ def test_0002_preserves_the_id_sequence_through_upgrade_and_downgrade(tmp_path: 
         assert seq(conn) == 3  # still not reset by the downgrade's own rebuild
         newest_id = insert(conn, "newest", with_occurrence=False)
         assert newest_id == 4
+
+
+def test_0003_keeps_existing_data_and_downgrades(tmp_path: Path) -> None:
+    db = tmp_path / "old.db"
+    # Filled in the 0001 shape (FILL's raw inserts predate 0002's columns), then brought up
+    # through 0002 and 0003: every existing row must survive both.
+    command.upgrade(_config(db), "0001")
+    _fill(db)
+    command.upgrade(_config(db), "head")
+    assert _counts(db) == {t: 1 for t in CHILDREN}
+    with closing(sqlite3.connect(db)) as conn:
+        conn.execute(
+            "INSERT INTO schedule_sources (user_id, kind, fetched_at, next_refresh_at, created_at) "
+            f"VALUES (1, 'file', '{STAMP}', '{STAMP}', '{STAMP}')"
+        )
+        conn.execute(
+            "INSERT INTO lessons (user_id, uid, starts_at, ends_at, title) "
+            f"VALUES (1, 'u', '{STAMP}', '{STAMP}', 'x')"
+        )
+        conn.commit()
+    command.downgrade(_config(db), "0002")
+    assert _counts(db) == {t: 1 for t in CHILDREN}
+    with closing(sqlite3.connect(db)) as conn:
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
+    assert not tables & {"schedule_sources", "lessons", "mirea_groups", "job_runs"}

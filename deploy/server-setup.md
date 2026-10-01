@@ -381,6 +381,72 @@ repeat stays as a one-off at its next firing, and one marked done counts as
 sent. If that deploy fails and brings 2.2 back, stop both services, run the
 same `runuser` line with `alembic upgrade head` instead, and start them again.
 
+### Going from 2.2 to 2.3
+
+Version 2.3 changes three files that are installed by hand: both units gain
+`IPAddressDeny=` (no connections to link-local, private or CGNAT networks) and the
+Caddyfile lets calendar files of up to 2 MB through to the API. Install them
+once 2.3 is on `main`, before or after its deploy — the order does not matter,
+both files work with 2.2 and 2.3 alike:
+
+```bash
+ssh <server> 'sudo bash -s' <<'EOF'
+set -euo pipefail
+cd /opt/assistant/app
+runuser -u assistant -- git fetch --quiet origin main
+show() { runuser -u assistant -- git show "origin/main:deploy/$1"; }
+for unit in assistant-bot.service assistant-api.service; do
+  show "$unit" > "/etc/systemd/system/$unit.new"
+  mv "/etc/systemd/system/$unit.new" "/etc/systemd/system/$unit"
+done
+systemctl daemon-reload
+systemctl restart assistant-api assistant-bot
+show Caddyfile > /etc/caddy/Caddyfile.new
+set -a; . /etc/caddy/assistant.env; set +a
+caddy validate --config /etc/caddy/Caddyfile.new --adapter caddyfile
+mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
+systemctl reload caddy
+systemctl show -p IPAddressDeny --value assistant-bot
+sleep 20
+journalctl -u assistant-bot -n 20 -o cat --no-pager | grep -iE "started|error|exception" || true
+curl -s http://127.0.0.1:8000/api/health; echo
+EOF
+```
+
+Expected: `Valid configuration`, the denied ranges, `Bot started` and no errors in
+the journal, and the health JSON. On its first start 2.3
+builds the MIREA group directory: about 35 minutes of requests, three a
+second; the bot's journal says `MIREA directory, full crawl: …` when it is
+done. Until then a group the crawl has not reached yet cannot be found, and
+the bot and the app say that the directory is still being built; links and
+files work at once.
+
+### Going back from 2.3 to 2.2
+
+Version 2.3 adds migration `0003`. As with 2.2 → 2.1, undo it with the 2.3
+code that is still deployed, then deploy the 2.2 commit on purpose:
+
+```bash
+ssh <server> 'sudo bash -s' <<'EOF'
+set -euo pipefail
+systemctl stop assistant-bot assistant-api
+systemctl start assistant-backup.service
+cd /opt/assistant/app
+runuser -u assistant -- bash -c 'set -a; . /etc/assistant/assistant.env; set +a; exec .venv/bin/alembic downgrade 0002'
+EOF
+ssh <server> 'sudo DEPLOY_ALLOW_OLDER=1 /usr/local/sbin/assistant-deploy <v2.2.0 commit sha>'
+```
+
+The downgrade drops the schedule tables: timetables, the group directory and
+the lesson alert settings are gone, reminders, notes and habits stay. That is
+why `assistant-backup.service` runs first: the deploy's own snapshot is taken
+after the downgrade, when those tables are already gone. The copy is written to
+`/var/backups/assistant/assistant-<UTC date>.db` and replaces today's nightly
+copy if it is already there (`assistant-backup` names the file by the UTC
+date and overwrites it, and so does the nightly run at 03:30 UTC, so before that
+time copy the file under another name). If the copy fails, the commands above
+stop before the downgrade. The new units and Caddyfile can stay as they are.
+
 ## 8. Restore from a backup
 
 Nightly backups live in `/var/backups/assistant`
