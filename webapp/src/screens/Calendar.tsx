@@ -2,7 +2,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useRef, useState, type TouchEvent } from "react";
 import { Link } from "wouter";
 import { useAgenda, useDeleteReminder, useMe } from "../api/queries";
-import type { AgendaDay, AgendaItem } from "../api/types";
+import type { AgendaDay, AgendaItem, LessonItem, ReminderItem } from "../api/types";
 import { Fab } from "../components/Fab";
 import { ErrorState, Loader } from "../components/States";
 import { SwipeRow } from "../components/SwipeRow";
@@ -12,6 +12,7 @@ import {
   addDaysIso,
   dayHeading,
   dayNumber,
+  lessonMeta,
   localTodayIso,
   monthGrid,
   monthTitle,
@@ -37,10 +38,28 @@ function weekDaysFrom(monthDays: AgendaDay[] | undefined, weekIsos: string[]): A
 function Dots({ items }: { items: AgendaItem[] }) {
   return (
     <span className="cal-dots" aria-hidden>
-      {items.slice(0, 3).map((item) => (
-        <i key={`${item.id}-${item.time}`} className="cal-dot" />
+      {items.slice(0, 3).map((item, index) => (
+        <i
+          key={`${item.kind}-${item.time}-${index}`}
+          className={item.kind === "lesson" ? "cal-dot cal-dot--lesson" : "cal-dot"}
+        />
       ))}
     </span>
+  );
+}
+
+/** A lesson from the timetable: read-only, so a plain card — no link, no swipe to delete. */
+function LessonRow({ lesson }: { lesson: LessonItem }) {
+  return (
+    <div className="cal-item cal-lesson">
+      <span className="time">{lesson.time}</span>
+      <span className="cal-item__body">
+        <span className="cal-item__text">{lesson.title}</span>
+        <span className="muted cal-item__sub">
+          {lessonMeta(lesson.lesson_kind, lesson.time, lesson.end, lesson.room)}
+        </span>
+      </span>
+    </div>
   );
 }
 
@@ -68,11 +87,21 @@ export function CalendarScreen() {
   // user just picked a day from the open month) stands in at once; the week keeps fetching quietly.
   const days = agenda.data?.days ?? weekDaysFrom(month.data?.days, week);
   const dayItems = itemsOn(days, day);
+  const weekLabel = days?.find((entry) => entry.label)?.label ?? null;
   const heading = (iso: string) => dayHeading(iso, today, lang, t.calendar.words);
+  /** «2 пары · 1 напоминание», or «Ничего не запланировано». */
+  const summary = (items: AgendaItem[]) => {
+    const lessons = items.filter((item) => item.kind === "lesson").length;
+    const reminders = items.length - lessons;
+    const parts = [
+      lessons ? t.calendar.lessons(lessons) : "",
+      reminders ? t.calendar.count(reminders) : "",
+    ].filter(Boolean);
+    return parts.length ? parts.join(" · ") : t.calendar.empty;
+  };
   const monthLabel = (iso: string) => {
     const items = month.data ? itemsOn(month.data.days, iso) : undefined;
-    if (!items) return heading(iso);
-    return `${heading(iso)}, ${items.length ? t.calendar.count(items.length) : t.calendar.empty}`;
+    return items ? `${heading(iso)}, ${summary(items)}` : heading(iso);
   };
   const pick = (iso: string) => {
     const value = iso === today ? null : iso;
@@ -85,7 +114,7 @@ export function CalendarScreen() {
     ["cal-cell", iso === day && "cal-cell--selected", iso === today && "cal-cell--today", other && "cal-cell--other"]
       .filter(Boolean)
       .join(" ");
-  const onDelete = async (item: AgendaItem) => {
+  const onDelete = async (item: ReminderItem) => {
     const question =
       item.repeat === "none" ? t.calendar.confirmDelete : t.calendar.confirmDeleteSeries(item.text);
     if (await confirmAction(question)) remove.mutate(item.id);
@@ -137,7 +166,10 @@ export function CalendarScreen() {
         <button type="button" className="icon-button" aria-label={t.calendar.prevWeek} onClick={() => shiftWeek(-1)}>
           <ChevronLeft size={18} aria-hidden />
         </button>
-        <span className="muted">{rangeLabel(week[0] ?? day, week[6] ?? day, lang)}</span>
+        <span className="muted">
+          {weekLabel ? `${weekLabel} · ` : ""}
+          {rangeLabel(week[0] ?? day, week[6] ?? day, lang)}
+        </span>
         <button type="button" className="icon-button" aria-label={t.calendar.nextWeek} onClick={() => shiftWeek(1)}>
           <ChevronRight size={18} aria-hidden />
         </button>
@@ -198,7 +230,7 @@ export function CalendarScreen() {
       <div className="cal-dayhead">
         <h2 className="cal-dayhead__title">{heading(day)}</h2>
         {!agenda.isError && days && (
-          <p className="muted">{dayItems.length ? t.calendar.count(dayItems.length) : t.calendar.empty}</p>
+          <p className="muted">{summary(dayItems)}</p>
         )}
       </div>
 
@@ -207,7 +239,10 @@ export function CalendarScreen() {
       ) : !days ? (
         <Loader />
       ) : (
-        dayItems.map((item) => (
+        dayItems.map((item, index) =>
+          item.kind === "lesson" ? (
+            <LessonRow key={`lesson-${item.time}-${index}`} lesson={item} />
+          ) : (
           <SwipeRow key={`${item.id}-${item.time}`} onDelete={() => void onDelete(item)} deleteLabel={t.calendar.delete}>
             <Link href={`/calendar/${item.id}`} className="cal-item">
               <span className="time">{item.time}</span>
@@ -220,7 +255,8 @@ export function CalendarScreen() {
               </span>
             </Link>
           </SwipeRow>
-        ))
+          ),
+        )
       )}
       <Fab href={`/calendar/new/${day}`} label={t.calendar.add} />
     </>

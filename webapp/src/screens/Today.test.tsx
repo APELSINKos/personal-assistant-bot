@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { TodayLesson } from "../api/types";
 import { installTelegram } from "../test/fakeTelegram";
 import { habit, today } from "../test/fixtures";
 import { mockApi } from "../test/mockApi";
@@ -74,5 +75,54 @@ describe("Today", () => {
     mockApi({ "GET /today": { status: 400, body: { status: 400, code: "http_error", title: "Bad" } } });
     renderWithApp(<TodayScreen />);
     expect(await screen.findByRole("button", { name: "Повторить" })).toBeInTheDocument();
+  });
+});
+
+describe("Today lessons", () => {
+  const lessons: TodayLesson[] = [
+    {
+      time: "10:40", end: "12:10", title: "Математический анализ", kind: "ЛК", room: "А-16",
+      starts_at: "2026-09-28T07:40:00Z", ends_at: "2026-09-28T09:10:00Z",
+    },
+    {
+      time: "12:40", end: "14:10", title: "Разработка баз данных", kind: "ПР", room: null,
+      starts_at: "2026-09-28T09:40:00Z", ends_at: "2026-09-28T11:10:00Z",
+    },
+  ];
+
+  afterEach(() => vi.useRealTimers());
+
+  it("lists the day's lessons, then says they are over", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-28T08:00:00Z")); // 11:00 in Moscow, during the first one
+    installTelegram();
+    mockApi({ "GET /today": { ...today, has_schedule: true, lessons, week_label: "5 неделя" } });
+    const { unmount } = renderWithApp(<TodayScreen />);
+    expect(await screen.findByText("Пары · 5 неделя")).toBeInTheDocument();
+    expect(screen.getByText("Математический анализ")).toBeInTheDocument();
+    expect(screen.getByText("ЛК · 10:40–12:10 · А-16")).toBeInTheDocument();
+    expect(screen.getByText("ПР · 12:40–14:10")).toBeInTheDocument();
+    unmount();
+    vi.setSystemTime(new Date("2026-09-28T11:10:00Z")); // the last one has just ended
+    renderWithApp(<TodayScreen />);
+    expect(await screen.findByText("Пары закончились")).toBeInTheDocument();
+    expect(screen.queryByText("Математический анализ")).not.toBeInTheDocument();
+  });
+
+  it("has no lessons card without lessons today", async () => {
+    installTelegram();
+    mockApi({ "GET /today": { ...today, has_schedule: true, week_label: "5 неделя" } });
+    renderWithApp(<TodayScreen />);
+    expect(await screen.findByText("Привычки · 0 из 1")).toBeInTheDocument();
+    expect(screen.queryByText(/^Пары/)).not.toBeInTheDocument();
+  });
+
+  it("names the lessons in English", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-28T08:00:00Z"));
+    installTelegram();
+    mockApi({ "GET /today": { ...today, has_schedule: true, lessons, week_label: null } });
+    renderWithApp(<TodayScreen />, { lang: "en" });
+    expect(await screen.findByText("Classes")).toBeInTheDocument();
   });
 });

@@ -196,7 +196,12 @@ export function useDeleteReminder() {
       const weeks = client.getQueriesData<Agenda>({ queryKey: ["agenda"] });
       const list = client.getQueryData<Reminder[]>(keys.reminders);
       client.setQueriesData<Agenda>({ queryKey: ["agenda"] }, (agenda) =>
-        agenda && { days: agenda.days.map((day) => ({ ...day, items: day.items.filter((item) => item.id !== id) })) });
+        agenda && {
+          days: agenda.days.map((day) => ({
+            ...day,
+            items: day.items.filter((item) => item.kind !== "reminder" || item.id !== id),
+          })),
+        });
       client.setQueryData<Reminder[]>(keys.reminders, (items) => items?.filter((item) => item.id !== id));
       return { weeks, list };
     },

@@ -116,7 +116,7 @@ export interface ReminderInput {
   rule?: RuleInput;
 }
 
-export interface AgendaItem {
+export interface ReminderItem {
   kind: "reminder";
   id: number;
   time: string;
@@ -125,8 +125,21 @@ export interface AgendaItem {
   description: string | null;
 }
 
+export interface LessonItem {
+  kind: "lesson";
+  time: string;
+  end: string;
+  title: string;
+  lesson_kind: string | null;
+  room: string | null;
+}
+
+export type AgendaItem = ReminderItem | LessonItem;
+
 export interface AgendaDay {
   date: string;
+  /** The timetable's week label for this day, «5 неделя». */
+  label: string | null;
   items: AgendaItem[];
 }
 

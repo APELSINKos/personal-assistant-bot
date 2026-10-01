@@ -126,3 +126,8 @@ export function monthTitle(iso: string, lang: Lang): string {
   const month = new Intl.DateTimeFormat(lang, { timeZone: "UTC", month: "long" }).format(date);
   return capitalize(`${month} ${date.getUTCFullYear()}`);
 }
+
+/** «ЛК · 10:40–12:10 · А-16» — a lesson's kind, time and room, whichever it has. */
+export function lessonMeta(kind: string | null, time: string, end: string, room: string | null): string {
+  return [kind, `${time}–${end}`, room].filter(Boolean).join(" · ");
+}

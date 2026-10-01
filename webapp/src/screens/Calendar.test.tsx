@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AgendaItem } from "../api/types";
+import type { AgendaItem, LessonItem, ReminderItem } from "../api/types";
 import { addDaysIso, weekOf } from "../lib/format";
 import { installTelegram } from "../test/fakeTelegram";
 import { me } from "../test/fixtures";
@@ -8,19 +8,23 @@ import { mockApi } from "../test/mockApi";
 import { renderWithApp } from "../test/render";
 import { CalendarScreen } from "./Calendar";
 
-function item(id: number, time: string, text: string, extra: Partial<AgendaItem> = {}): AgendaItem {
+function item(id: number, time: string, text: string, extra: Partial<ReminderItem> = {}): ReminderItem {
   return { kind: "reminder", id, time, text, repeat: "none", description: null, ...extra };
 }
 
-function week(monday: string, items: Record<string, AgendaItem[]> = {}) {
-  return { days: weekOf(monday).map((date) => ({ date, items: items[date] ?? [] })) };
+function lesson(time: string, end: string, title: string, extra: Partial<LessonItem> = {}): LessonItem {
+  return { kind: "lesson", time, end, title, lesson_kind: null, room: null, ...extra };
+}
+
+function week(monday: string, items: Record<string, AgendaItem[]> = {}, label: string | null = null) {
+  return { days: weekOf(monday).map((date) => ({ date, label, items: items[date] ?? [] })) };
 }
 
 /** Every day between `fromIso` and `toIso` inclusive — for mocking a month-sized agenda range. */
 function range(fromIso: string, toIso: string, items: Record<string, AgendaItem[]> = {}) {
-  const days: { date: string; items: AgendaItem[] }[] = [];
+  const days: { date: string; label: string | null; items: AgendaItem[] }[] = [];
   for (let iso = fromIso; iso <= toIso; iso = addDaysIso(iso, 1)) {
-    days.push({ date: iso, items: items[iso] ?? [] });
+    days.push({ date: iso, label: null, items: items[iso] ?? [] });
   }
   return { days };
 }
@@ -255,5 +259,56 @@ describe("Calendar", () => {
     const { history } = renderWithApp(<CalendarScreen />, { path: "/calendar" });
     fireEvent.click(await screen.findByText("↻ Таблетки"));
     expect(history.at(-1)).toBe("/calendar/2");
+  });
+});
+
+describe("Calendar lessons", () => {
+  const DATABASES = lesson("12:40", "14:10", "Разработка баз данных", { lesson_kind: "ПР", room: "И-212-б" });
+  const LECTURE = lesson("09:00", "10:30", "Мобильные приложения", { lesson_kind: "ЛК" });
+
+  it("shows lessons among the reminders, with the week's label and both counts", async () => {
+    at("2026-09-29T09:00:00Z");
+    installTelegram();
+    mockApi({
+      "GET /me": me,
+      "GET /agenda?from=2026-09-28&to=2026-10-04": week(
+        "2026-09-28",
+        { "2026-09-29": [LECTURE, PILLS, DATABASES].sort((a, b) => a.time.localeCompare(b.time)) },
+        "5 неделя",
+      ),
+    });
+    renderWithApp(<CalendarScreen />, { path: "/calendar" });
+    expect(await screen.findByText("2 пары · 1 напоминание")).toBeInTheDocument();
+    expect(screen.getByText("5 неделя · 28 сент. – 4 окт.")).toBeInTheDocument();
+    expect(screen.getByText("Разработка баз данных")).toBeInTheDocument();
+    expect(screen.getByText("ПР · 12:40–14:10 · И-212-б")).toBeInTheDocument();
+    expect(screen.getByText("ЛК · 09:00–10:30")).toBeInTheDocument();
+    // Lessons come from the timetable: no link to edit them and nothing to delete.
+    expect(screen.getAllByRole("button", { name: "Удалить напоминание" })).toHaveLength(1);
+    expect(screen.getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual([
+      "/calendar/2",
+      "/calendar/new/2026-09-29",
+    ]);
+    const today = screen.getByRole("button", { name: "Сегодня · вторник, 29 сентября" });
+    expect(today.querySelectorAll(".cal-dot--lesson")).toHaveLength(2);
+    expect(today.querySelectorAll(".cal-dot:not(.cal-dot--lesson)")).toHaveLength(1);
+  });
+
+  it("counts lessons alone and names them in the month", async () => {
+    at("2026-09-29T09:00:00Z");
+    installTelegram();
+    mockApi({
+      "GET /me": me,
+      "GET /agenda?from=2026-09-28&to=2026-10-04": week("2026-09-28", { "2026-09-30": [DATABASES] }),
+      "GET /agenda?from=2026-08-31&to=2026-10-04": range("2026-08-31", "2026-10-04", {
+        "2026-09-30": [DATABASES],
+      }),
+    });
+    renderWithApp(<CalendarScreen />, { path: "/calendar" });
+    fireEvent.click(await screen.findByRole("button", { name: "Завтра · среда, 30 сентября" }));
+    expect(screen.getByText("1 пара")).toBeInTheDocument();
+    expect(screen.getByText("28 сент. – 4 окт.")).toBeInTheDocument(); // no label, no «·»
+    fireEvent.click(screen.getByRole("button", { name: "Календарь Показать месяц" }));
+    expect(await screen.findByRole("button", { name: "Завтра · среда, 30 сентября, 1 пара" })).toBeInTheDocument();
   });
 });

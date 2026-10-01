@@ -312,6 +312,22 @@ describe("useDeleteReminder", () => {
       expect(client.getQueryData<Agenda>(keys.agenda("2026-09-28", "2026-10-04"))?.days[0]?.items ?? []).toEqual([]),
     );
   });
+
+  it("keeps the day's lessons", async () => {
+    installTelegram();
+    const lesson = { kind: "lesson", time: "09:00", end: "10:30", title: "x", lesson_kind: null, room: null };
+    const reminder = { kind: "reminder", id: 5, time: "12:00", text: "x", repeat: "none", description: null };
+    mockApi({ "DELETE /reminders/5": () => ({ status: 204 }), "GET /agenda?from=2026-09-28&to=2026-10-04": { days: [] } });
+    const client = createQueryClient();
+    client.setQueryData(keys.agenda("2026-09-28", "2026-10-04"), {
+      days: [{ date: "2026-09-29", label: null, items: [lesson, reminder] }],
+    });
+    const { result } = renderHook(() => useDeleteReminder(), { wrapper: wrapperFor(client) });
+    act(() => result.current.mutate(5));
+    await waitFor(() =>
+      expect(client.getQueryData<Agenda>(keys.agenda("2026-09-28", "2026-10-04"))?.days[0]?.items).toEqual([lesson]),
+    );
+  });
 });
 
 describe("schedule", () => {
