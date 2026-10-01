@@ -124,7 +124,7 @@ def normalize(url: str) -> httpx.URL:
         raise _refused("forbidden_host") from error
     if (
         parsed.scheme != "https"
-        or not parsed.host
+        or not parsed.raw_host  # .host would IDNA-decode, and raise on «xn--» junk
         or parsed.userinfo
         or parsed.port not in (None, 443)
     ):
@@ -146,17 +146,19 @@ class CalendarFetcher:
         self._max_bytes = max_bytes
         self._timeout = timeout
 
-    async def _address(self, url: httpx.URL) -> str:
+    async def _address(self, host: str) -> str:
         try:
-            literal: str | None = str(ipaddress.ip_address(url.host))
+            literal: str | None = str(ipaddress.ip_address(host))
         except ValueError:
             literal = None
         if literal is not None:
             addresses = [literal]
         else:
             try:
-                addresses = await self._resolve(url.host, 443)
-            except OSError as error:
+                addresses = await self._resolve(host, 443)
+            except (OSError, ValueError) as error:
+                # The system resolver IDNA-encodes the name before any lookup and refuses an
+                # empty or 64-character label with UnicodeError, a ValueError.
                 raise _refused("unreachable") from error
         if not addresses or not all(is_public(address) for address in addresses):
             raise _refused("forbidden_host")
@@ -166,18 +168,21 @@ class CalendarFetcher:
     async def _download(self, url: str, limit: int, strict_size: bool) -> bytes:
         current = normalize(url)
         for _ in range(MAX_REDIRECTS + 1):
-            address = await self._address(current)
+            # Only ASCII forms go out: a Unicode name as httpx's own IDNA 2008 A-labels (header
+            # values must be ASCII), an IPv6 literal in brackets in Host.
+            host = current.raw_host.decode("ascii")
+            address = await self._address(host)
             request = self._http.build_request(
                 "GET",
                 current.copy_with(host=address),
                 headers={
-                    "Host": current.host,
+                    "Host": current.netloc.decode("ascii"),
                     "User-Agent": USER_AGENT,
                     "Accept": "text/calendar, */*;q=0.5",
                     # httpx would ask for gzip and undo any stack of layers without a limit
                     "Accept-Encoding": "identity",
                 },
-                extensions={"sni_hostname": current.host},
+                extensions={"sni_hostname": host},
             )
             response = await self._http.send(request, stream=True, follow_redirects=False)
             try:
@@ -214,8 +219,9 @@ class CalendarFetcher:
         try:
             async with asyncio.timeout(self._timeout):
                 return await self._download(url, limit, strict_size)
-        except (httpx.HTTPError, TimeoutError, OSError, zlib.error) as error:
-            # zlib.error: a damaged gzip or deflate body
+        except (httpx.HTTPError, TimeoutError, OSError, UnicodeError, zlib.error) as error:
+            # UnicodeError: httpx IDNA-decodes a redirect target while it prepares the next hop,
+            # even one it is not asked to follow. zlib.error: a damaged gzip or deflate body.
             raise _refused("unreachable") from error
 
     async def fetch(self, url: str) -> bytes:

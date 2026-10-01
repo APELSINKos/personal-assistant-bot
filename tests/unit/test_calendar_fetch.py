@@ -108,6 +108,37 @@ async def test_downloads_from_the_checked_address_with_the_name_in_host_and_sni(
     assert "personal-assistant-bot" in request.headers["user-agent"]
 
 
+async def test_an_idn_host_goes_out_in_its_ascii_form() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, content=ICS)
+
+    # The resolver knows only the A-labels: header values must be ASCII, and httpx itself
+    # encodes the name by IDNA 2008, where the system resolver would use IDNA 2003.
+    table = {"xn--e1afmkfd.xn--p1ai": [PUBLIC]}
+    assert await fetcher(handler, table).fetch("https://пример.рф/cal.ics") == ICS
+    (request,) = seen
+    assert request.url.host == PUBLIC
+    assert request.headers["host"] == "xn--e1afmkfd.xn--p1ai"
+    assert request.extensions["sni_hostname"] == "xn--e1afmkfd.xn--p1ai"
+
+
+async def test_an_ipv6_literal_goes_in_host_with_brackets() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, content=ICS)
+
+    assert await fetcher(handler).fetch("https://[2606:4700:4700::1111]/cal.ics") == ICS
+    (request,) = seen
+    assert request.url.host == "2606:4700:4700::1111"
+    assert request.headers["host"] == "[2606:4700:4700::1111]"
+    assert request.extensions["sni_hostname"] == "2606:4700:4700::1111"
+
+
 @pytest.mark.parametrize(
     "url",
     [
@@ -287,6 +318,33 @@ async def test_network_and_dns_failures_are_unreachable() -> None:
     assert await reason(fetcher(down).fetch("https://uni.example/a")) == "unreachable"
     ok = lambda request: httpx.Response(200, content=ICS)  # noqa: E731
     assert await reason(fetcher(ok, {}).fetch("https://nowhere.example/a")) == "unreachable"
+
+
+@pytest.mark.parametrize(
+    "host",
+    ["a..b", ".uni.example", "a" * 64 + ".example"],
+    ids=["double-dot", "leading-dot", "64-character-label"],
+)
+async def test_a_name_the_resolver_cannot_encode_is_unreachable(host: str) -> None:
+    calls: list[httpx.Request] = []
+    handler = lambda request: calls.append(request) or httpx.Response(200)  # noqa: E731
+    # The real resolver: Python IDNA-encodes the name and refuses an empty or 64-character
+    # label with UnicodeError before any lookup.
+    calendars = CalendarFetcher(httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    assert await reason(calendars.fetch(f"https://{host}/cal.ics")) == "unreachable"
+    assert calls == []
+
+
+async def test_a_name_that_does_not_decode_is_unreachable() -> None:
+    # "xn--a" is ASCII but no IDNA name: httpx's URL.host decodes it and raises.
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/hop":
+            return httpx.Response(302, headers={"Location": "https://xn--a/cal.ics"})
+        return httpx.Response(200, content=ICS)
+
+    calendars = fetcher(handler)
+    assert await reason(calendars.fetch("https://xn--a/cal.ics")) == "unreachable"
+    assert await reason(calendars.fetch("https://uni.example/hop")) == "unreachable"
 
 
 async def test_a_slow_server_is_unreachable() -> None:
