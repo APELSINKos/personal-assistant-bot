@@ -4,6 +4,7 @@ import logging
 import re
 import subprocess
 import time
+import tracemalloc
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -242,6 +243,29 @@ def test_a_full_semester_with_week_labels_parses_quickly() -> None:
     assert time.perf_counter() - began < 1.5
     assert len(table.lessons) == 40 * 8
     assert [week.label for week in table.weeks] == [f"{n} неделя" for n in range(1, 18)]
+
+
+def test_a_flood_of_week_labels_is_refused_without_building_them_all() -> None:
+    # 200 all-day «1 неделя» events with no RRULE, dated every day of the window: 22 400 labels.
+    days = ",".join(f"{date(2026, 9, 7) + timedelta(days=n):%Y%m%d}" for n in range(112))
+    events = "".join(
+        f"BEGIN:VEVENT\r\nUID:w{i}\r\nDTSTART;VALUE=DATE:20260907\r\nRDATE;VALUE=DATE:{days}\r\n"
+        "SUMMARY:1 неделя\r\nEND:VEVENT\r\n"
+        for i in range(200)
+    )
+    body = f"BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{events}END:VCALENDAR\r\n".encode()
+    tracemalloc.start()
+    try:
+        began = time.perf_counter()
+        with pytest.raises(InvalidInput) as caught:
+            ical.parse(body, utc(2026, 9, 6, 21), utc(2026, 12, 27, 21), "Europe/Moscow")
+        took, (_, peak) = time.perf_counter() - began, tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert caught.value.params == {"field": "calendar", "reason": "too_large"}
+    # All built at once they took ~74 MB; a week at a time the budget stops them at ~26 MB.
+    assert peak < 45 * 2**20
+    assert took < 5  # tracemalloc slows every allocation
 
 
 def test_more_recurring_events_than_a_timetable_has_are_refused(

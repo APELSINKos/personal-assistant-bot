@@ -3,9 +3,10 @@
 A calendar comes from anyone, so the parser guards itself three ways. Events the expansion
 cannot read or that repeat more than daily are dropped one by one, so a bad event costs only
 itself, and more than `MAX_SERIES` recurring events are refused. The expansion reads only the
-window and stops past `MAX_OCCURRENCES`. And `parse_isolated` runs it all in a child Python
-process killed after `PARSE_SECONDS`: dateutil can spend minutes inside one call on a rule
-that never matches, and nothing can stop a thread.
+window and stops once it has built more than `MAX_OCCURRENCES`, counting the timed occurrences
+one by one and the week labels a week of the window at a time. And `parse_isolated` runs it
+all in a child Python process killed after `PARSE_SECONDS`: dateutil can spend minutes inside
+one call on a rule that never matches, and nothing can stop a thread.
 
 Callers use `parse_isolated` through `asyncio.to_thread`; `parse` is the same work in this
 process (a full MIREA semester, ~46 series and 18 week labels, takes about 0.2 s; the child
@@ -35,8 +36,9 @@ from assistant.core.timeutil import UTC, local_to_utc
 log = logging.getLogger(__name__)
 
 # More occurrences than any timetable has in the window: the expansion stops there and the
-# calendar is refused as "too_large". The count runs between the library's yields, so it
-# cannot stop slow work inside one rule; the child's time limit does.
+# calendar is refused as "too_large". Timed occurrences are counted as the library yields
+# them, week labels after each `_SLICE` of the window, so at most one slice is built past the
+# limit. Slow work inside one rule is beyond the count; the child's time limit stops it.
 MAX_OCCURRENCES = 3000
 # More recurring events than any timetable has: refused as "too_large" before expanding.
 MAX_SERIES = 500
@@ -56,6 +58,9 @@ _SUB_DAILY = frozenset({"SECONDLY", "MINUTELY", "HOURLY"})
 _TIME_PARTS = ("BYSECOND", "BYMINUTE", "BYHOUR")
 # What the library reads from every event without a guard, with the type it needs.
 _TYPED = (("DTEND", date), ("RECURRENCE-ID", date), ("DURATION", timedelta))
+# The week labels are read this much of the window at a time: one `between` call builds every
+# occurrence it returns before the budget can count them.
+_SLICE = timedelta(days=7)
 # «5 неделя», «5-я неделя», «Неделя 5», "Week 5", "5 week" — the all-day events that name weeks.
 _WEEK = re.compile(
     r"^\s*(?:\d{1,2}\s*(?:-?я\s*)?(?:неделя|нед\.?|week)|(?:неделя|week)\s*\d{1,2})\s*$",
@@ -250,8 +255,9 @@ def _take(found: list[Any], event: Any) -> None:
 
 
 def _occurrences(calendar: Any, start: datetime, end: datetime, tz: str) -> list[Any]:
-    """The occurrences of the window, under one budget. The timed ones are read lazily, in
-    time order, up to `end`: a huge or endless calendar costs only what the window needs."""
+    """The occurrences of the window, under one budget: the timed ones read lazily, in time
+    order, up to `end`, the week labels a slice at a time. A huge or endless calendar costs
+    only what the window needs, and at most one slice past the budget."""
     timed, labels = _streams(calendar)
     found: list[Any] = []
     end_day = end.astimezone(UTC).date()
@@ -269,13 +275,23 @@ def _occurrences(calendar: Any, start: datetime, end: datetime, tz: str) -> list
                 break
             continue
         _take(found, event)
-    # The labels in one call: read lazily, weeks that cover every day would keep the library
-    # at 15-minute steps (~0.9 s a semester). The budget counts them all the same.
+    # The labels: read lazily, weeks that cover every day would keep the library at 15-minute
+    # steps (~0.9 s a semester), so they come from `between`, a slice at a time.
+    query = recurring_ical_events.of(labels, skip_bad_series=True)
     stop = datetime.combine(end_day + timedelta(days=1), time(), UTC)
-    for event in recurring_ical_events.of(labels, skip_bad_series=True).between(start, stop):
-        # Events nested in other components ride in both calendars: a timed one counted above.
-        if not isinstance(event["DTSTART"].dt, datetime):
+    left = start
+    while left < stop:
+        right = min(left + _SLICE, stop)
+        for event in query.between(left, right):
+            first = event["DTSTART"].dt
+            if isinstance(first, datetime):
+                continue  # nested in another component, so in both calendars: counted above
+            # A slice returns every label it overlaps; one that began before it was taken in
+            # the slice it starts in (the first slice takes those from before the window).
+            if left > start and datetime.combine(first, time(), left.tzinfo) < left:
+                continue
             _take(found, event)
+        left = right
     return found
 
 
