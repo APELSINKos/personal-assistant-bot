@@ -81,6 +81,16 @@ async def test_group_search(client, auth, ready) -> None:
     assert nothing.json() == {"groups": [], "building": False}
 
 
+async def test_the_group_search_goes_by_the_apps_clock(client, auth, session) -> None:
+    # The semester ends the day after the app's clock: by that clock the group is current, by
+    # the real date it is over — a search by the real date would not find it.
+    ends = NOW.date() + timedelta(days=1)
+    await groups.remember(session, 4805, GroupHeader("ИКБО-63-24", ends), NOW)
+    await session.commit()
+    found = await client.get("/api/schedule/groups", params={"q": "ИКБО-63"}, headers=auth())
+    assert found.json()["groups"] == [{"id": 4805, "name": "ИКБО-63-24"}]
+
+
 async def test_group_search_while_the_directory_is_built(client, auth, session) -> None:
     await groups.remember(session, 4804, GroupHeader("ИКБО-62-24", date(2026, 12, 31)), NOW)
     await session.commit()

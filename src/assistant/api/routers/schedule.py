@@ -22,6 +22,8 @@ from assistant.api.views import schedule_out
 from assistant.core.errors import InvalidInput, NotFound
 from assistant.core.models import User
 from assistant.core.services import groups, schedule
+from assistant.core.services.group_names import MIREA_ZONE
+from assistant.core.timeutil import local_today
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["schedule"])
@@ -50,9 +52,10 @@ async def get_schedule(user: CurrentUser, db: Session, state: State) -> Schedule
 
 @router.get("/schedule/groups", response_model=GroupsOut)
 async def search_groups(
-    user: CurrentUser, db: Session, q: Annotated[str, Query(max_length=40)] = ""
+    user: CurrentUser, db: Session, state: State, q: Annotated[str, Query(max_length=40)] = ""
 ) -> GroupsOut:
-    found = await groups.search(db, q)
+    # Whether a semester is still on goes by the app's clock, like every other date here.
+    found = await groups.search(db, q, today=local_today(MIREA_ZONE, state.clock()))
     return GroupsOut(
         groups=[GroupOut(id=group.id, name=group.name) for group in found],
         building=await groups.building(db),
