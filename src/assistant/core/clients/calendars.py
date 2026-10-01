@@ -232,9 +232,17 @@ class CalendarFetcher:
         try:
             async with asyncio.timeout(self._timeout):
                 return await self._download(url, limit, strict_size)
-        except (httpx.HTTPError, TimeoutError, OSError, UnicodeError, zlib.error) as error:
-            # UnicodeError: httpx IDNA-decodes a redirect target while it prepares the next hop,
-            # even one it is not asked to follow. zlib.error: a damaged gzip or deflate body.
+        except (
+            httpx.HTTPError,
+            httpx.InvalidURL,
+            TimeoutError,
+            OSError,
+            UnicodeError,
+            zlib.error,
+        ) as error:
+            # httpx prepares the next hop of a redirect even when it is not asked to follow it:
+            # it IDNA-decodes the target (UnicodeError) and gives a hostless one our host, which
+            # its own URL check may refuse (InvalidURL). zlib.error: a damaged gzip or deflate body.
             raise _refused("unreachable") from error
 
     async def fetch(self, url: str) -> bytes:

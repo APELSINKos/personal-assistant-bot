@@ -218,6 +218,18 @@ async def test_a_redirect_to_http_is_refused() -> None:
     assert await reason(fetcher(handler).fetch("https://uni.example/a")) == "forbidden_host"
 
 
+@pytest.mark.parametrize("call", ["fetch", "head"])
+@pytest.mark.parametrize(
+    "location", ["https:x", "https:uni.example/cal.ics", "mailto:someone@example.com", "webcal:x"]
+)
+async def test_a_redirect_to_a_link_without_a_host_is_unreachable(location: str, call: str) -> None:
+    # A scheme, no host and a path without "/": preparing the next hop, httpx gives the link our
+    # host, and its own URL check then raises InvalidURL outside its try.
+    handler = lambda request: httpx.Response(302, headers={"Location": location})  # noqa: E731
+    calendars = fetcher(handler)
+    assert await reason(getattr(calendars, call)("https://uni.example/a")) == "unreachable"
+
+
 async def test_redirects_are_followed_three_times_at_most() -> None:
     hops: list[str] = []
 
