@@ -4,6 +4,7 @@ link, an .ics file), refreshing it, lesson alerts, disconnecting."""
 from __future__ import annotations
 
 import io
+import math
 from collections.abc import Awaitable, Callable
 from datetime import date, datetime, timedelta
 
@@ -153,6 +154,15 @@ def _is_number(value: str) -> bool:
     return value.isascii() and value.isdigit() and len(value) <= 9
 
 
+def _over_budget(ctx: Ctx) -> str | None:
+    """Count a download or parse the user starts (schedule.attempt_limiter); past the budget,
+    the answer to give instead of starting it."""
+    wait = ctx.attempts.check(ctx.user.id)
+    if wait is None:
+        return None
+    return ctx.t("schedule-too-many", seconds=max(1, math.ceil(wait)))
+
+
 @section("schedule")
 async def show_schedule(message: Message, ctx: Ctx) -> None:
     source = await schedule.get_source(ctx.session, ctx.user.id)
@@ -210,6 +220,10 @@ async def on_refresh(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
         return
     if schedule.refresh_wait(source, clock()) > 0:
         await replies.answer_quietly(query, ctx.t("schedule-refresh-wait"))
+        return
+    refusal = _over_budget(ctx)
+    if refusal is not None:
+        await replies.answer_quietly(query, refusal)
         return
     # Answer first: the download may take seconds, and a pressed button must not spin that long.
     await replies.answer_quietly(query)
@@ -338,6 +352,10 @@ async def got_group(message: Message, ctx: Ctx) -> None:
         return
     if len(found) == 1:
         group_id = found[0].id
+        refusal = _over_budget(ctx)
+        if refusal is not None:
+            await message.answer(refusal)  # the search stays open: the user may try again
+            return
         await _connect(
             _answer(message),
             ctx,
@@ -353,6 +371,10 @@ async def on_group(query: CallbackQuery, callback_data: ScheduleCb, ctx: Ctx, bo
         await replies.answer_quietly(query, ctx.t("stale-button"))
         return
     group_id = int(callback_data.value)
+    refusal = _over_budget(ctx)
+    if refusal is not None:
+        await replies.answer_quietly(query, refusal)  # the group buttons stay for a later try
+        return
     await replies.answer_quietly(query)
     await replies.drop_buttons(bot, query)
     await _connect(
@@ -364,6 +386,10 @@ async def on_group(query: CallbackQuery, callback_data: ScheduleCb, ctx: Ctx, bo
 
 async def got_link(message: Message, ctx: Ctx) -> None:
     link = (message.text or "").strip()
+    refusal = _over_budget(ctx)
+    if refusal is not None:
+        await message.answer(refusal)
+        return
     await _connect(
         _answer(message),
         ctx,
@@ -378,6 +404,10 @@ async def got_file(message: Message, ctx: Ctx, bot: Bot) -> None:
     # A size Telegram did not report is not taken on trust: the file could be up to 20 MB.
     if document.file_size is None or document.file_size > schedule.FILE_LIMIT:
         await message.answer(texts.schedule_error_text("too_large", ctx.t))
+        return
+    refusal = _over_budget(ctx)  # before the file is fetched from Telegram
+    if refusal is not None:
+        await message.answer(refusal)
         return
     body = await download(bot, document.file_id)
     await _connect(

@@ -18,6 +18,7 @@ from assistant.core.config import get_settings
 from assistant.core.db import create_engine, make_sessionmaker
 from assistant.core.i18n import check_translations
 from assistant.core.logging import setup_logging
+from assistant.core.services import schedule
 
 log = logging.getLogger("assistant.bot")
 SHUTDOWN_GRACE = 15  # seconds the scheduler gets to finish its current tick
@@ -39,7 +40,14 @@ async def main() -> None:
         bot = create_bot(settings)
         meteo, cbr = OpenMeteoClient(http), CbrClient(http)
         calendars = CalendarFetcher(calendar_http)
-        dp = build_dispatcher(sessionmaker, meteo, cbr, settings, calendars=calendars)
+        dp = build_dispatcher(
+            sessionmaker,
+            meteo,
+            cbr,
+            settings,
+            calendars=calendars,
+            attempts=schedule.attempt_limiter(),
+        )
         scheduler = Scheduler(
             bot, sessionmaker, meteo, cbr, interval=settings.scheduler_interval, calendars=calendars
         )

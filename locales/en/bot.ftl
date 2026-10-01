@@ -315,6 +315,7 @@ button-lesson-alerts = 🔔 Class alerts
 button-change-source = 🔁 Change source
 button-disconnect = 🗑 Disconnect
 schedule-refresh-wait = Just updated — wait a minute
+schedule-too-many = ⏳ Too many attempts in a row — try again in { $seconds } s.
 schedule-alerts-pick = How many minutes before a class should I alert you?
 button-alerts-off = No alerts
 button-alerts-minutes = { $minutes } min before

@@ -12,9 +12,9 @@ from sqlalchemy import func, select
 import assistant
 from assistant.api import __main__ as entry
 from assistant.api.app import create_app
-from assistant.api.ratelimit import RateLimiter
 from assistant.api.routers.health import read_commit
 from assistant.core.models import User
+from assistant.core.ratelimit import RateLimiter
 from tests.api.conftest import NOW
 from tests.stubs import StubCalendars
 

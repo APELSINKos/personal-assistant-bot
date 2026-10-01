@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import functools
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta
+from time import monotonic
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.sqlite import insert
@@ -28,6 +29,7 @@ from assistant.core.models import (
     User,
     WeekLabel,
 )
+from assistant.core.ratelimit import RateLimiter
 from assistant.core.services import groups, ical
 from assistant.core.timeutil import local_to_utc, utcnow
 
@@ -35,6 +37,11 @@ WINDOW_BEFORE = timedelta(days=7)
 WINDOW_AFTER = timedelta(days=120)
 REFRESH_EVERY = timedelta(hours=6)
 REFRESH_GAP = timedelta(minutes=1)  # the least time between two refreshes asked by hand
+# Downloads and parses one user may start within ATTEMPT_WINDOW: connecting by group, by link
+# or by file, and refreshing by hand. Each one costs a download (from MIREA, whose DDoS guard
+# may block the server for everyone) or a parse; the background refresh is not counted.
+ATTEMPTS = 3
+ATTEMPT_WINDOW = timedelta(minutes=1)  # a sliding window
 STALE_AFTER = timedelta(days=3)
 ALERT_MINUTES = (5, 10, 15, 30, 60)
 ALERT_LATE = timedelta(minutes=10)  # an alert this late (the bot was down) is not sent
@@ -44,6 +51,13 @@ TITLE_LENGTH = 100
 # One calendar parse at a time per process: each child may take 15 s and 256 MiB, and uploads can
 # arrive together; queued parses wait here, not in the default thread pool.
 _PARSER = ThreadPoolExecutor(max_workers=1, thread_name_prefix="calendar-parser")
+
+
+def attempt_limiter(clock: Callable[[], float] = monotonic) -> RateLimiter:
+    """The budget of ATTEMPTS downloads or parses per user per ATTEMPT_WINDOW. A process keeps
+    one and checks it before every download or parse a user asks for: an attempt counts when it
+    starts, whether it then succeeds or fails."""
+    return RateLimiter(ATTEMPTS, ATTEMPT_WINDOW.total_seconds(), clock)
 
 
 def window(now: datetime) -> tuple[datetime, datetime]:

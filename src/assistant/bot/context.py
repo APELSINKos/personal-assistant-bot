@@ -13,6 +13,7 @@ from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.config import Settings
 from assistant.core.i18n import Translator
 from assistant.core.models import User
+from assistant.core.ratelimit import RateLimiter
 
 
 @dataclass
@@ -24,6 +25,7 @@ class Ctx:
     meteo: OpenMeteoClient
     cbr: CbrClient
     calendars: Calendars
+    attempts: RateLimiter  # schedule.attempt_limiter: the downloads and parses users start
     settings: Settings
 
     @property

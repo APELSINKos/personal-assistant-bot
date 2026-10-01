@@ -11,8 +11,9 @@ from fastapi import FastAPI
 
 from assistant.api.app import create_app
 from assistant.api.auth import sign_init_data
-from assistant.api.ratelimit import RateLimiter
 from assistant.core.config import Settings
+from assistant.core.ratelimit import RateLimiter
+from assistant.core.services import schedule
 from tests.stubs import StubCalendars, StubCbr, StubMeteo
 
 TOKEN = "123456:API-TEST-TOKEN"
@@ -68,7 +69,13 @@ def clock() -> list[datetime]:
 
 
 @pytest.fixture
-def app(sessionmaker, api_settings, meteo, cbr, calendars, clock) -> FastAPI:
+def monotonic() -> list[float]:
+    """The clock of the download and parse budget, in seconds; a test moves it by hand."""
+    return [0.0]
+
+
+@pytest.fixture
+def app(sessionmaker, api_settings, meteo, cbr, calendars, clock, monotonic) -> FastAPI:
     return create_app(
         settings=api_settings,
         sessionmaker=sessionmaker,
@@ -78,6 +85,7 @@ def app(sessionmaker, api_settings, meteo, cbr, calendars, clock) -> FastAPI:
         commit="0" * 40,
         clock=lambda: clock[0],
         limiter=RateLimiter(5_000),
+        attempts=schedule.attempt_limiter(lambda: monotonic[0]),
     )
 
 

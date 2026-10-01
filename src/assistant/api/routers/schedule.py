@@ -2,7 +2,8 @@
 
 A user's changes run one at a time (AppState.schedule_lock), and each reads the source only
 once it is its turn: a second click on «refresh» finds the limit used up, and a connect waits
-for a refresh in progress instead of being overwritten by the older calendar."""
+for a refresh in progress instead of being overwritten by the older calendar. Every download
+or parse a user starts counts against their budget (schedule.attempt_limiter) before it."""
 
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ from starlette.requests import ClientDisconnect
 from assistant.api.deps import CurrentUser, Session, State
 from assistant.api.errors import RateLimited
 from assistant.api.schemas import GroupOut, GroupsOut, ScheduleIn, SchedulePatch, ScheduleState
+from assistant.api.state import AppState
 from assistant.api.views import schedule_out
 from assistant.core.errors import InvalidInput, NotFound
 from assistant.core.models import User
@@ -32,6 +34,13 @@ async def _state(db: Session, user: User, now: datetime) -> ScheduleState:
         return ScheduleState(source=None)
     ahead = await schedule.lessons_ahead(db, user.id, now)
     return ScheduleState(source=schedule_out(source, now, ahead))
+
+
+def _attempt(state: AppState, user: User) -> None:
+    """Count a download or parse the user starts; past their budget, 429 before any of it."""
+    wait = state.attempts.check(user.id)
+    if wait is not None:
+        raise RateLimited(wait)
 
 
 @router.get("/schedule", response_model=ScheduleState)
@@ -54,6 +63,7 @@ async def search_groups(
 async def connect(body: ScheduleIn, user: CurrentUser, db: Session, state: State) -> ScheduleState:
     if (body.mirea_id is None) == (body.url is None):
         raise InvalidInput(field="schedule", reason="source")  # exactly one of the two
+    _attempt(state, user)
     async with state.schedule_lock(user.id):
         now = state.clock()
         if body.mirea_id is not None:
@@ -93,14 +103,15 @@ async def upload(
     """The calendar is the raw request body (the app sends the picked file as it is)."""
     if _declared_size(request) > schedule.FILE_LIMIT:
         raise InvalidInput(field="file", reason="too_large")  # no need to receive it first
-    try:
-        # Received before the lock: a slow upload must not hold up the user's other changes.
-        body = await _receive(request)
-    except ClientDisconnect:
-        # The app was closed or lost the network mid-upload; the server drops any answer.
-        log.info("schedule upload of user %s broke off", user.id)
-        return Response(status_code=400)
+    _attempt(state, user)
     async with state.schedule_lock(user.id):
+        # Received only once it is its turn: uploads waiting for the lock hold no body.
+        try:
+            body = await _receive(request)
+        except ClientDisconnect:
+            # The app was closed or lost the network mid-upload; the server drops any answer.
+            log.info("schedule upload of user %s broke off", user.id)
+            return Response(status_code=400)
         now = state.clock()
         await schedule.connect_file(db, user, body, name, now)
         await db.commit()
@@ -117,6 +128,7 @@ async def refresh(user: CurrentUser, db: Session, state: State) -> ScheduleState
         wait = schedule.refresh_wait(source, now)
         if wait > 0:
             raise RateLimited(wait)
+        _attempt(state, user)
         await schedule.refresh(db, user, state.calendars, now)
         await db.commit()
         return await _state(db, user, now)

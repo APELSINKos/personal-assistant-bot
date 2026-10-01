@@ -9,6 +9,8 @@ from aiogram.types import Update
 from assistant.bot.app import build_dispatcher
 from assistant.bot.db_commit import install_commit_before_request
 from assistant.core.config import Settings
+from assistant.core.ratelimit import RateLimiter
+from assistant.core.services import schedule
 from tests.bot.fakes import FakeSession
 from tests.stubs import StubCalendars, StubCbr, StubMeteo
 
@@ -46,11 +48,35 @@ def calendars() -> StubCalendars:
 
 
 @pytest.fixture
+def monotonic() -> list[float]:
+    """The clock of the download and parse budget, in seconds; a test moves it by hand."""
+    return [0.0]
+
+
+@pytest.fixture
+def attempts(monotonic: list[float]) -> RateLimiter:
+    return schedule.attempt_limiter(lambda: monotonic[0])
+
+
+@pytest.fixture
 def make_dp(
-    sessionmaker, meteo: StubMeteo, cbr: StubCbr, calendars: StubCalendars, settings: Settings
+    sessionmaker,
+    meteo: StubMeteo,
+    cbr: StubCbr,
+    calendars: StubCalendars,
+    settings: Settings,
+    attempts: RateLimiter,
 ):
     def _make(sections: Sequence[Router] | None = None) -> Dispatcher:
-        return build_dispatcher(sessionmaker, meteo, cbr, settings, sections, calendars=calendars)
+        return build_dispatcher(
+            sessionmaker,
+            meteo,
+            cbr,
+            settings,
+            sections,
+            calendars=calendars,
+            attempts=attempts,
+        )
 
     return _make
 

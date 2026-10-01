@@ -301,6 +301,16 @@ async def test_refresh_by_hand_waits_a_minute(session, make_user) -> None:
     assert schedule.refresh_wait(source, NOW + timedelta(minutes=1)) == 0.0
 
 
+def test_three_downloads_or_parses_a_minute_per_user() -> None:
+    now = [100.0]
+    budget = schedule.attempt_limiter(lambda: now[0])
+    assert [budget.check(1) for _ in range(3)] == [None, None, None]
+    assert budget.check(1) == 60.0  # a refused attempt does not count
+    assert budget.check(2) is None  # every user has a budget of their own
+    now[0] = 160.0
+    assert budget.check(1) is None
+
+
 async def test_due_sources_the_longest_waiting_first(session, make_user) -> None:
     for user_id in (1, 2, 3):
         user = await make_user(id=user_id)

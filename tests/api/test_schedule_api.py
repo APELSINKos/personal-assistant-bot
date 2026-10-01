@@ -231,6 +231,74 @@ async def test_refresh_at_most_once_a_minute(client, auth, ready, clock) -> None
     assert response.json()["source"]["ok_at"] == "2026-09-28T12:02:00Z"
 
 
+async def test_a_fourth_download_within_a_minute_is_refused(client, auth, ready, monotonic) -> None:
+    # Three attempts, a failed one among them, use up the user's minute.
+    attempts = [(0.0, {"mirea_id": 4805}), (10.0, {"url": "https://uni.example/gone.ics"})]
+    attempts.append((20.0, {"url": LINK}))
+    codes = []
+    for moment, body in attempts:
+        monotonic[0] = moment
+        codes.append((await client.put("/api/schedule", json=body, headers=auth())).status_code)
+    assert codes == [200, 422, 200]
+    downloads = list(ready.requests)
+    monotonic[0] = 30.0
+    refused = await client.put("/api/schedule", json={"mirea_id": 4805}, headers=auth())
+    assert refused.status_code == 429 and refused.json()["code"] == "rate_limited"
+    assert refused.headers["Retry-After"] == "30"  # the first attempt leaves the window at 60
+    assert ready.requests == downloads  # nothing was downloaded
+    source = (await client.get("/api/schedule", headers=auth())).json()["source"]
+    assert source["kind"] == "url"  # the link connected last is still there
+    monotonic[0] = 60.0
+    again = await client.put("/api/schedule", json={"mirea_id": 4805}, headers=auth())
+    assert again.status_code == 200 and again.json()["source"]["kind"] == "mirea"
+
+
+async def test_a_refresh_by_hand_is_an_attempt_once_the_minute_since_the_last_has_passed(
+    client, auth, ready, clock, monotonic
+) -> None:
+    await client.put("/api/schedule", json={"mirea_id": 4805}, headers=auth())
+    early = await client.post("/api/schedule/refresh", headers=auth())  # within its minute
+    assert early.status_code == 429 and early.headers["Retry-After"] == "60"
+    for minutes in (2, 4):  # the second and the third attempt: the early one did not count
+        clock[0] = NOW + timedelta(minutes=minutes)
+        assert (await client.post("/api/schedule/refresh", headers=auth())).status_code == 200
+    downloads = list(ready.requests)
+    clock[0], monotonic[0] = NOW + timedelta(minutes=6), 15.0
+    refused = await client.post("/api/schedule/refresh", headers=auth())
+    assert refused.status_code == 429 and refused.headers["Retry-After"] == "45"
+    assert ready.requests == downloads
+
+
+async def test_an_upload_over_the_budget_is_refused_unread(client, auth, ready) -> None:
+    for _ in range(3):
+        await client.put("/api/schedule", json={"mirea_id": 4805}, headers=auth())
+    pulled: list[int] = []
+
+    async def body() -> AsyncIterator[bytes]:
+        pulled.append(len(OUTLOOK))
+        yield OUTLOOK
+
+    response = await client.post("/api/schedule/file", content=body(), headers=auth())
+    assert response.status_code == 429 and response.headers["Retry-After"] == "60"
+    assert pulled == []
+
+
+async def test_an_upload_is_received_only_once_it_is_its_turn(app, client, auth) -> None:
+    pulled: list[int] = []
+
+    async def body() -> AsyncIterator[bytes]:
+        pulled.append(len(OUTLOOK))
+        yield OUTLOOK
+
+    async with app.state.assistant.schedule_lock(1):  # another change of the user's runs
+        upload = asyncio.create_task(
+            client.post("/api/schedule/file", content=body(), headers=auth())
+        )
+        await asyncio.wait({upload}, timeout=SETTLE)
+        assert pulled == []  # it waits its turn without holding the file in memory
+    assert (await upload).status_code == 200 and pulled == [len(OUTLOOK)]
+
+
 async def test_a_failed_refresh_reports_the_error_and_keeps_the_lessons(
     client, auth, ready, clock
 ) -> None:

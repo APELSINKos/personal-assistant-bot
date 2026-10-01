@@ -327,6 +327,7 @@ button-lesson-alerts = 🔔 Напоминания о парах
 button-change-source = 🔁 Сменить источник
 button-disconnect = 🗑 Отключить
 schedule-refresh-wait = Только что обновлял — подожди минуту
+schedule-too-many = ⏳ Слишком много попыток подряд — попробуй через { $seconds } с.
 schedule-alerts-pick = За сколько минут до пары напоминать?
 button-alerts-off = Не напоминать
 button-alerts-minutes = За { $minutes } мин

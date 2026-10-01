@@ -8,6 +8,7 @@ from aiogram.methods import AnswerCallbackQuery, EditMessageText, SendMessage
 
 from assistant.bot.keyboards import ScheduleCb
 from assistant.bot.routers import schedule as schedule_router
+from assistant.bot.scheduler import Scheduler
 from assistant.core.models import ScheduleKind
 from assistant.core.services import groups, schedule
 from assistant.core.services.group_names import GroupHeader
@@ -24,6 +25,8 @@ WEDNESDAY = (
 )
 STALE = "Эта кнопка устарела — открой раздел заново из меню."
 CRASH = "⚠️ Что-то пошло не так. Попробуй ещё раз чуть позже."  # what a failed update gets
+ENGLISH = "✅ Расписание подключено: Английский. Пар впереди: 1."
+TOO_MANY = "⏳ Слишком много попыток подряд — попробуй через {} с."
 
 
 @pytest.fixture(autouse=True)
@@ -285,6 +288,88 @@ async def test_a_file_has_nothing_to_refresh(feed, fake, monkeypatch) -> None:
     await feed(press("refresh"))  # left in a message from when the source was a link
     assert fake.of(AnswerCallbackQuery)[-1].text == STALE
     assert [type(call) for call in fake.calls[calls:]] == [AnswerCallbackQuery]  # nothing else
+
+
+async def test_a_fourth_attempt_within_a_minute_waits(
+    feed, fake, calendars, monotonic, monkeypatch
+) -> None:
+    downloads: list[str] = []
+
+    async def download(bot, file_id: str) -> bytes:
+        downloads.append(file_id)
+        return OUTLOOK
+
+    monkeypatch.setattr(schedule_router, "download", download)
+    await feed(press("link"))
+    for moment in (0.0, 10.0):  # links that fail count too
+        monotonic[0] = moment
+        await feed(message_update("https://uni.example/gone.ics"))
+        assert fake.sent_texts()[-1].startswith("⚠️ Не получилось скачать календарь")
+    await feed(press("file"))
+    monotonic[0] = 20.0
+    await feed(message_update(document={"file_name": "Английский.ics", "file_size": 500}))
+    assert fake.sent_texts()[-2] == ENGLISH
+    await feed(press("file"))
+    monotonic[0] = 30.0
+    await feed(message_update(document={"file_name": "Английский.ics", "file_size": 500}))
+    assert fake.sent_texts()[-1] == TOO_MANY.format(30)
+    assert downloads == ["doc"]  # the fourth file was not even fetched from Telegram
+    assert calendars.requests == ["https://uni.example/gone.ics"] * 2
+    monotonic[0] = 60.0  # the first attempt has left the window; the dialog is still open
+    await feed(message_update(document={"file_name": "Английский.ics", "file_size": 500}))
+    assert fake.sent_texts()[-2] == ENGLISH and downloads == ["doc", "doc"]
+
+
+async def test_buttons_over_the_budget_answer_with_the_wait(
+    feed, fake, session, mirea, monkeypatch
+) -> None:
+    await directory(session, (4805, "ИКБО-63-24"), (4804, "ИКБО-62-24"))
+    mirea.bodies[groups.calendar_url(4804)] = MIREA
+
+    async def choose(group: str) -> None:
+        await feed(press("find"))
+        await feed(message_update("ИКБО"))
+        await feed(press("group", group))
+
+    await choose("4805")  # the first attempt
+    later = NOW + timedelta(minutes=2)
+    monkeypatch.setattr(schedule_router, "clock", lambda: later)
+    await feed(press("refresh"))  # the second
+    await choose("4804")  # the third
+    downloads = list(mirea.requests)
+    assert len(downloads) == 3
+    latest = NOW + timedelta(minutes=4)
+    monkeypatch.setattr(schedule_router, "clock", lambda: latest)
+    await feed(press("refresh"))
+    assert fake.of(AnswerCallbackQuery)[-1].text == TOO_MANY.format(60)
+    await feed(press("find"))
+    await feed(message_update("ИКБО"))
+    calls = len(fake.calls)
+    await feed(press("group", "4805"))
+    assert fake.of(AnswerCallbackQuery)[-1].text == TOO_MANY.format(60)
+    # Only the answer: the group buttons stay for a try a minute later.
+    assert [type(call) for call in fake.calls[calls:]] == [AnswerCallbackQuery]
+    await feed(message_update("ИКБО-63-24"))  # one group found, which would connect at once
+    assert fake.sent_texts()[-1] == TOO_MANY.format(60)
+    assert mirea.requests == downloads
+
+
+async def test_the_background_refresh_is_not_counted(
+    feed, fake, session, mirea, bot, sessionmaker, meteo, cbr, monkeypatch
+) -> None:
+    await connect(feed, session)  # the first attempt
+    scheduler = Scheduler(bot, sessionmaker, meteo, cbr, calendars=mirea)
+    due = NOW + timedelta(hours=7)
+    for hours in (0, 7, 14):  # three refreshes in the background, a download each
+        assert await scheduler.refresh_schedules(due + timedelta(hours=hours)) == 1
+    later = due + timedelta(hours=21)
+    for minutes in (0, 2, 4):
+        moment = later + timedelta(minutes=minutes)
+        monkeypatch.setattr(schedule_router, "clock", lambda moment=moment: moment)
+        await feed(press("refresh"))
+    # The second and the third attempt went through; only the fourth waits.
+    assert fake.of(AnswerCallbackQuery)[-1].text == TOO_MANY.format(60)
+    assert len(mirea.requests) == 1 + 3 + 2
 
 
 async def test_old_data_is_marked(feed, fake, session, mirea, monkeypatch) -> None:

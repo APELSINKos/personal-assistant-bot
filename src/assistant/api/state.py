@@ -10,11 +10,11 @@ from weakref import WeakValueDictionary
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from assistant.api.ratelimit import RateLimiter
 from assistant.core.clients.calendars import Calendars
 from assistant.core.clients.cbr import CbrClient
 from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.config import Settings
+from assistant.core.ratelimit import RateLimiter
 
 
 @dataclass
@@ -25,6 +25,7 @@ class AppState:
     cbr: CbrClient
     calendars: Calendars
     limiter: RateLimiter
+    attempts: RateLimiter  # schedule.attempt_limiter: the downloads and parses users start
     clock: Callable[[], datetime]
     commit: str | None
     # A lock is kept only while a request holds or awaits it.
