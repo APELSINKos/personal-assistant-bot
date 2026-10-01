@@ -126,7 +126,7 @@ async def test_a_full_crawl_prunes_what_it_no_longer_sees(sessionmaker, session,
     calendars = StubCalendars()
     calendars.bodies[groups.calendar_url(1)] = header("ИКБО-63-24")
     pace = Pace()
-    later = NOW + timedelta(days=7)
+    later = NOW + groups.PRUNE_AFTER + timedelta(days=1)
     result = await groups.full_crawl(
         sessionmaker, calendars, now=lambda: later, sleep=pace.sleep, monotonic=pace.monotonic
     )
@@ -136,6 +136,33 @@ async def test_a_full_crawl_prunes_what_it_no_longer_sees(sessionmaker, session,
     run = await session.get(JobRun, groups.FULL_JOB)
     assert run is not None and run.finished_at == later
     assert run.info == "checked 7, found 1, removed 1"
+
+
+async def test_a_crawl_cut_short_by_failures_keeps_what_it_missed(
+    sessionmaker, session, monkeypatch
+) -> None:
+    monkeypatch.setattr(groups, "FIRST_UPPER", 3)
+    monkeypatch.setattr(groups, "BEYOND_LAST", 0)
+    monkeypatch.setattr(groups, "PRUNE_MIN_FOUND", 2)
+    for group_id in (8, 9):
+        await add(session, group_id, f"ИКБО-0{group_id}-24")  # seen by last week's crawl
+    calendars = StubCalendars()
+    calendars.bodies[groups.calendar_url(1)] = header("ИКБО-01-24")
+    calendars.bodies[groups.calendar_url(2)] = header("ИКБО-02-24")
+    # Then MIREA starts refusing: a challenge page, and from 4 on a rate limit (dead links).
+    calendars.bodies[groups.calendar_url(3)] = b"<!DOCTYPE html><html>Just a moment</html>"
+    pace = Pace()
+    later = NOW + timedelta(days=7)
+    result = await groups.full_crawl(
+        sessionmaker, calendars, now=lambda: later, sleep=pace.sleep, monotonic=pace.monotonic
+    )
+    # Enough groups to count as healthy, but 8 and 9 failed to answer rather than vanished.
+    assert result == groups.CrawlResult(checked=9, found=2, highest=2)
+    session.expire_all()
+    rows = (await session.scalars(select(MireaGroup).order_by(MireaGroup.id))).all()
+    assert [g.id for g in rows] == [1, 2, 8, 9]
+    run = await session.get(JobRun, groups.FULL_JOB)
+    assert run is not None and run.info == "checked 9, found 2, removed 0"
 
 
 async def test_a_failed_full_crawl_keeps_the_directory(sessionmaker, session, monkeypatch) -> None:

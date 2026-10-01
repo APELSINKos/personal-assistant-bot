@@ -13,7 +13,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.sqlite import insert
@@ -41,6 +41,10 @@ FIRST_UPPER = 6000  # a full crawl tries at least this far, whatever it finds
 BEYOND_LAST = 300  # numbers tried past the highest group found
 QUICK_BEHIND = 50  # a quick crawl also re-reads this many numbers below the highest known one
 PRUNE_MIN_FOUND = 100  # a full crawl that found fewer (MIREA was down) removes nothing
+# A crawl cannot tell a group that is gone from a request that failed (a timeout, a rate limit,
+# a challenge page), so a group goes only when no crawl has seen it for longer than two weekly
+# full crawls. Search hides ended semesters anyway: removing is only garbage collection.
+PRUNE_AFTER = timedelta(days=15)
 FULL_JOB = "mirea_full"
 QUICK_JOB = "mirea_quick"
 
@@ -189,8 +193,9 @@ async def full_crawl(
     sleep: Sleep = asyncio.sleep,
     monotonic: Callable[[], float] = time.monotonic,
 ) -> CrawlResult:
-    """Every number from 1. Groups not seen this time are removed — but only when the crawl
-    found a sane number of groups: a crawl during a MIREA outage must not empty the directory."""
+    """Every number from 1. Then the groups no crawl has seen for PRUNE_AFTER are removed — but
+    only when this crawl found a sane number of groups: a crawl during a MIREA outage must not
+    empty the directory, and one cut short half-way must not drop the groups it failed to read."""
     started = now()
     async with sessionmaker() as session:
         top = await max_id(session)
@@ -207,7 +212,8 @@ async def full_crawl(
     if stop is not None and stop.is_set():
         return result  # interrupted by a shutdown: not a finished crawl, nothing is removed
     async with sessionmaker() as session:
-        removed = await prune(session, started) if result.found >= PRUNE_MIN_FOUND else 0
+        healthy = result.found >= PRUNE_MIN_FOUND
+        removed = await prune(session, started - PRUNE_AFTER) if healthy else 0
         info = f"checked {result.checked}, found {result.found}, removed {removed}"
         await record_run(session, FULL_JOB, now(), info)
         await session.commit()
