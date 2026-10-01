@@ -80,6 +80,20 @@ describe("Schedule", () => {
     expect(screen.queryByText("Такой группы нет в справочнике")).not.toBeInTheDocument();
   });
 
+  it("shows the generic text when the group search fails with a code the app has no text for", async () => {
+    installTelegram();
+    mockApi({
+      "GET /me": me,
+      "GET /schedule": { source: null },
+      // A code is a string from the server: it must not be looked up among what every object has.
+      "GET /schedule/groups?q=ikbo": { status: 422, body: { status: 422, code: "__proto__", title: "Invalid input" } },
+    });
+    show();
+    fireEvent.change(await screen.findByLabelText("Группа МИРЭА"), { target: { value: "ikbo" } });
+    expect(await screen.findByText("Что-то пошло не так. Попробуй ещё раз.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Группа МИРЭА")).toBeInTheDocument();
+  });
+
   it("explains why a link was refused and keeps the form", async () => {
     installTelegram();
     const { calls } = mockApi({ "GET /me": me, "GET /schedule": { source: null }, "PUT /schedule": NOT_CALENDAR });
@@ -122,6 +136,16 @@ describe("Schedule", () => {
     fireEvent.change(fileInput(), { target: { files: [big] } });
     expect(await screen.findByText(/Календарь слишком большой/)).toBeInTheDocument();
     expect(calls.some((call) => call.method === "POST")).toBe(false);
+  });
+
+  it("buzzes for a file over 2 MB the way it does for any other error", async () => {
+    const app = installTelegram();
+    mockApi({ "GET /me": me, "GET /schedule": { source: null } });
+    show();
+    await screen.findByRole("button", { name: "Выбрать файл" });
+    fireEvent.change(fileInput(), { target: { files: [new File([new Uint8Array(2 * 1024 * 1024 + 1)], "big.ics")] } });
+    expect(await screen.findByText(/Календарь слишком большой/)).toBeInTheDocument();
+    expect(app.HapticFeedback?.notificationOccurred).toHaveBeenCalledWith("error");
   });
 
   it("refreshes, and reports a refresh that failed", async () => {

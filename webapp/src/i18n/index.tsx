@@ -28,3 +28,14 @@ export function useT(): Dict {
 export function dict(lang: Lang): Dict {
   return DICTS[lang];
 }
+
+/**
+ * The text that explains an error code. A code may be a string the server sent, so it counts only
+ * when it is one of the dictionary's own keys, never a name every object has (`constructor`,
+ * `__proto__`): those would give an empty text, or break rendering altogether.
+ */
+export function errorText(t: Dict, code: string | undefined): string {
+  const messages: Record<string, string> = t.errors;
+  const text = code !== undefined && Object.hasOwn(messages, code) ? messages[code] : undefined;
+  return text ?? t.errors.generic;
+}

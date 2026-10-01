@@ -15,11 +15,11 @@ import { Card } from "../components/Card";
 import { ErrorState, Loader } from "../components/States";
 import { toast } from "../components/toastStore";
 import { WriteRefusedCard } from "../components/WriteRefusedCard";
-import { useLang, useT } from "../i18n";
+import { errorText, useLang, useT } from "../i18n";
 import { shortMoment } from "../lib/format";
 import { useDebounced } from "../lib/useDebounced";
 import { useWriteAccess } from "../lib/useWriteAccess";
-import { confirmAction } from "../telegram";
+import { confirmAction, haptic } from "../telegram";
 
 const ALERT_CHOICES: (AlertMinutes | null)[] = [null, 5, 10, 15, 30, 60];
 const FILE_LIMIT = 2 * 1024 * 1024;
@@ -35,7 +35,6 @@ function ConnectForm({ onDone, onCancel }: { onDone: () => void; onCancel?: () =
   const upload = useUploadSchedule();
   const fileInput = useRef<HTMLInputElement>(null);
   const busy = connect.isPending || upload.isPending;
-  const messages: Record<string, string> = t.errors;
   // Awaited rather than passed as `mutate` callbacks: connecting the first source swaps this form
   // for the source card before the request settles, and callbacks of an unmounted form never run.
   const run = async (work: Promise<unknown>) => {
@@ -57,8 +56,11 @@ function ConnectForm({ onDone, onCancel }: { onDone: () => void; onCancel?: () =
   };
   const pickFile = (file: File | undefined) => {
     if (!file) return;
-    if (file.size > FILE_LIMIT) toast({ kind: "error", code: "too_large" });
-    else void run(upload.mutateAsync(file));
+    if (file.size > FILE_LIMIT) {
+      // The same cue as a server error gets in the mutation cache's handler.
+      haptic("error");
+      toast({ kind: "error", code: "too_large" });
+    } else void run(upload.mutateAsync(file));
   };
 
   return (
@@ -78,21 +80,21 @@ function ConnectForm({ onDone, onCancel }: { onDone: () => void; onCancel?: () =
           />
         </label>
         {searching && groups.isError && !groups.data && (
-          <p className="muted">{messages[errorCode(groups.error)] ?? t.errors.generic}</p>
+          <p className="muted">{errorText(t, errorCode(groups.error))}</p>
         )}
         {searching && groups.data && groups.data.groups.length > 0 && (
           <div className="results">
             {groups.data.groups.map((group) => (
-                <button
-                  type="button"
-                  key={group.id}
-                  className="result"
-                  disabled={busy}
-                  onClick={() => void run(connect.mutateAsync({ mirea_id: group.id }))}
-                >
-                  {group.name}
-                </button>
-              ))}
+              <button
+                type="button"
+                key={group.id}
+                className="result"
+                disabled={busy}
+                onClick={() => void run(connect.mutateAsync({ mirea_id: group.id }))}
+              >
+                {group.name}
+              </button>
+            ))}
           </div>
         )}
         {searching && groups.data?.building && <p className="muted">{t.schedule.building}</p>}

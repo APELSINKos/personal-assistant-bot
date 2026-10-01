@@ -491,6 +491,13 @@ textarea.input {
   color: var(--error);
 }
 
+/* --error (#d63b5c) measures 4.47:1 under the label on the light card's real surface (rendered
+   pixels, worst case) — just short of the 4.5:1 text minimum; #cf3556 measures 4.83:1 there.
+   --error itself stays: it is the background under --on-error. The dark theme clears 4.78:1. */
+[data-theme="light"] .button--danger {
+  color: #cf3556;
+}
+
 .main-action {
   position: fixed;
   inset: auto 0 0;
@@ -584,6 +591,11 @@ textarea.input {
 .result:hover,
 .result:focus-visible {
   background: var(--glass);
+}
+
+.result:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* States */
