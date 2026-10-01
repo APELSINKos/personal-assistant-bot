@@ -19,6 +19,7 @@ from assistant.bot.states import ScheduleForm
 from assistant.core.errors import InvalidInput, NotFound
 from assistant.core.models import ScheduleKind, ScheduleSource
 from assistant.core.services import groups, schedule
+from assistant.core.services.group_names import MIREA_ZONE
 from assistant.core.timeutil import SUPPORTED_YEARS, local_today, to_local, utcnow
 
 Send = Callable[..., Awaitable[object]]
@@ -314,7 +315,12 @@ async def on_file(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
 
 async def got_group(message: Message, ctx: Ctx) -> None:
     name = " ".join((message.text or "").split())
-    found = await groups.search(ctx.session, name) if len(name) in GROUP_QUERY else []
+    # Whether a semester is still on goes by the section's clock, like every other date here.
+    found = (
+        await groups.search(ctx.session, name, today=local_today(MIREA_ZONE, clock()))
+        if len(name) in GROUP_QUERY
+        else []
+    )
     if not found:
         # While the first crawl runs, the group may simply not be reached yet.
         building = await groups.building(ctx.session)

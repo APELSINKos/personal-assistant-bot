@@ -35,9 +35,9 @@ def mirea(calendars):
     return calendars
 
 
-async def directory(session, *names: tuple[int, str]) -> None:
+async def directory(session, *names: tuple[int, str], ends: date = date(2026, 12, 31)) -> None:
     for group_id, name in names or ((4805, "ИКБО-63-24"),):
-        await groups.remember(session, group_id, GroupHeader(name, date(2026, 12, 31)), NOW)
+        await groups.remember(session, group_id, GroupHeader(name, ends), NOW)
     await session.commit()
 
 
@@ -67,6 +67,15 @@ async def test_find_a_group_and_see_today(feed, fake, session, mirea) -> None:
     assert source is not None and source.kind is ScheduleKind.MIREA
     await feed(message_update("🎓 Расписание"))  # the section now opens on today
     assert fake.sent_texts()[-1] == MONDAY
+
+
+async def test_the_group_search_goes_by_the_section_clock(feed, fake, session, mirea) -> None:
+    # The semester ends the day after NOW: by the section's clock the group is current, by the
+    # real date it is over — a search by the real date would not find it.
+    await directory(session, ends=NOW.date() + timedelta(days=1))
+    await feed(press("find"))
+    await feed(message_update("ИКБО-63-24"))
+    assert fake.sent_texts()[-2:] == [CONNECTED, MONDAY]
 
 
 async def test_several_groups_offer_a_choice(feed, fake, session, mirea) -> None:
