@@ -2,11 +2,13 @@
 
 A calendar comes from anyone, so the parser guards itself three ways. Events the expansion
 cannot read or that repeat more than daily are dropped one by one, so a bad event costs only
-itself, and more than `MAX_SERIES` recurring events are refused. The expansion reads only the
-window and stops once it has built more than `MAX_OCCURRENCES`, counting the timed occurrences
-one by one and the week labels a week of the window at a time. And `parse_isolated` runs it
-all in a child Python process killed after `PARSE_SECONDS`: dateutil can spend minutes inside
-one call on a rule that never matches, and nothing can stop a thread.
+itself; more than `MAX_SERIES` recurring events, or week labels past `MAX_LABEL_EVENTS`, are
+refused before anything is expanded. The expansion reads only the window and stops once it
+has built more than `MAX_OCCURRENCES`: the timed occurrences are counted one by one as the
+library yields them, the week labels a week of the window at a time. A slice is built whole
+before it is counted; the label cap is what keeps it small. And `parse_isolated` runs it all
+in a child Python process killed after `PARSE_SECONDS`: dateutil can spend minutes inside one
+call on a rule that never matches, and nothing can stop a thread.
 
 Callers use `parse_isolated` through `asyncio.to_thread`; `parse` is the same work in this
 process (a full MIREA semester, ~46 series and 18 week labels, takes about 0.2 s; the child
@@ -19,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import re
 import subprocess
 import sys
@@ -37,11 +40,17 @@ log = logging.getLogger(__name__)
 
 # More occurrences than any timetable has in the window: the expansion stops there and the
 # calendar is refused as "too_large". Timed occurrences are counted as the library yields
-# them, week labels after each `_SLICE` of the window, so at most one slice is built past the
-# limit. Slow work inside one rule is beyond the count; the child's time limit stops it.
+# them, week labels after each `_SLICE` of the window. A slice is built whole before it is
+# counted, so it is `MAX_LABEL_EVENTS`, checked first, that bounds its size. Slow work inside
+# one rule is beyond the count; the child's time limit stops it.
 MAX_OCCURRENCES = 3000
 # More recurring events than any timetable has: refused as "too_large" before expanding.
 MAX_SERIES = 500
+# A timetable names each week once — a MIREA semester has 18 label events; 400 events and
+# dates is far beyond any real calendar. Counted before the labels are expanded: every label
+# event (overrides too) and RDATE value once, and a label rule once per day its occurrences
+# last, since one starts at most daily and so that many can overlap one slice.
+MAX_LABEL_EVENTS = 400
 # A parse running longer is killed, and the calendar is refused as "too_large".
 PARSE_SECONDS = 15.0
 # Tests turn it off so the suite does not start a Python process per calendar.
@@ -248,6 +257,22 @@ def _streams(calendar: Any) -> tuple[Any, Any]:
     return timed, labels
 
 
+def _label_load(labels: Any) -> int:
+    """What the week-label calendar weighs against `MAX_LABEL_EVENTS` (the rule is there).
+    Events nested in other components are expanded with it, so they count too."""
+    load = 0
+    for event in labels.walk("VEVENT"):
+        load += 1
+        if "RRULE" in event:
+            length = recurring_ical_events.EventAdapter(event).duration
+            load += max(0, math.ceil(length / timedelta(days=1)) - 1)
+        rdates = event.get("RDATE", [])
+        for dates in rdates if isinstance(rdates, list) else [rdates]:
+            if isinstance(dates, icalendar.vDDDLists):  # an unreadable one: the series is skipped
+                load += len(dates.dts)
+    return load
+
+
 def _take(found: list[Any], event: Any) -> None:
     if len(found) >= MAX_OCCURRENCES:
         raise InvalidInput(field="calendar", reason="too_large")
@@ -256,9 +281,11 @@ def _take(found: list[Any], event: Any) -> None:
 
 def _occurrences(calendar: Any, start: datetime, end: datetime, tz: str) -> list[Any]:
     """The occurrences of the window, under one budget: the timed ones read lazily, in time
-    order, up to `end`, the week labels a slice at a time. A huge or endless calendar costs
-    only what the window needs, and at most one slice past the budget."""
+    order, up to `end`; the week labels, once the label cap has bounded what a slice can hold,
+    a slice at a time. A huge or endless calendar costs only what the window needs."""
     timed, labels = _streams(calendar)
+    if _label_load(labels) > MAX_LABEL_EVENTS:  # before anything is expanded
+        raise InvalidInput(field="calendar", reason="too_large")
     found: list[Any] = []
     end_day = end.astimezone(UTC).date()
     for event in recurring_ical_events.of(timed, skip_bad_series=True).after(start):

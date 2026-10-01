@@ -268,6 +268,77 @@ def test_a_flood_of_week_labels_is_refused_without_building_them_all() -> None:
     assert took < 5  # tracemalloc slows every allocation
 
 
+_FIRST_WEEK = ",".join(f"{date(2026, 9, 27) + timedelta(days=n):%Y%m%d}" for n in range(8))
+
+
+@pytest.mark.parametrize(
+    ("count", "lines"),
+    [
+        # All dated in the window's first week: 8 000 labels in its first slice.
+        pytest.param(
+            1000, f"DTSTART;VALUE=DATE:20260927\r\nRDATE;VALUE=DATE:{_FIRST_WEEK}\r\n", id="dates"
+        ),
+        # Daily rules whose labels last a year: ~280 of each overlap the first slice.
+        pytest.param(
+            40,
+            "DTSTART;VALUE=DATE:20260101\r\nDTEND;VALUE=DATE:20270101\r\nRRULE:FREQ=DAILY\r\n",
+            id="year-long-rules",
+        ),
+    ],
+)
+def test_a_crowded_week_of_labels_is_refused_before_expanding(count: int, lines: str) -> None:
+    events = "".join(
+        f"BEGIN:VEVENT\r\nUID:w{i}\r\n{lines}SUMMARY:1 неделя\r\nEND:VEVENT\r\n"
+        for i in range(count)
+    )
+    body = f"BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{events}END:VCALENDAR\r\n".encode()
+    tracemalloc.start()
+    try:
+        with pytest.raises(InvalidInput) as caught:
+            ical.parse(body, START, END, "Europe/Moscow")
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert caught.value.params == {"field": "calendar", "reason": "too_large"}
+    # Built as one slice they took ~32 and ~30 MB; refused before expanding, ~7 and ~0.2 MB.
+    assert peak < 15 * 2**20
+
+
+def test_a_hundred_week_labels_still_parse() -> None:
+    # One-day labels on 100 days in a row: many more than a timetable has, well under the cap.
+    first = date(2026, 9, 10)
+    events = "".join(
+        f"BEGIN:VEVENT\r\nUID:d{n}\r\nDTSTART;VALUE=DATE:{first + timedelta(days=n):%Y%m%d}\r\n"
+        f"SUMMARY:{n // 7 + 1} неделя\r\nEND:VEVENT\r\n"
+        for n in range(100)
+    )
+    body = f"BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{events}END:VCALENDAR\r\n".encode()
+    table = ical.parse(body, utc(2026, 9, 6, 21), utc(2026, 12, 27, 21), "Europe/Moscow")
+    assert [week.start for week in table.weeks] == [first + timedelta(days=n) for n in range(100)]
+
+
+def test_label_events_dates_and_rule_days_count_against_the_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A weekly rule of 7-day labels (7), its override (1), a label with two more dates (3).
+    body = (
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
+        "BEGIN:VEVENT\r\nUID:r\r\nDTSTART;VALUE=DATE:20260928\r\nDTEND;VALUE=DATE:20261005\r\n"
+        "RRULE:FREQ=WEEKLY;COUNT=2\r\nSUMMARY:5 неделя\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:r\r\nRECURRENCE-ID;VALUE=DATE:20261005\r\n"
+        "DTSTART;VALUE=DATE:20261005\r\nDTEND;VALUE=DATE:20261012\r\nSUMMARY:6 неделя\r\n"
+        "END:VEVENT\r\nBEGIN:VEVENT\r\nUID:d\r\nDTSTART;VALUE=DATE:20261001\r\n"
+        "RDATE;VALUE=DATE:20261002,20261003\r\nSUMMARY:Неделя 5\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    ).encode()
+    monkeypatch.setattr(ical, "MAX_LABEL_EVENTS", 11)
+    assert len(ical.parse(body, START, END, "Europe/Moscow").weeks) == 5
+    monkeypatch.setattr(ical, "MAX_LABEL_EVENTS", 10)
+    with pytest.raises(InvalidInput) as caught:
+        ical.parse(body, START, END, "Europe/Moscow")
+    assert caught.value.params == {"field": "calendar", "reason": "too_large"}
+
+
 def test_more_recurring_events_than_a_timetable_has_are_refused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
