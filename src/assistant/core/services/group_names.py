@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from assistant.core.timeutil import UTC, to_local
+from assistant.core.timeutil import SUPPORTED_YEARS, UTC, to_local
 
 NAME_LENGTH = 40
 MIREA_ZONE = "Europe/Moscow"
@@ -57,7 +57,8 @@ def search_keys(query: str) -> list[str]:
 
 def read_header(head: bytes) -> GroupHeader | None:
     """The group's name and semester end from the beginning of its calendar, or None when
-    the bytes are not a group calendar at all (an error page, a cut-off response)."""
+    the bytes are not a group calendar at all (an error page, a cut-off response) or its
+    semester end is not a date."""
     text = _FOLD.sub(b"", head)
     if not text.lstrip(b"\xef\xbb\xbf \t\r\n").upper().startswith(b"BEGIN:VCALENDAR"):
         return None
@@ -70,6 +71,14 @@ def read_header(head: bytes) -> GroupHeader | None:
     end = _SV_END.search(text)
     semester_end = None
     if end is not None:
-        moment = datetime.fromisoformat(end.group(1).decode()).replace(tzinfo=UTC)
-        semester_end = to_local(moment, MIREA_ZONE).date()
+        try:
+            moment = datetime.fromisoformat(end.group(1).decode()).replace(tzinfo=UTC)
+        except ValueError:  # 0000-00-00, a 13th month: no end anyone can read
+            return None
+        if moment.year >= SUPPORTED_YEARS.stop:
+            # An end past the supported years: .NET's DateTime.MaxValue (9999-12-31T23:59:59…)
+            # for a timetable without one. Moved to Moscow it would not even fit in a date.
+            semester_end = date.max
+        else:
+            semester_end = to_local(moment, MIREA_ZONE).date()
     return GroupHeader(name, semester_end)

@@ -70,3 +70,24 @@ def test_what_is_not_a_group(head: bytes) -> None:
 def test_a_folded_name_line() -> None:
     head = b"BEGIN:VCALENDAR\r\nX-WR-CALNAME:\xd0\x98\xd0\x9a\xd0\x91\xd0\x9e-\r\n 63-24\r\n"
     assert read_header(head) == GroupHeader("ИКБО-63-24", None)
+
+
+def with_end(end: str) -> bytes:
+    return f"BEGIN:VCALENDAR\r\nX-WR-CALNAME:ИКБО-63-24\r\nX-SV-END:{end}\r\n".encode()
+
+
+@pytest.mark.parametrize(
+    ("end", "semester_end"),
+    [
+        ("9999-12-31T23:59:59.9999999Z", date.max),  # .NET's DateTime.MaxValue: no end set
+        ("2101-01-01T00:00:00Z", date.max),  # past the years dates may use
+        ("2100-12-30T21:00:00Z", date(2100, 12, 31)),
+    ],
+)
+def test_an_end_far_ahead_means_no_end(end: str, semester_end: date) -> None:
+    assert read_header(with_end(end)) == GroupHeader("ИКБО-63-24", semester_end)
+
+
+@pytest.mark.parametrize("end", ["0000-00-00T00:00:00Z", "2026-13-45T25:61:61Z"])
+def test_an_end_that_is_no_date_makes_the_header_unreadable(end: str) -> None:
+    assert read_header(with_end(end)) is None

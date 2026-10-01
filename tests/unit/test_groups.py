@@ -119,6 +119,52 @@ async def test_crawl_stops_when_asked(sessionmaker) -> None:
     assert result == groups.CrawlResult(0, 0, 0) and calendars.requests == []
 
 
+async def test_odd_semester_ends_do_not_stop_the_crawl(sessionmaker, session, monkeypatch) -> None:
+    monkeypatch.setattr(groups, "BEYOND_LAST", 0)
+    ends = {
+        1: "0000-00-00T00:00:00Z",
+        2: "2026-13-45T25:61:61Z",
+        3: "9999-12-31T23:59:59.9999999Z",  # .NET's DateTime.MaxValue: no end set
+        4: "2026-12-30T21:00:00.0000000Z",
+    }
+    calendars = StubCalendars()
+    for group_id, end in ends.items():
+        calendars.bodies[groups.calendar_url(group_id)] = header(f"ИКБО-0{group_id}-24", end)
+    pace = Pace()
+    result = await groups.crawl(
+        sessionmaker, calendars, 1, 4, now=lambda: NOW, sleep=pace.sleep, monotonic=pace.monotonic
+    )
+    assert result == groups.CrawlResult(checked=4, found=2, highest=4)
+    found = await groups.search(session, "ИКБО", TODAY)
+    assert [(g.id, g.semester_end) for g in found] == [(3, date.max), (4, SEMESTER_END)]
+
+
+async def test_a_header_the_reader_trips_on_does_not_stop_the_crawl(
+    sessionmaker, monkeypatch, caplog
+) -> None:
+    monkeypatch.setattr(groups, "BEYOND_LAST", 0)
+    caplog.set_level(logging.WARNING, logger=groups.__name__)
+    calendars = StubCalendars()
+    for group_id in (1, 2, 3):
+        calendars.bodies[groups.calendar_url(group_id)] = header(f"ИКБО-0{group_id}-24")
+    read_header = groups.read_header
+
+    def tripping(head: bytes) -> GroupHeader | None:
+        if "ИКБО-02-24".encode() in head:
+            raise RuntimeError("a shape nobody foresaw")
+        return read_header(head)
+
+    monkeypatch.setattr(groups, "read_header", tripping)
+    pace = Pace()
+    result = await groups.crawl(
+        sessionmaker, calendars, 1, 3, now=lambda: NOW, sleep=pace.sleep, monotonic=pace.monotonic
+    )
+    assert result == groups.CrawlResult(checked=3, found=2, highest=3)
+    assert [r.getMessage() for r in caplog.records if r.name == groups.__name__] == [
+        "MIREA directory: cannot read the header of number 2"
+    ]
+
+
 async def test_a_full_crawl_prunes_what_it_no_longer_sees(sessionmaker, session, monkeypatch):
     monkeypatch.setattr(groups, "FIRST_UPPER", 3)
     monkeypatch.setattr(groups, "BEYOND_LAST", 0)

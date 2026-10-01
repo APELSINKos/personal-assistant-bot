@@ -173,7 +173,11 @@ async def crawl(
             head = await calendars.head(calendar_url(group_id), HEAD_BYTES)
         except InvalidInput:  # 404 for a number nobody has, a timeout, a network error
             head = b""
-        header = read_header(head)
+        try:
+            header = read_header(head)
+        except Exception:  # whatever one calendar holds, it must not stop the whole crawl
+            log.exception("MIREA directory: cannot read the header of number %d", group_id)
+            header = None
         moment = now()
         if (
             header is not None
