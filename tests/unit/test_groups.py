@@ -254,7 +254,7 @@ async def test_the_directory_is_built_once_a_full_crawl_finds_enough(
 
     # The first start, and MIREA cannot be reached: the crawl ends having found nothing.
     assert await full_crawl() == groups.CrawlResult(checked=3, found=0, highest=0)
-    assert await groups.building(session) is True  # «ещё собирается», not «не нашёл»
+    assert await groups.building(session) is True  # «ещё не готов», not «не нашёл»
     # MIREA is back.
     calendars.bodies[groups.calendar_url(1)] = header("ИКБО-01-24")
     calendars.bodies[groups.calendar_url(2)] = header("ИКБО-02-24")

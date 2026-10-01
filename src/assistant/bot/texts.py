@@ -103,16 +103,15 @@ def _reminder_lines(data: TodayData, t: Translator, shown: int) -> list[str]:
 
 
 def lesson_line(lesson: Lesson, tz: tzinfo | str, t: Translator) -> str:
-    """«• 12:40–14:10 ПР Разработка баз данных · И-212-б» in the user's zone."""
+    """«• 12:40–14:10 ПР Разработка баз данных · И-212-б» in the user's zone; «• 12:40 …» for
+    an event that ends when it starts (one without DTEND or DURATION)."""
     name = lesson_name(lesson)
     if len(name) > LESSON_NAME_LIMIT:
         name = name[: LESSON_NAME_LIMIT - 1] + "…"
-    return t(
-        "lesson-line",
-        start=local_time(lesson.starts_at, tz),
-        end=local_time(lesson.ends_at, tz),
-        lesson=name,
-    )
+    start, end = local_time(lesson.starts_at, tz), local_time(lesson.ends_at, tz)
+    if end == start:
+        return t("lesson-line-start", start=start, lesson=name)
+    return t("lesson-line", start=start, end=end, lesson=name)
 
 
 def _lesson_lines(data: TodayData, t: Translator, shown: int) -> list[str]:

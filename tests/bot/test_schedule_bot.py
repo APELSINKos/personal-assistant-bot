@@ -27,6 +27,10 @@ STALE = "Эта кнопка устарела — открой раздел за
 CRASH = "⚠️ Что-то пошло не так. Попробуй ещё раз чуть позже."  # what a failed update gets
 ENGLISH = "✅ Расписание подключено: Английский. Пар впереди: 1."
 TOO_MANY = "⏳ Слишком много попыток подряд — попробуй через {} с."
+TOO_BIG = "⚠️ Календарь слишком большой или сложный — разобрать его не получится."
+NOT_READY = (
+    "Справочник групп МИРЭА ещё не готов — попробуй позже или подключи расписание по ссылке."
+)
 
 
 @pytest.fixture(autouse=True)
@@ -98,11 +102,11 @@ async def test_no_such_group_and_a_directory_in_the_making(
     feed, fake, session, monkeypatch
 ) -> None:
     await feed(press("find"))
-    assert fake.sent_texts()[-1].startswith("Справочник групп МИРЭА ещё собирается")
+    assert fake.sent_texts()[-1] == NOT_READY
     await directory(session)  # the first full crawl has found one group so far
     await feed(press("find"))
     await feed(message_update("ЯЯЯЯ-01-99"))
-    assert fake.sent_texts()[-1].startswith("Справочник групп МИРЭА ещё собирается")
+    assert fake.sent_texts()[-1] == NOT_READY
     monkeypatch.setattr(groups, "PRUNE_MIN_FOUND", 1)  # a directory this small counts as built
     await groups.record_run(session, groups.FULL_JOB, NOW, "checked 6000, found 1")
     await session.commit()
@@ -134,7 +138,7 @@ async def test_connect_by_file(feed, fake, session, monkeypatch) -> None:
     assert fake.sent_texts()[-1] == "Пришли файл календаря .ics."
     big = {"file_name": "big.ics", "file_size": schedule.FILE_LIMIT + 1}
     await feed(message_update(document=big))
-    assert fake.sent_texts()[-1] == "⚠️ Календарь слишком большой: больше 2 МБ или 3000 занятий."
+    assert fake.sent_texts()[-1] == TOO_BIG
     await feed(message_update(document={"file_name": "Английский.ics", "file_size": 500}))
     # The Outlook fixture's only class is tomorrow, 29 September.
     assert fake.sent_texts()[-2] == "✅ Расписание подключено: Английский. Пар впереди: 1."
@@ -271,7 +275,7 @@ async def test_a_file_of_unknown_size_is_not_downloaded(feed, fake, monkeypatch)
     monkeypatch.setattr(schedule_router, "download", download)
     await feed(press("file"))
     await feed(message_update(document={"file_name": "Английский.ics"}))  # no size reported
-    assert fake.sent_texts()[-1] == "⚠️ Календарь слишком большой: больше 2 МБ или 3000 занятий."
+    assert fake.sent_texts()[-1] == TOO_BIG
     assert downloads == []
 
 

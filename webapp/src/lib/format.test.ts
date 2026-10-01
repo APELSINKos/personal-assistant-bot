@@ -69,6 +69,11 @@ describe("calendar helpers", () => {
     expect(lessonMeta(null, "10:40", "12:10", null)).toBe("10:40–12:10");
   });
 
+  it("gives a lesson that ends when it starts (no DTEND) its start only", () => {
+    expect(lessonMeta("ЛК", "12:40", "12:40", null)).toBe("ЛК · 12:40");
+    expect(lessonMeta(null, "12:40", "12:40", "А-16")).toBe("12:40 · А-16");
+  });
+
   it("shows a moment in the city's zone", () => {
     expect(shortMoment("2026-09-28T12:00:00Z", "Europe/Moscow", "ru")).toBe("28 сент., 15:00");
     expect(shortMoment("2026-09-28T12:00:00Z", "Asia/Vladivostok", "en")).toBe("Sep 28, 22:00");

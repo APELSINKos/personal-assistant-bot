@@ -107,9 +107,12 @@ class Scheduler:
             if self._refreshing is not None:
                 await self._refreshing
         finally:
-            # Cancelled (the shutdown grace ran out): the refresh must not outlive the ticks.
+            # Cancelled (the shutdown grace ran out): the refresh must not outlive the ticks, and
+            # run() returns only once it has wound down — its session closes before the engine
+            # is disposed of.
             if self._refreshing is not None:
                 self._refreshing.cancel()
+                await asyncio.wait({self._refreshing})
         log.info("Scheduler stopped")
 
     def stop(self) -> None:

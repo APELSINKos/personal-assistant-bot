@@ -65,6 +65,7 @@ async def test_set_city(client, auth) -> None:
     ("body", "limit"),
     [
         ({"name": "X", "lat": 10, "lon": 10, "timezone": "Mars/Olympus"}, None),
+        ({"name": "X", "lat": 10, "lon": 10, "timezone": "Europe"}, None),  # a folder of zones
         ({"name": "X", "lat": 91, "lon": 10, "timezone": "Europe/Moscow"}, None),
         ({"name": "", "lat": 10, "lon": 10, "timezone": "Europe/Moscow"}, None),
         ({"name": "X" * 101, "lat": 10, "lon": 10, "timezone": "Europe/Moscow"}, 100),

@@ -380,3 +380,31 @@ def test_a_cut_list_keeps_its_tail_measured_like_telegram_too() -> None:
     tail = ["", "🎉" * 1000]  # 1000 characters, 2000 units
     text = texts.fit(["x" * 100] * 30, tail)
     assert utf16(text) <= BUDGET and text.endswith("\n…\n\n" + "🎉" * 1000)
+
+
+def test_a_lesson_without_an_end_shows_its_start_only() -> None:
+    # An event with neither DTEND nor DURATION ends when it starts.
+    point = Lesson(
+        uid="u", starts_at=LESSON.starts_at, ends_at=LESSON.starts_at, title="Консультация"
+    )
+    assert texts.lesson_line(point, MSK, RU) == "• 12:40 Консультация"
+    assert texts.lesson_line(point, MSK, EN) == "• 12:40 Консультация"
+    assert texts.lesson_line(LESSON, MSK, RU) == LESSON_LINE
+
+
+def test_schedule_texts_promise_no_cause_or_time_they_cannot_know() -> None:
+    # A calendar is refused for its size, its time, its memory, its series or its labels alike;
+    # a directory cut short by an outage is retried a day later, not in half an hour.
+    assert texts.schedule_error_text("too_large", RU) == (
+        "⚠️ Календарь слишком большой или сложный — разобрать его не получится."
+    )
+    assert texts.schedule_error_text("too_large", EN) == (
+        "⚠️ The calendar is too big or too complex to read."
+    )
+    assert RU("schedule-directory-empty") == (
+        "Справочник групп МИРЭА ещё не готов — попробуй позже или подключи расписание по ссылке."
+    )
+    assert EN("schedule-directory-empty") == (
+        "The MIREA group directory isn't ready yet — try again later"
+        " or connect a timetable by link."
+    )

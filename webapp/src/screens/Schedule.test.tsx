@@ -132,7 +132,11 @@ describe("Schedule", () => {
     show();
     fireEvent.change(await screen.findByLabelText("Группа МИРЭА"), { target: { value: "ИКБО" } });
     expect(await screen.findByRole("button", { name: "ИКБО-62-24" })).toBeInTheDocument();
-    expect(screen.getByText(/Справочник групп ещё собирается/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Справочник групп ещё не готов — если твоей группы нет, попробуй позже или подключи расписание по ссылке.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Такой группы нет в справочнике")).not.toBeInTheDocument();
   });
 

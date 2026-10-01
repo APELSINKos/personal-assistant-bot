@@ -22,6 +22,16 @@ describe("i18n", () => {
     expect(resolveLang(code)).toBe(lang);
   });
 
+  it("promises no cause or time a refusal cannot know", () => {
+    // A calendar is refused for its size, time, memory, series or labels alike; a directory cut
+    // short by an outage is retried a day later.
+    expect(ru.errors.too_large).toBe("Календарь слишком большой или сложный — разобрать его не получится");
+    expect(en.errors.too_large).toBe("The calendar is too big or too complex to read");
+    expect(en.schedule.building).toBe(
+      "The group directory isn't ready yet — if your group isn't there, try again later or connect the timetable by link.",
+    );
+  });
+
   it("pluralises Russian days and notes", () => {
     expect([1, 2, 5, 11, 21].map((n) => ru.habits.streak(n))).toEqual([
       "1 день", "2 дня", "5 дней", "11 дней", "21 день",

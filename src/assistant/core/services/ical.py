@@ -13,9 +13,9 @@ dateutil can spend minutes inside one call on a rule that never matches and noth
 a thread; a memory ceiling, as every occurrence copies all the properties of its event, which
 no count bounds.
 
-Callers use `parse_isolated` through `asyncio.to_thread`; `parse` is the same work in this
-process (a full MIREA semester, ~46 series and 18 week labels, takes about 0.2 s; the child
-adds about as much again). A calendar that cannot be read is
+Callers run `parse_isolated` in `schedule._timetable`'s single-worker executor, off the event
+loop; `parse` is the same work in this process (a full MIREA semester, ~46 series and 18 week
+labels, takes about 0.2 s; the child adds about as much again). A calendar that cannot be read is
 `InvalidInput(field="calendar", reason="not_calendar")`, one too big or too slow is
 `InvalidInput(field="calendar", reason="too_large")`.
 """
@@ -75,6 +75,10 @@ _WATCH_SECONDS = 0.05
 _STATM = "/proc/self/statm"
 # Tests turn it off so the suite does not start a Python process per calendar.
 ISOLATED = True
+# What the child's Python needs of the environment to run the module from the venv; nothing else
+# of this process's (the bot token above all) reaches the code that reads a stranger's calendar.
+_CHILD_ENV = frozenset({"PATH", "LANG", "TZ", "HOME"})
+_CHILD_ENV_PREFIXES = ("LC_", "PYTHON")
 TITLE_LENGTH = 200
 ROOM_LENGTH = 100
 LABEL_LENGTH = 40
@@ -429,6 +433,14 @@ def _from_json(output: bytes) -> Timetable | InvalidInput:
     )
 
 
+def _child_env() -> dict[str, str]:
+    return {
+        name: value
+        for name, value in os.environ.items()
+        if name in _CHILD_ENV or name.startswith(_CHILD_ENV_PREFIXES)
+    }
+
+
 def parse_isolated(
     body: bytes,
     start: datetime,
@@ -439,7 +451,8 @@ def parse_isolated(
     memory: int = CHILD_MEMORY,
 ) -> Timetable:
     """`parse` in a child Python process, killed after `seconds` and ending itself past `memory`
-    bytes (on Linux); only JSON comes back. Blocking: call it through `asyncio.to_thread`."""
+    bytes (on Linux); only JSON comes back. Blocking: the schedule service runs it in its
+    single-worker executor (`schedule._timetable`)."""
     if not ISOLATED:
         return parse(body, start, end, tz)
     try:
@@ -457,6 +470,7 @@ def parse_isolated(
             capture_output=True,
             timeout=seconds,
             check=False,
+            env=_child_env(),
         )
     except subprocess.TimeoutExpired:  # `run` has killed the child
         raise InvalidInput(field="calendar", reason="too_large") from None
@@ -477,8 +491,10 @@ def parse_isolated(
 
 def _watch_memory(ceiling: int) -> None:
     """Ends this process with `MEMORY_EXIT` once it holds more than `ceiling` bytes, looking
-    every `_WATCH_SECONDS`. Without /proc (Windows, development) there is no watchdog. Not
-    setrlimit: the services' seccomp filter kills a process that calls it."""
+    every `_WATCH_SECONDS`. Without /proc (Windows, development) there is no watchdog. Memory
+    held, not address space: an address-space limit (RLIMIT_AS) would also count what the
+    interpreter only reserves, and an allocation it refuses raises MemoryError wherever it
+    happens instead of ending the child with this exit code."""
     if not os.path.exists(_STATM):
         return
 

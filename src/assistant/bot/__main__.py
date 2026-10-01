@@ -21,7 +21,9 @@ from assistant.core.logging import setup_logging
 from assistant.core.services import schedule
 
 log = logging.getLogger("assistant.bot")
-SHUTDOWN_GRACE = 15  # seconds the scheduler gets to finish its current tick
+# Seconds the background work gets to finish on shutdown: the scheduler's current tick, the
+# schedule refresh pass in flight and the directory crawler's current request.
+SHUTDOWN_GRACE = 15
 
 
 async def main() -> None:
@@ -62,8 +64,8 @@ async def main() -> None:
             await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
         finally:
             try:
-                # Let the current tick and crawl request finish their writes; cancel only if
-                # they hang.
+                # Let the current tick, the refresh pass in flight and the crawl request finish
+                # their writes; cancel only if they hang.
                 scheduler.stop()
                 if crawler is not None:
                     crawler.stop()

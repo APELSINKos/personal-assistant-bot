@@ -81,6 +81,8 @@ def parse_hhmm(text: str) -> str | None:
 def is_valid_timezone(name: str) -> bool:
     try:
         ZoneInfo(name)
-    except (ZoneInfoNotFoundError, ValueError):
+    # A folder of the database («Europe») is opened like a zone file and fails with an OSError
+    # (IsADirectoryError, PermissionError on Windows) rather than ZoneInfoNotFoundError.
+    except (ZoneInfoNotFoundError, ValueError, OSError):
         return False
     return True

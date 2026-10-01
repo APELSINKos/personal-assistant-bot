@@ -44,8 +44,9 @@ QUICK_BEHIND = 50  # a quick crawl also re-reads this many numbers below the hig
 # holds fewer is still being built.
 PRUNE_MIN_FOUND = 100
 # A crawl cannot tell a group that is gone from a request that failed (a timeout, a rate limit,
-# a challenge page), so a group goes only when no crawl has seen it for longer than two weekly
-# full crawls. Search hides ended semesters anyway: removing is only garbage collection.
+# a challenge page), so a group goes only once no crawl has seen it for PRUNE_AFTER: one that
+# vanished is missed by the next two weekly full crawls and removed by the third, about three
+# weeks later. Search hides ended semesters anyway: removing is only garbage collection.
 PRUNE_AFTER = timedelta(days=15)
 FULL_JOB = "mirea_full"
 QUICK_JOB = "mirea_quick"

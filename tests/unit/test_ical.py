@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import subprocess
 import time
@@ -523,6 +524,36 @@ def test_a_child_past_its_memory_ceiling_is_a_calendar_too_large(
     assert caught.value.params == {"field": "calendar", "reason": "too_large"}
     assert not caplog.records  # an expected refusal, not a crash
     assert commands[0][-1] == "12345"  # the ceiling travels to the child
+
+
+@pytest.mark.usefixtures("isolated")
+def test_the_child_gets_only_what_python_needs_of_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name, value in {
+        "BOT_TOKEN": "123456:SECRET",  # the code reading a stranger's calendar never sees it
+        "DATABASE_URL": "sqlite+aiosqlite:////var/lib/assistant/assistant.db",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "TZ": "UTC",
+        "PYTHONUNBUFFERED": "1",
+        "HOME": "/home/assistant",
+    }.items():
+        monkeypatch.setenv(name, value)
+    environments: list[dict[str, str] | None] = []
+
+    def run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        environments.append(kwargs.get("env"))
+        return subprocess.CompletedProcess(command, ical.MEMORY_EXIT, b"", b"")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with pytest.raises(InvalidInput):
+        ical.parse_isolated(read("outlook.ics"), START, END, "Europe/Moscow")
+    [env] = environments
+    assert env is not None and "BOT_TOKEN" not in env and "DATABASE_URL" not in env
+    kept = {"PATH", "LANG", "LC_ALL", "TZ", "PYTHONUNBUFFERED", "HOME"}
+    assert kept <= set(env) and all(env[name] == os.environ[name] for name in env)
+    assert all(name in kept or name.startswith(("LC_", "PYTHON")) for name in env)
 
 
 # The child reads its memory from /proc/self/statm: without it (Windows) it has no watchdog.

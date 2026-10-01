@@ -127,9 +127,10 @@ export function monthTitle(iso: string, lang: Lang): string {
   return capitalize(`${month} ${date.getUTCFullYear()}`);
 }
 
-/** «ЛК · 10:40–12:10 · А-16» — a lesson's kind, time and room, whichever it has. */
+/** «ЛК · 10:40–12:10 · А-16» — a lesson's kind, time and room, whichever it has; only the start
+ *  for one that ends when it starts (an event without DTEND or DURATION). */
 export function lessonMeta(kind: string | null, time: string, end: string, room: string | null): string {
-  return [kind, `${time}–${end}`, room].filter(Boolean).join(" · ");
+  return [kind, end === time ? time : `${time}–${end}`, room].filter(Boolean).join(" · ");
 }
 
 /** «28 сент., 15:00» — a moment in the city's zone. */

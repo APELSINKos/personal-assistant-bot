@@ -330,6 +330,34 @@ async def test_a_cancelled_run_cancels_the_refresh_too(
     await asyncio.wait_for(refresh_cancelled.wait(), 1)  # nothing is left running
 
 
+async def test_a_cancelled_run_returns_once_the_refresh_has_wound_down(
+    bot, sessionmaker, meteo, cbr, calendars, monkeypatch
+) -> None:
+    scheduler = Scheduler(
+        bot, sessionmaker, meteo, cbr, interval=3600, clock=lambda: CONNECTED, calendars=calendars
+    )
+    refreshing = asyncio.Event()
+    wound_down: list[str] = []
+
+    async def hanging_refresh(now: datetime) -> int:
+        refreshing.set()
+        try:
+            await asyncio.Event().wait()  # a download that does not answer
+        finally:
+            await asyncio.sleep(0.05)  # its session closing takes a few awaits of its own
+            wound_down.append("closed")
+        return 0
+
+    monkeypatch.setattr(scheduler, "refresh_schedules", hanging_refresh)
+    task = asyncio.create_task(scheduler.run())
+    await asyncio.wait_for(refreshing.wait(), 1)
+    task.cancel()  # the bot's shutdown grace ran out
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    # The engine is disposed of right after run(): nothing of the refresh may still be running.
+    assert wound_down == ["closed"]
+
+
 async def test_cleanup_forgets_old_alerts(
     bot, sessionmaker, session, meteo, cbr, calendars, make_user
 ) -> None:

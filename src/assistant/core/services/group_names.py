@@ -31,7 +31,9 @@ _SV_END = re.compile(rb"^X-SV-END:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})", re.MUL
 @dataclass(frozen=True)
 class GroupHeader:
     name: str
-    semester_end: date | None  # the last day of the semester in Moscow; None: no timetable
+    # The last day of the semester in Moscow; date.max: open-ended (the calendar names no end);
+    # None: no timetable.
+    semester_end: date | None
 
 
 def name_key(text: str) -> str:
