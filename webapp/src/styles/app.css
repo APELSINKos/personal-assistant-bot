@@ -884,9 +884,20 @@ textarea.input {
   text-decoration: none;
 }
 
+/* The start time keeps its width: a long title wraps in its own column instead of squeezing the
+   time into «10:» / «40». Both row kinds (a lesson and a reminder) share this. */
+.cal-item .time {
+  flex-shrink: 0;
+}
+
+/* A flex item's minimum width is its content's, so one long unbroken word (a link for an online
+   class) would push the text past the card — and out of a reminder's clipping `.swipe`. Let the
+   column shrink and break such text at the card's edge. */
 .cal-item__body {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .cal-item__sub {
@@ -917,9 +928,16 @@ textarea.input {
   align-items: baseline;
 }
 
+/* The card's `overflow-wrap: anywhere` makes every character a break point, so without this a long
+   title squeezes the time down to «10:» / «40». The body wraps its own text instead. */
+.lesson .time {
+  flex-shrink: 0;
+}
+
 .lesson__body {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .lesson__meta {
