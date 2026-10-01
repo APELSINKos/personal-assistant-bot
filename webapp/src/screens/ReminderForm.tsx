@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import {
-  useAllowWrite,
   useCreateReminder,
   useMe,
   useParseReminder,
@@ -12,18 +11,13 @@ import type { ParsedPhrase, Reminder, ReminderInput } from "../api/types";
 import { MainAction } from "../components/MainAction";
 import { Empty, ErrorState, Loader } from "../components/States";
 import { toast } from "../components/toastStore";
+import { WriteRefusedCard } from "../components/WriteRefusedCard";
 import { useLang, useT } from "../i18n";
 import { setCalendarDay } from "../lib/calendarDay";
 import { addDaysIso, localTimeHm, localTodayIso, mondayOf, parseIsoDate } from "../lib/format";
-import { BOT_CHAT_URL } from "../lib/links";
+import { useWriteAccess } from "../lib/useWriteAccess";
 import { useCityZone } from "../lib/zone";
-import {
-  confirmAction,
-  openTelegramLink,
-  requestWriteAccess,
-  useBackButton,
-  useClosingConfirmation,
-} from "../telegram";
+import { confirmAction, useBackButton, useClosingConfirmation } from "../telegram";
 
 const MAX_TEXT = 200;
 const WEEKDAYS = 31;
@@ -138,10 +132,9 @@ export function ReminderForm() {
   const create = useCreateReminder();
   const update = useUpdateReminder();
   const parse = useParseReminder();
-  const allowWrite = useAllowWrite();
+  const write = useWriteAccess(me.data?.can_write);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [phrase, setPhrase] = useState("");
-  const [refused, setRefused] = useState(false);
   const timeRef = useRef<HTMLInputElement>(null);
 
   const existing = id === null ? undefined : reminders.data?.find((item) => item.id === id);
@@ -158,7 +151,7 @@ export function ReminderForm() {
   const current = draft ?? initial;
   const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(initial);
   const change = (patch: Partial<Draft>) => setDraft({ ...current, ...patch });
-  const busy = create.isPending || update.isPending || allowWrite.isPending;
+  const busy = create.isPending || update.isPending || write.pending;
   const trimmed = current.text.trim();
   const showDate = current.choice === "none" || current.choice === "biweekly";
   const showDays = current.choice === "days" || current.choice === "biweekly";
@@ -218,18 +211,7 @@ export function ReminderForm() {
 
   const save = async () => {
     if (!valid || busy) return;
-    if (me.data && !me.data.can_write) {
-      if (!(await requestWriteAccess())) {
-        setRefused(true);
-        return;
-      }
-      try {
-        await allowWrite.mutateAsync();
-      } catch {
-        return; // the mutation cache's own handler already showed a toast
-      }
-      setRefused(false);
-    }
+    if (!(await write.ensure())) return;
     const done = {
       onSuccess: (saved: Reminder) => {
         setCalendarDay(saved.due_local.slice(0, 10));
@@ -245,15 +227,7 @@ export function ReminderForm() {
   return (
     <>
       <h1 className="screen__title">{id === null ? t.reminderForm.newTitle : t.reminderForm.editTitle}</h1>
-      {refused && (
-        <div className="card" role="alert">
-          <h2 className="card__title">{t.reminderForm.writeTitle}</h2>
-          <p>{t.reminderForm.writeText}</p>
-          <button type="button" className="button" onClick={() => openTelegramLink(BOT_CHAT_URL)}>
-            {t.reminderForm.openChat}
-          </button>
-        </div>
-      )}
+      {write.refused && <WriteRefusedCard />}
       <div className="row field">
         <input
           className="input"

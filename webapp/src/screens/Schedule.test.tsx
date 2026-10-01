@@ -1,6 +1,9 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { keys } from "../api/queries";
+import type { Me } from "../api/types";
 import { Toasts } from "../components/Toasts";
+import { BOT_CHAT_URL } from "../lib/links";
 import { installTelegram } from "../test/fakeTelegram";
 import { me, scheduleSource } from "../test/fixtures";
 import { mockApi } from "../test/mockApi";
@@ -200,6 +203,68 @@ describe("Schedule", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Без разрешения бот не сможет прислать напоминание.");
     expect(calls.some((call) => call.method === "PATCH")).toBe(false);
     expect(screen.getByRole("button", { name: "Выкл" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("shows the refusal as its own card under the alerts, with the way to the bot's chat", async () => {
+    const app = installTelegram({ requestWriteAccess: vi.fn((callback?: (allowed: boolean) => void) => callback?.(false)) });
+    mockApi({ "GET /me": { ...me, can_write: false }, "GET /schedule": { source: scheduleSource } });
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "30 мин" }));
+    const refusal = await screen.findByRole("alert");
+    expect(within(refusal).getByRole("heading", { name: "Разрешить боту писать?" })).toBeInTheDocument();
+    expect(refusal).toHaveTextContent("Без разрешения бот не сможет прислать напоминание.");
+    // A card of its own, right below the alerts card, not a block inside it.
+    expect(screen.getByRole("group", { name: "Напоминать о парах" }).closest(".card")?.nextElementSibling).toBe(refusal);
+    fireEvent.click(within(refusal).getByRole("button", { name: "Открыть чат с ботом" }));
+    expect(app.openTelegramLink).toHaveBeenCalledWith(BOT_CHAT_URL);
+  });
+
+  it("drops the refusal once the permission is there and a choice is saved", async () => {
+    const app = installTelegram({ requestWriteAccess: vi.fn((callback?: (allowed: boolean) => void) => callback?.(false)) });
+    let canWrite = false;
+    const { calls } = mockApi({
+      "GET /me": () => ({ body: { ...me, can_write: canWrite } }),
+      "GET /schedule": { source: scheduleSource },
+      "PATCH /schedule": { source: { ...scheduleSource, lesson_reminder_minutes: 30 } },
+    });
+    const { client } = show();
+    fireEvent.click(await screen.findByRole("button", { name: "30 мин" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    // The user presses Start in the bot's chat and comes back: the profile says so now.
+    canWrite = true;
+    await act(() => client.invalidateQueries({ queryKey: keys.me }));
+    await waitFor(() => expect(client.getQueryData<Me>(keys.me)?.can_write).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: "30 мин" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "30 мин" })).toHaveAttribute("aria-pressed", "true"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(app.requestWriteAccess).toHaveBeenCalledTimes(1);
+    expect(calls).toContainEqual({ method: "PATCH", path: "/schedule", body: { lesson_reminder_minutes: 30 } });
+  });
+
+  it("does not open a second permission prompt while the first one is open", async () => {
+    const answers: ((allowed: boolean) => void)[] = [];
+    const app = installTelegram({
+      requestWriteAccess: vi.fn((callback?: (allowed: boolean) => void) => {
+        if (callback) answers.push(callback);
+      }),
+    });
+    const { calls } = mockApi({
+      "GET /me": { ...me, can_write: false },
+      "GET /schedule": { source: scheduleSource },
+      "POST /me/write-access": { ...me, can_write: true },
+      "PATCH /schedule": { source: { ...scheduleSource, lesson_reminder_minutes: 15 } },
+    });
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "15 мин" }));
+    await waitFor(() => expect(app.requestWriteAccess).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "30 мин" })); // the first prompt is still open
+    await act(async () => undefined);
+    expect(app.requestWriteAccess).toHaveBeenCalledTimes(1);
+    act(() => answers[0]?.(true));
+    await waitFor(() => expect(screen.getByRole("button", { name: "15 мин" })).toHaveAttribute("aria-pressed", "true"));
+    expect(calls.filter((call) => call.method === "PATCH").map((call) => call.body)).toEqual([
+      { lesson_reminder_minutes: 15 },
+    ]);
   });
 
   it("speaks English", async () => {

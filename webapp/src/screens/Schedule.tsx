@@ -1,7 +1,6 @@
 import { useRef, useState, type FormEvent } from "react";
 import {
   errorCode,
-  useAllowWrite,
   useConnectSchedule,
   useDisconnectSchedule,
   useGroups,
@@ -15,11 +14,12 @@ import type { AlertMinutes, ScheduleSource } from "../api/types";
 import { Card } from "../components/Card";
 import { ErrorState, Loader } from "../components/States";
 import { toast } from "../components/toastStore";
+import { WriteRefusedCard } from "../components/WriteRefusedCard";
 import { useLang, useT } from "../i18n";
 import { shortMoment } from "../lib/format";
-import { BOT_CHAT_URL } from "../lib/links";
 import { useDebounced } from "../lib/useDebounced";
-import { confirmAction, openTelegramLink, requestWriteAccess } from "../telegram";
+import { useWriteAccess } from "../lib/useWriteAccess";
+import { confirmAction } from "../telegram";
 
 const ALERT_CHOICES: (AlertMinutes | null)[] = [null, 5, 10, 15, 30, 60];
 const FILE_LIMIT = 2 * 1024 * 1024;
@@ -206,52 +206,35 @@ function SourceCard({ source, zone, onChange }: { source: ScheduleSource; zone: 
 function AlertsCard({ source, canWrite }: { source: ScheduleSource; canWrite: boolean }) {
   const t = useT();
   const alerts = useScheduleAlerts();
-  const allowWrite = useAllowWrite();
-  const [refused, setRefused] = useState(false);
+  const write = useWriteAccess(canWrite);
   // The pressed choice shows at once; the saved one takes over when the request settles.
   const shown = alerts.isPending ? alerts.variables : source.lesson_reminder_minutes;
 
   const choose = async (minutes: AlertMinutes | null) => {
     // An alert is a message from the bot: it needs the permission to write first.
-    if (minutes !== null && !canWrite) {
-      if (!(await requestWriteAccess())) {
-        setRefused(true);
-        return;
-      }
-      try {
-        await allowWrite.mutateAsync();
-      } catch {
-        return; // the mutation cache's own handler already showed a toast
-      }
-      setRefused(false);
-    }
+    if (minutes !== null && !(await write.ensure())) return;
     alerts.mutate(minutes);
   };
 
   return (
-    <Card title={t.schedule.alerts} index={1}>
-      <div className="segmented" role="group" aria-label={t.schedule.alerts}>
-        {ALERT_CHOICES.map((minutes) => (
-          <button
-            type="button"
-            key={minutes ?? "off"}
-            className="segmented__option"
-            aria-pressed={shown === minutes}
-            onClick={() => void choose(minutes)}
-          >
-            {minutes === null ? t.schedule.alertOff : t.schedule.alertMinutes(minutes)}
-          </button>
-        ))}
-      </div>
-      {refused && (
-        <div role="alert" className="schedule__refused">
-          <p>{t.reminderForm.writeText}</p>
-          <button type="button" className="button" onClick={() => openTelegramLink(BOT_CHAT_URL)}>
-            {t.reminderForm.openChat}
-          </button>
+    <>
+      <Card title={t.schedule.alerts} index={1}>
+        <div className="segmented" role="group" aria-label={t.schedule.alerts}>
+          {ALERT_CHOICES.map((minutes) => (
+            <button
+              type="button"
+              key={minutes ?? "off"}
+              className="segmented__option"
+              aria-pressed={shown === minutes}
+              onClick={() => void choose(minutes)}
+            >
+              {minutes === null ? t.schedule.alertOff : t.schedule.alertMinutes(minutes)}
+            </button>
+          ))}
         </div>
-      )}
-    </Card>
+      </Card>
+      {write.refused && <WriteRefusedCard />}
+    </>
   );
 }
 
