@@ -31,6 +31,10 @@ NO_VALUE = "—"
 DAY_REMINDERS_SHOWN = 10
 # A day has a handful of lessons; a calendar full of events is capped the same way.
 DAY_LESSONS_SHOWN = 10
+# A lesson line keeps its time and as much of the name as fits: titles and rooms come from outside
+# calendars, and ten long ones next to the reminders would push «Мой день» and the morning digest
+# past Telegram's 4096 characters.
+LESSON_NAME_LIMIT = 80
 
 
 def temp(value: float | None) -> str:
@@ -90,11 +94,14 @@ def _reminder_lines(data: TodayData, t: Translator) -> list[str]:
 
 def lesson_line(lesson: Lesson, tz: tzinfo | str, t: Translator) -> str:
     """«• 12:40–14:10 ПР Разработка баз данных · И-212-б» in the user's zone."""
+    name = lesson_name(lesson)
+    if len(name) > LESSON_NAME_LIMIT:
+        name = name[: LESSON_NAME_LIMIT - 1] + "…"
     return t(
         "lesson-line",
         start=local_time(lesson.starts_at, tz),
         end=local_time(lesson.ends_at, tz),
-        lesson=lesson_name(lesson),
+        lesson=name,
     )
 
 

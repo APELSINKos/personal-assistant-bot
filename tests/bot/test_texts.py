@@ -201,3 +201,24 @@ def test_lesson_names_without_a_type_or_a_room() -> None:
     assert texts.lesson_name(plain) == "Physics"
     assert texts.lesson_name(LESSON) == "ПР Разработка баз данных · И-212-б (В-78)"
     assert texts.lesson_alert_text(plain, 15, EN) == "🎓 In 15 min: Physics"
+
+
+def test_lessons_and_reminders_stay_within_the_telegram_message_limit() -> None:
+    long = Lesson(
+        uid="u",
+        starts_at=LESSON.starts_at,
+        ends_at=LESSON.ends_at,
+        title="Т" * 200,
+        kind="ЛАБ",
+        room="А" * 100,
+    )
+    reminders = [
+        Reminder(text="x" * 200, due_at=datetime(2026, 9, 28, 9, 30, tzinfo=UTC)) for _ in range(20)
+    ]
+    data = day_data(
+        reminders=reminders, has_schedule=True, lessons=[long] * 12, week_label="12 неделя"
+    )
+    for render in (texts.today_text, texts.morning_text):
+        assert len(render(data, "Alex", RU)) <= 4096
+    line = texts.lesson_line(long, MSK, RU)
+    assert line.endswith("…") and len(line) <= 100
