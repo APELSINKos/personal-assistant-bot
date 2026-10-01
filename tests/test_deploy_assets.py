@@ -82,6 +82,12 @@ def test_caddy_lets_a_calendar_file_through() -> None:
         '\t\theader Cache-Control "no-store"',
         "\t\treverse_proxy 127.0.0.1:8000",
     ]
+    # `/api/*` would cut a file off at 64KB with Caddy's own 413, so the narrow block stays above
+    # it. Caddy also ranks the longer path first by itself; the written order keeps holding if a
+    # matcher ever changes to one Caddy does not rank by path.
+    general = text.find("\n\thandle /api/* {\n")
+    assert general != -1
+    assert block.start() < general
 
 
 def test_caddy_drops_the_server_header_on_errors_too() -> None:
