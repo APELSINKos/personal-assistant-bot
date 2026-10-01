@@ -74,15 +74,23 @@ async def test_an_alert_is_not_sent_again_after_a_refresh(
     bot, sessionmaker, session, meteo, cbr, calendars, make_user, fake
 ) -> None:
     await connected(session, make_user, calendars)
+    # Another user of the group keeps rows in the table, so the rebuilt lessons get new ids:
+    # with the table emptied, SQLite would hand the freed ids out again in the same order.
+    await connected(session, make_user, calendars, minutes=None, id=2)
     moment = LESSON - timedelta(minutes=15)
     scheduler = at(moment, bot, sessionmaker, meteo, cbr, calendars)
     await scheduler.send_lesson_alerts(moment)
+    the_lesson = select(Lesson.id).where(Lesson.user_id == 1, Lesson.starts_at == LESSON)
+    alerted = await session.scalar(the_lesson)
+    assert alerted is not None
     # The six-hourly refresh rebuilds every lesson row right after the alert went out.
     async with sessionmaker() as other:
         user = await other.get(User, 1)
         assert user is not None
         await schedule.refresh(other, user, calendars, moment)
         await other.commit()
+    rebuilt = await session.scalar(the_lesson)
+    assert rebuilt is not None and rebuilt != alerted  # the same lesson, a new row
     assert await scheduler.send_lesson_alerts(moment + timedelta(minutes=2)) == 0
     assert fake.sent_texts() == [ALERT]
 
