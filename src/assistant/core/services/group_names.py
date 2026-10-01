@@ -31,8 +31,8 @@ _SV_END = re.compile(rb"^X-SV-END:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})", re.MUL
 @dataclass(frozen=True)
 class GroupHeader:
     name: str
-    # The last day of the semester in Moscow; date.max: open-ended (the calendar names no end);
-    # None: no timetable.
+    # The last day of the semester in Moscow; date.max: open-ended (X-SV-END holds .NET's
+    # DateTime.MaxValue, a timetable without an end); None: no X-SV-END at all (no timetable).
     semester_end: date | None
 
 
