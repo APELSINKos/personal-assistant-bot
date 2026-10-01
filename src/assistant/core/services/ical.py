@@ -148,6 +148,12 @@ def _occurrences(calendar: Any, start: datetime, end: datetime, tz: str) -> list
             if _moment(first, tz) >= end:
                 break
         elif first > end_day:
+            # Occurrences come in start order, but the library sorts a date against a time in
+            # the time's own zone: the next day's all-day items can come before a lesson still
+            # inside the window (its early morning in a zone east of UTC). A later date ends the
+            # expansion — an endless all-day series would otherwise be read up to the year 9999.
+            if first > end_day + timedelta(days=1):
+                break
             continue
         if len(found) >= MAX_OCCURRENCES:
             raise InvalidInput(field="calendar", reason="too_large")

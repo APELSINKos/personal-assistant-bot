@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, date, datetime
+import time
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -151,6 +152,49 @@ def test_a_huge_calendar_is_refused_quickly() -> None:
     with pytest.raises(InvalidInput) as caught:
         ical.parse(_daily_series(400), START, utc(2027, 1, 26), "Europe/Moscow")
     assert caught.value.params == {"field": "calendar", "reason": "too_large"}
+
+
+@pytest.mark.parametrize(
+    ("freq", "days"),
+    [
+        ("YEARLY", [date(2026, 9, 29)]),
+        ("MONTHLY", [date(2026, 9, 29)]),
+        ("WEEKLY", [date(2026, 9, 28), date(2026, 10, 5)]),
+        ("DAILY", [date(2026, 9, 27) + timedelta(days=n) for n in range(15)]),
+    ],
+)
+def test_an_endless_all_day_series_stops_after_the_window(freq: str, days: list[date]) -> None:
+    # The lessons end inside the window, so no lesson after it can stop the expansion.
+    body = (
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
+        "BEGIN:VEVENT\r\nUID:math\r\nDTSTART;TZID=Europe/Moscow:20260901T090000\r\n"
+        "RRULE:FREQ=WEEKLY;COUNT=6\r\nSUMMARY:Math\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:week\r\nDTSTART;VALUE=DATE:20250929\r\n"
+        f"RRULE:FREQ={freq}\r\nSUMMARY:Week 1\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    ).encode()
+    began = time.perf_counter()
+    table = ical.parse(body, START, END, "Europe/Moscow")
+    assert time.perf_counter() - began < 2
+    assert [item.starts_at for item in table.lessons] == [utc(2026, 9, 29, 6), utc(2026, 10, 6, 6)]
+    assert table.weeks == [ParsedWeek(day, day + timedelta(days=1), "Week 1") for day in days]
+
+
+def test_an_all_day_item_after_the_window_does_not_hide_a_late_lesson() -> None:
+    # The library sorts a date against a time in the time's own zone, so the item of 12 October
+    # comes before a Tokyo lesson at 05:00 on the 12th — 20:00 UTC, still inside the window.
+    body = (
+        b"BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
+        b"BEGIN:VEVENT\r\nUID:early\r\nDTSTART;TZID=Asia/Tokyo:20261012T050000\r\n"
+        b"SUMMARY:Early lesson\r\nEND:VEVENT\r\n"
+        b"BEGIN:VEVENT\r\nUID:week\r\nDTSTART;VALUE=DATE:20261012\r\nSUMMARY:Week 7\r\n"
+        b"END:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+    table = ical.parse(body, START, END, "Europe/Moscow")
+    assert [(item.starts_at, item.title) for item in table.lessons] == [
+        (utc(2026, 10, 11, 20), "Early lesson")
+    ]
+    assert table.weeks == []
 
 
 def test_long_texts_are_cut() -> None:
