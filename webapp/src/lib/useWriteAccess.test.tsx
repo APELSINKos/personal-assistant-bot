@@ -130,6 +130,19 @@ describe("useWriteAccess", () => {
     expect(hook.result.current.refused).toBe(false);
   });
 
+  it("takes the refusal back when the user allows it in Telegram the next time", async () => {
+    const answers = [false, true];
+    const requestWriteAccess = vi.fn<Dialog>((callback) => callback?.(answers.shift() ?? false));
+    const { hook } = setup(false, { telegram: { requestWriteAccess } });
+    await answered(start(hook));
+    expect(hook.result.current.refused).toBe(true);
+    const outcome = start(hook); // /me still says can_write: false — it has not been read again
+    await answered(outcome);
+    expect(outcome.answer).toBe(true);
+    expect(requestWriteAccess).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.refused).toBe(false);
+  });
+
   it("says no at once to a second call while the first one's prompt is open", async () => {
     const { requestWriteAccess, answer } = openDialog();
     const { hook } = setup(false, { telegram: { requestWriteAccess } });

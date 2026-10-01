@@ -408,7 +408,8 @@ export function useUploadSchedule() {
       haptic("success");
       return saved(state);
     },
-    onError: forgetOnGone(saved),
+    // No onError: POST /schedule/file has no 404 of its own, so one (a proxy's, say) must not
+    // wipe the source the app knows.
   });
 }
 

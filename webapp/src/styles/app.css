@@ -265,7 +265,7 @@ a {
 
 .toggle--skipped {
   border-color: var(--error);
-  color: var(--error);
+  color: var(--error-text);
 }
 
 .icon-button {
@@ -460,7 +460,7 @@ textarea.input {
 
 .field__hint {
   margin: -8px 0 14px;
-  color: var(--error);
+  color: var(--error-text);
   font-size: 13px;
 }
 
@@ -488,14 +488,7 @@ textarea.input {
 }
 
 .button--danger {
-  color: var(--error);
-}
-
-/* --error (#d63b5c) measures 4.47:1 under the label on the light card's real surface (rendered
-   pixels, worst case) — just short of the 4.5:1 text minimum; #cf3556 measures 4.83:1 there.
-   --error itself stays: it is the background under --on-error. The dark theme clears 4.78:1. */
-[data-theme="light"] .button--danger {
-  color: #cf3556;
+  color: var(--error-text);
 }
 
 .main-action {

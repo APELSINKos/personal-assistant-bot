@@ -152,7 +152,7 @@ export function CalendarScreen() {
       item.repeat === "none" ? t.calendar.confirmDelete : t.calendar.confirmDeleteSeries(item.text);
     if (await confirmAction(question)) remove.mutate(item.id);
   };
-  const row = (item: AgendaItem, index: number) =>
+  const renderItem = (item: AgendaItem, index: number) =>
     item.kind === "lesson" ? (
       <LessonRow key={`lesson-${item.time}-${index}`} lesson={item} />
     ) : (
@@ -278,7 +278,7 @@ export function CalendarScreen() {
       ) : !days ? (
         <Loader />
       ) : (
-        dayItems.map(row)
+        dayItems.map(renderItem)
       )}
       <Fab href={`/calendar/new/${day}`} label={t.calendar.add} />
     </>

@@ -27,6 +27,8 @@
   --accent-text: #7cf5c4;
   --on-accent: #0a0913;
   --error: #ff7a90;
+  /* Error-coloured text: on the dark surfaces the error colour itself reads well. */
+  --error-text: var(--error);
   /* White on #ff7a90 is only ~2.5:1; the dark background gives ~7.9:1. */
   --on-error: #0a0913;
 }
@@ -45,6 +47,9 @@
   --accent-text: #0b7a5c;
   --on-accent: #1c1830;
   --error: #d63b5c;
+  /* Error-coloured text: --error itself measures 3.48:1 over the page's lavender glow; this
+     darker red at least 4.84:1 on the page and 5.73:1 on a card (rendered pixels, worst case). */
+  --error-text: #b62545;
   /* White on #d63b5c is ~4.53:1, which still clears AA. */
   --on-error: #fff;
 }

@@ -57,6 +57,15 @@ function LessonsCard({
     const timer = setTimeout(() => setTick((count) => count + 1), Math.min(wait, MAX_TIMEOUT));
     return () => clearTimeout(timer);
   }, [lessons, tick]);
+  // The timer runs on uptime, so after the device slept it fires late, and a refetch with the
+  // same lessons re-renders nothing: coming back to the app checks again.
+  useEffect(() => {
+    const recheck = () => {
+      if (document.visibilityState === "visible") setTick((count) => count + 1);
+    };
+    document.addEventListener("visibilitychange", recheck);
+    return () => document.removeEventListener("visibilitychange", recheck);
+  }, []);
   return (
     <Card title={weekLabel ? `${t.today.lessons} · ${weekLabel}` : t.today.lessons} index={index}>
       {lessonsOver(lessons) ? (

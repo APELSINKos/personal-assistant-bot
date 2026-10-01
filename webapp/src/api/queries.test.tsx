@@ -396,6 +396,16 @@ describe("schedule", () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.today });
   });
 
+  it("keeps the source when an upload is answered 404 (that cannot mean it was disconnected)", async () => {
+    mockApi({ "POST /schedule/file": { status: 404, body: { status: 404, code: "not_found", title: "Not found" } } });
+    const client = createQueryClient();
+    client.setQueryData(keys.schedule, { source: scheduleSource });
+    const { result } = renderHook(() => useUploadSchedule(), { wrapper: wrapperFor(client) });
+    act(() => result.current.mutate(new File(["BEGIN:VCALENDAR"], "x.ics")));
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(client.getQueryData<ScheduleState>(keys.schedule)).toEqual({ source: scheduleSource });
+  });
+
   it("upload also invalidates today", async () => {
     mockApi({ "POST /schedule/file": { source: { ...scheduleSource, kind: "file" } } });
     const client = createQueryClient();

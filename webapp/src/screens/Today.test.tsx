@@ -156,6 +156,40 @@ describe("Today lessons", () => {
     expect(calls.filter((call) => call.path === "/today")).toHaveLength(1); // no refetch behind it
   });
 
+  it("arms its timer again when it fires before the last lesson has ended", async () => {
+    fakeClock("2026-09-28T11:09:00Z"); // a minute before the last lesson ends
+    installTelegram();
+    mockApi({ "GET /today": { ...today, has_schedule: true, lessons, week_label: null } });
+    renderWithApp(<TodayScreen />);
+    expect(await screen.findByText("Разработка баз данных")).toBeInTheDocument();
+    // The wall clock goes back half a minute: the card's timer, armed for a minute, fires early.
+    vi.setSystemTime(new Date("2026-09-28T11:08:30Z"));
+    act(() => {
+      vi.advanceTimersByTime(60_000); // 11:09:30 by the wall clock
+    });
+    expect(screen.getByText("Разработка баз данных")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(31_000);
+    });
+    expect(screen.getByText("Пары закончились")).toBeInTheDocument();
+  });
+
+  it("checks again when the app comes back after the device slept", async () => {
+    fakeClock("2026-09-28T11:09:00Z");
+    installTelegram();
+    const { calls } = mockApi({ "GET /today": { ...today, has_schedule: true, lessons, week_label: null } });
+    renderWithApp(<TodayScreen />);
+    expect(await screen.findByText("Разработка баз данных")).toBeInTheDocument();
+    // Asleep past the end: the wall clock moved on, the card's uptime-based timer has not fired.
+    vi.setSystemTime(new Date("2026-09-28T12:00:00Z"));
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(document.visibilityState).toBe("visible");
+    expect(screen.getByText("Пары закончились")).toBeInTheDocument();
+    expect(calls.filter((call) => call.path === "/today")).toHaveLength(1); // no refetch needed
+  });
+
   it("follows the lessons when they change", async () => {
     fakeClock("2026-09-28T11:09:00Z");
     installTelegram();
