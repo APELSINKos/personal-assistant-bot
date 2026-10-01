@@ -147,6 +147,12 @@ def _day(value: str, ctx: Ctx) -> date | None:
     return day if day.year in SUPPORTED_YEARS else None
 
 
+def _is_number(value: str) -> bool:
+    """Whether a button's value is a number the bot could have put there: «²» passes isdigit()
+    but not int(), and twenty digits overflow an SQLite integer."""
+    return value.isascii() and value.isdigit() and len(value) <= 9
+
+
 @section("schedule")
 async def show_schedule(message: Message, ctx: Ctx) -> None:
     source = await schedule.get_source(ctx.session, ctx.user.id)
@@ -199,6 +205,9 @@ async def on_refresh(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
     source = await _source_or_stale(query, ctx)
     if source is None:
         return
+    if source.kind is ScheduleKind.FILE:  # a file's view has no such button: it is an old one
+        await replies.answer_quietly(query, ctx.t("stale-button"))
+        return
     if schedule.refresh_wait(source, clock()) > 0:
         await replies.answer_quietly(query, ctx.t("schedule-refresh-wait"))
         return
@@ -217,7 +226,7 @@ async def on_alerts(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
 
 async def on_alert(query: CallbackQuery, callback_data: ScheduleCb, ctx: Ctx, bot: Bot) -> None:
     value = callback_data.value
-    minutes = None if value == "off" else int(value) if value.isdigit() else -1
+    minutes = None if value == "off" else int(value) if _is_number(value) else -1
     try:
         source = await schedule.set_alert_minutes(ctx.session, ctx.user.id, minutes)
     except (InvalidInput, NotFound):
@@ -340,7 +349,7 @@ async def got_group(message: Message, ctx: Ctx) -> None:
 
 
 async def on_group(query: CallbackQuery, callback_data: ScheduleCb, ctx: Ctx, bot: Bot) -> None:
-    if not callback_data.value.isdigit():
+    if not _is_number(callback_data.value):
         await replies.answer_quietly(query, ctx.t("stale-button"))
         return
     group_id = int(callback_data.value)
@@ -366,7 +375,8 @@ async def got_file(message: Message, ctx: Ctx, bot: Bot) -> None:
     document = message.document
     if document is None:
         return
-    if (document.file_size or 0) > schedule.FILE_LIMIT:
+    # A size Telegram did not report is not taken on trust: the file could be up to 20 MB.
+    if document.file_size is None or document.file_size > schedule.FILE_LIMIT:
         await message.answer(texts.schedule_error_text("too_large", ctx.t))
         return
     body = await download(bot, document.file_id)
@@ -396,9 +406,13 @@ def create_router() -> Router:
         ("find", on_find),
         ("link", on_link),
         ("file", on_file),
-        ("group", on_group),
     ):
         router.callback_query.register(handler, ScheduleCb.filter(F.action == action))
+    # A group button works only while its search is open: a second tap that arrives after the
+    # first one connected falls through to the fallback's stale-button answer.
+    router.callback_query.register(
+        on_group, ScheduleForm.group, ScheduleCb.filter(F.action == "group")
+    )
     router.message.register(got_group, ScheduleForm.group, F.text)
     router.message.register(got_link, ScheduleForm.url, F.text)
     router.message.register(got_file, ScheduleForm.file, F.document)

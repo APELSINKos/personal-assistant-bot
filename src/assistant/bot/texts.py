@@ -288,18 +288,22 @@ SCHEDULE_TEXT_LIMIT = 3900
 _SOURCE_ERRORS = ("forbidden_host", "unreachable", "too_large", "not_calendar")
 
 
-def _fit(lines: list[str], limit: int = SCHEDULE_TEXT_LIMIT) -> str:
+def _fit(lines: list[str], tail: list[str], limit: int = SCHEDULE_TEXT_LIMIT) -> str:
+    """The lines, cut with «…» where they would pass the limit, then the tail whole: the tail is
+    the stale warning, which must stay however long the day or the week is."""
+    ending = "".join(f"\n{line}" for line in tail)
+    room = limit - len(ending)
     text = "\n".join(lines)
-    if len(text) <= limit:
-        return text
+    if len(text) <= room:
+        return text + ending
     kept: list[str] = []
     size = 0
     for line in lines:
-        if size + len(line) + 1 > limit - 2:
+        if size + len(line) + 1 > room - 2:
             break
         kept.append(line)
         size += len(line) + 1
-    return "\n".join([*kept, "…"])
+    return "\n".join([*kept, "…"]) + ending
 
 
 def day_title(day: date, today: date, t: Translator) -> str:
@@ -327,7 +331,7 @@ def schedule_day_text(
     title = day_title(day, today, t)
     head = t("schedule-day-week", day=title, week=week) if week else t("schedule-day", day=title)
     body = [lesson_line(lesson, tz, t) for lesson in lessons] or [t("schedule-free")]
-    return _fit([head, "", *body, *_stale_line(stale_since, t)])
+    return _fit([head, "", *body], _stale_line(stale_since, t))
 
 
 def schedule_week_text(
@@ -353,7 +357,7 @@ def schedule_week_text(
             format_short_day(day, t.lang),
             *(lesson_line(item, tz, t) for item in days[day]),
         ]
-    return _fit([*lines, *_stale_line(stale_since, t)])
+    return _fit(lines, _stale_line(stale_since, t))
 
 
 def schedule_source_text(source: ScheduleSource, tz: str, now: datetime, t: Translator) -> str:

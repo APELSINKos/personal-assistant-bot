@@ -237,3 +237,21 @@ def test_lessons_and_reminders_stay_within_the_telegram_message_limit() -> None:
         assert len(render(data, "Alex", RU)) <= 4096
     line = texts.lesson_line(long, MSK, RU)
     assert line.endswith("…") and len(line) <= len("• 12:40–14:10 ") + texts.LESSON_NAME_LIMIT
+
+
+def test_a_cut_day_or_week_keeps_the_stale_warning() -> None:
+    long = Lesson(
+        uid="u",
+        starts_at=LESSON.starts_at,
+        ends_at=LESSON.ends_at,
+        title="Т" * 200,
+        kind="ЛАБ",
+        room="А" * 100,
+    )
+    day, stale = date(2026, 9, 28), date(2026, 9, 24)
+    for text in (
+        texts.schedule_day_text(day, day, [long] * 60, "5 неделя", "Europe/Moscow", RU, stale),
+        texts.schedule_week_text(day, [long] * 60, "5 неделя", "Europe/Moscow", RU, stale),
+    ):
+        assert len(text) <= texts.SCHEDULE_TEXT_LIMIT
+        assert text.endswith("\n…\n\n⚠️ Данные от 24 сентября — источник пока недоступен.")

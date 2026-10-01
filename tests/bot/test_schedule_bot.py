@@ -22,6 +22,8 @@ MONDAY = "🎓 Сегодня · понедельник, 28 сентября · 
 WEDNESDAY = (
     "🎓 среда, 30 сентября · 5 неделя\n\n• 12:40–14:10 ПР Разработка баз данных · И-212-б (В-78)"
 )
+STALE = "Эта кнопка устарела — открой раздел заново из меню."
+CRASH = "⚠️ Что-то пошло не так. Попробуй ещё раз чуть позже."  # what a failed update gets
 
 
 @pytest.fixture(autouse=True)
@@ -225,6 +227,64 @@ async def test_a_forged_day_is_a_stale_button(feed, fake, session, mirea) -> Non
     for value in ("yesterday", "9999-12-31"):
         await feed(press("day", value))
         assert fake.of(AnswerCallbackQuery)[-1].text.startswith("Эта кнопка устарела")
+
+
+@pytest.mark.parametrize(
+    ("action", "value"),
+    [
+        ("alert", "²"),  # a digit to str.isdigit(), but not to int()
+        ("group", "²"),
+        ("group", "9" * 20),  # too big for an SQLite integer
+    ],
+)
+async def test_a_forged_number_is_a_stale_button(
+    feed, fake, session, mirea, action: str, value: str
+) -> None:
+    await connect(feed, session)
+    await feed(press("find"))  # a group search is open, so its buttons are live
+    await feed(press(action, value))
+    assert fake.of(AnswerCallbackQuery)[-1].text == STALE
+    assert CRASH not in fake.sent_texts()
+
+
+async def test_a_second_tap_on_a_group_connects_nothing(feed, fake, session, mirea) -> None:
+    await directory(session, (4805, "ИКБО-63-24"), (4804, "ИКБО-62-24"))
+    await feed(press("find"))
+    await feed(message_update("ИКБО"))
+    await feed(press("group", "4805"))
+    await feed(press("group", "4805"))  # a double tap: it arrives after the dialog is over
+    assert fake.of(AnswerCallbackQuery)[-1].text == STALE
+    assert fake.sent_texts().count(CONNECTED) == 1
+    assert mirea.requests == [groups.calendar_url(4805)]  # downloaded once
+
+
+async def test_a_file_of_unknown_size_is_not_downloaded(feed, fake, monkeypatch) -> None:
+    downloads: list[str] = []
+
+    async def download(bot, file_id: str) -> bytes:
+        downloads.append(file_id)
+        return OUTLOOK
+
+    monkeypatch.setattr(schedule_router, "download", download)
+    await feed(press("file"))
+    await feed(message_update(document={"file_name": "Английский.ics"}))  # no size reported
+    assert fake.sent_texts()[-1] == "⚠️ Календарь слишком большой: больше 2 МБ или 3000 занятий."
+    assert downloads == []
+
+
+async def test_a_file_has_nothing_to_refresh(feed, fake, monkeypatch) -> None:
+    async def download(bot, file_id: str) -> bytes:
+        return OUTLOOK
+
+    monkeypatch.setattr(schedule_router, "download", download)
+    await feed(press("file"))
+    await feed(message_update(document={"file_name": "Английский.ics", "file_size": 500}))
+    later = NOW + timedelta(minutes=2)  # past the pause between two refreshes
+    monkeypatch.setattr(schedule_router, "clock", lambda: later)
+    calls = len(fake.calls)
+    await feed(press("refresh"))  # left in a message from when the source was a link
+    assert fake.of(AnswerCallbackQuery)[-1].text == STALE
+    assert [type(call) for call in fake.calls[calls:]] == [AnswerCallbackQuery]  # nothing else
 
 
 async def test_old_data_is_marked(feed, fake, session, mirea, monkeypatch) -> None:
