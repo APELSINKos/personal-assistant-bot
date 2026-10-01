@@ -16,6 +16,7 @@ from assistant.api.ratelimit import RateLimiter
 from assistant.api.routers.health import read_commit
 from assistant.core.models import User
 from tests.api.conftest import NOW
+from tests.stubs import StubCalendars
 
 PROBLEM = "application/problem+json"
 
@@ -77,6 +78,7 @@ async def test_rate_limit_is_a_429_problem(sessionmaker, api_settings, meteo, cb
         sessionmaker=sessionmaker,
         meteo=meteo,
         cbr=cbr,
+        calendars=StubCalendars(),
         clock=lambda: NOW,
         limiter=RateLimiter(2),
     )

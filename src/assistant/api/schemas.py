@@ -110,6 +110,16 @@ class BestStreak(BaseModel):
     days: int
 
 
+class TodayLesson(BaseModel):
+    time: str
+    end: str
+    title: str
+    kind: str | None
+    room: str | None
+    starts_at: datetime
+    ends_at: datetime
+
+
 class TodayOut(BaseModel):
     date: date
     part_of_day: Literal["morning", "day", "evening", "night"]
@@ -119,6 +129,9 @@ class TodayOut(BaseModel):
     notes_count: int
     rates: RatesOut | None
     best_streak: BestStreak | None
+    has_schedule: bool
+    lessons: list[TodayLesson]
+    week_label: str | None
 
 
 class NoteIn(BaseModel):
@@ -209,7 +222,7 @@ class SnoozeIn(BaseModel):
     kind: Literal["10m", "1h", "tomorrow"]
 
 
-class AgendaItemOut(BaseModel):
+class ReminderItemOut(BaseModel):
     kind: Literal["reminder"]
     id: int
     time: str
@@ -218,8 +231,21 @@ class AgendaItemOut(BaseModel):
     description: str | None
 
 
+class LessonItemOut(BaseModel):
+    kind: Literal["lesson"]
+    time: str
+    end: str
+    title: str
+    lesson_kind: str | None
+    room: str | None
+
+
+AgendaItemOut = Annotated[ReminderItemOut | LessonItemOut, Field(discriminator="kind")]
+
+
 class AgendaDayOut(BaseModel):
     date: date
+    label: str | None  # the calendar's week label, «5 неделя»
     items: list[AgendaItemOut]
 
 
@@ -237,3 +263,48 @@ class MarkIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     done: bool | None
+
+
+ScheduleKindName = Literal["mirea", "url", "file"]
+
+
+class ScheduleOut(BaseModel):
+    kind: ScheduleKindName
+    title: str | None
+    mirea_id: int | None
+    url: str | None
+    fetched_at: datetime
+    ok_at: datetime | None
+    error: str | None
+    stale: bool
+    lesson_reminder_minutes: int | None
+    lessons_ahead: int
+
+
+class ScheduleState(BaseModel):
+    source: ScheduleOut | None
+
+
+class ScheduleIn(BaseModel):
+    """Exactly one of the two."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mirea_id: int | None = Field(default=None, ge=1, le=1_000_000)
+    url: str | None = Field(default=None, max_length=2000)
+
+
+class SchedulePatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lesson_reminder_minutes: Literal[5, 10, 15, 30, 60] | None
+
+
+class GroupOut(BaseModel):
+    id: int
+    name: str
+
+
+class GroupsOut(BaseModel):
+    groups: list[GroupOut]
+    building: bool  # the directory is not ready: no full crawl finished, or too few groups

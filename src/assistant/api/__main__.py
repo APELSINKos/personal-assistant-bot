@@ -10,6 +10,7 @@ import uvicorn
 
 from assistant.api.app import create_app
 from assistant.api.routers.health import read_commit
+from assistant.core.clients.calendars import CalendarFetcher
 from assistant.core.clients.cbr import CbrClient
 from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.config import get_settings
@@ -35,6 +36,7 @@ async def main() -> None:
                 sessionmaker=make_sessionmaker(engine),
                 meteo=OpenMeteoClient(http),
                 cbr=CbrClient(http),
+                calendars=CalendarFetcher(http),
                 commit=read_commit(REPO_ROOT),
             )
             config = uvicorn.Config(
