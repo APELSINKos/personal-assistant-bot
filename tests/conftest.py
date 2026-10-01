@@ -14,6 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from assistant.core.db import create_engine, make_sessionmaker
 from assistant.core.models import Base, User
+from assistant.core.services import ical
+
+
+@pytest.fixture(autouse=True)
+def calendars_parsed_in_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Not a Python process per calendar; tests/unit/test_ical.py checks the child on its own.
+    monkeypatch.setattr(ical, "ISOLATED", False)
 
 
 @pytest.fixture

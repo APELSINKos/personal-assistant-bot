@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import re
+import subprocess
 import time
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -276,3 +279,62 @@ def test_a_kind_from_the_summary_when_categories_are_missing() -> None:
     table = ical.parse(body, START, END, "Europe/Moscow")
     lectures = [item for item in table.lessons if item.title.startswith("Разработка баз")]
     assert [(item.kind, item.title) for item in lectures][-1] == ("ЛК", "Разработка баз данных")
+
+
+@pytest.fixture
+def isolated(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The root conftest parses in-process; these tests start the real child.
+    monkeypatch.setattr(ical, "ISOLATED", True)
+
+
+@pytest.mark.usefixtures("isolated")
+def test_the_child_process_parses_like_this_one() -> None:
+    body = read("mirea_ikbo_63_24.ics")
+    expected = ical.parse(body, START, END, "Europe/Moscow")
+    assert ical.parse_isolated(body, START, END, "Europe/Moscow") == expected
+
+
+@pytest.mark.usefixtures("isolated")
+def test_a_calendar_too_slow_to_parse_is_cut_off() -> None:
+    # A rule that never matches sends dateutil to the year 9999 inside one call, ~3.6 s each.
+    never = "".join(
+        f"BEGIN:VEVENT\r\nUID:never{i}\r\nDTSTART:20260901T09{i:02d}00Z\r\n"
+        "RRULE:FREQ=DAILY;BYMONTH=2;BYMONTHDAY=30\r\nSUMMARY:Never\r\nEND:VEVENT\r\n"
+        for i in range(3)
+    )
+    body = f"BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{never}END:VCALENDAR\r\n".encode()
+    began = time.perf_counter()
+    with pytest.raises(InvalidInput) as caught:
+        ical.parse_isolated(body, START, END, "Europe/Moscow", seconds=1)
+    assert caught.value.params == {"field": "calendar", "reason": "too_large"}
+    assert time.perf_counter() - began < 5
+
+
+@pytest.mark.usefixtures("isolated")
+def test_the_child_says_what_is_not_a_calendar(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.WARNING, logger=ical.__name__)
+    with pytest.raises(InvalidInput) as caught:
+        ical.parse_isolated(b"<!DOCTYPE html><html></html>", START, END, "Europe/Moscow")
+    assert caught.value.params == {"field": "calendar", "reason": "not_calendar"}
+    assert not caplog.records  # the child's own answer, not a crash
+
+
+@pytest.mark.usefixtures("isolated")
+@pytest.mark.parametrize(("code", "output"), [(1, b""), (0, b"{oops")], ids=["crash", "garbage"])
+def test_a_child_that_breaks_is_logged(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, code: int, output: bytes
+) -> None:
+    stderr = b"Traceback (most recent call last):\n  ...\nMemoryError\n"
+    done = subprocess.CompletedProcess([], code, output, stderr)
+
+    def run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        return done
+
+    monkeypatch.setattr(subprocess, "run", run)
+    caplog.set_level(logging.WARNING, logger=ical.__name__)
+    with pytest.raises(InvalidInput) as caught:
+        ical.parse_isolated(read("outlook.ics"), START, END, "Europe/Moscow")
+    assert caught.value.params == {"field": "calendar", "reason": "not_calendar"}
+    assert [record.getMessage() for record in caplog.records] == [
+        f"calendar parser failed with exit code {code}: MemoryError"
+    ]

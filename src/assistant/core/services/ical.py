@@ -1,14 +1,26 @@
 """An iCalendar file → the lessons and week labels of a date window.
 
-Pure and CPU-bound (a semester of a MIREA group takes ~0.3 s): call it through
-`asyncio.to_thread`. Anything that is not a readable calendar becomes
-`InvalidInput(field="calendar", reason="not_calendar")`.
+A calendar comes from anyone, so the parser guards itself three ways. Events the expansion
+cannot read or that repeat more than daily are dropped one by one, so a bad event costs only
+itself, and more than `MAX_SERIES` recurring events are refused. The expansion reads only the
+window and stops past `MAX_OCCURRENCES`. And `parse_isolated` runs it all in a child Python
+process killed after `PARSE_SECONDS`: dateutil can spend minutes inside one call on a rule
+that never matches, and nothing can stop a thread.
+
+Callers use `parse_isolated` through `asyncio.to_thread`; `parse` is the same work in this
+process (a semester of a MIREA group takes ~0.3 s). A calendar that cannot be read is
+`InvalidInput(field="calendar", reason="not_calendar")`, one too big or too slow is
+`InvalidInput(field="calendar", reason="too_large")`.
 """
 
 from __future__ import annotations
 
+import json
+import logging
 import re
-from dataclasses import dataclass
+import subprocess
+import sys
+from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -19,11 +31,18 @@ import recurring_ical_events
 from assistant.core.errors import InvalidInput
 from assistant.core.timeutil import UTC, local_to_utc
 
-# More occurrences than any timetable has in the window: a bigger calendar is refused as
-# "too_large" instead of being expanded for a minute (6000 daily series take ~60 s in full).
+log = logging.getLogger(__name__)
+
+# More occurrences than any timetable has in the window: the expansion stops there and the
+# calendar is refused as "too_large". The count runs between the library's yields, so it
+# cannot stop slow work inside one rule; the child's time limit does.
 MAX_OCCURRENCES = 3000
 # More recurring events than any timetable has: refused as "too_large" before expanding.
 MAX_SERIES = 500
+# A parse running longer is killed, and the calendar is refused as "too_large".
+PARSE_SECONDS = 15.0
+# Tests turn it off so the suite does not start a Python process per calendar.
+ISOLATED = True
 TITLE_LENGTH = 200
 ROOM_LENGTH = 100
 LABEL_LENGTH = 40
@@ -264,3 +283,93 @@ def parse(body: bytes, start: datetime, end: datetime, tz: str) -> Timetable:
         lessons=sorted(lessons.values(), key=lambda item: (item.starts_at, item.title)),
         weeks=sorted(weeks.values(), key=lambda item: item.start),
     )
+
+
+def _iso(value: date) -> str:
+    return value.isoformat()  # a datetime keeps its time and offset
+
+
+def _from_json(output: bytes) -> Timetable | InvalidInput:
+    """The child's answer: its timetable or its refusal. Anything else raises ValueError,
+    KeyError or TypeError."""
+    answer = json.loads(output)
+    if "error" in answer:
+        return InvalidInput(**answer["error"])
+    table = answer["table"]
+    return Timetable(
+        name=table["name"],
+        lessons=[
+            ParsedLesson(
+                uid=item["uid"],
+                starts_at=datetime.fromisoformat(item["starts_at"]),
+                ends_at=datetime.fromisoformat(item["ends_at"]),
+                title=item["title"],
+                kind=item["kind"],
+                room=item["room"],
+            )
+            for item in table["lessons"]
+        ],
+        weeks=[
+            ParsedWeek(
+                date.fromisoformat(item["start"]), date.fromisoformat(item["end"]), item["label"]
+            )
+            for item in table["weeks"]
+        ],
+    )
+
+
+def parse_isolated(
+    body: bytes, start: datetime, end: datetime, tz: str, *, seconds: float = PARSE_SECONDS
+) -> Timetable:
+    """`parse` in a child Python process, killed after `seconds`; only JSON comes back.
+    Blocking: call it through `asyncio.to_thread`."""
+    if not ISOLATED:
+        return parse(body, start, end, tz)
+    try:
+        done = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "assistant.core.services.ical",
+                start.isoformat(),
+                end.isoformat(),
+                tz,
+            ],
+            input=body,
+            capture_output=True,
+            timeout=seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:  # `run` has killed the child
+        raise InvalidInput(field="calendar", reason="too_large") from None
+    try:
+        answer = _from_json(done.stdout) if done.returncode == 0 else None
+    except (ValueError, KeyError, TypeError):
+        answer = None
+    if isinstance(answer, InvalidInput):
+        raise answer
+    if answer is None:
+        lines = done.stderr.decode(errors="replace").strip().splitlines() or [""]
+        log.warning("calendar parser failed with exit code %s: %s", done.returncode, lines[-1])
+        raise _not_calendar()
+    return answer
+
+
+def _main() -> None:
+    """The child of `parse_isolated`: the body on stdin, the window and the zone in argv, one
+    JSON object on stdout."""
+    start, end, tz = sys.argv[1:]
+    body = sys.stdin.buffer.read()
+    answer: dict[str, Any]
+    try:
+        table = parse(body, datetime.fromisoformat(start), datetime.fromisoformat(end), tz)
+    except InvalidInput as error:
+        answer = {"error": error.params}
+    else:
+        answer = {"table": asdict(table)}
+    # json escapes everything non-ASCII, so the console encoding of the pipe does not matter.
+    print(json.dumps(answer, default=_iso))
+
+
+if __name__ == "__main__":
+    _main()
