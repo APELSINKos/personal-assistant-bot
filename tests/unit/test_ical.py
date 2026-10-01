@@ -156,6 +156,11 @@ _EVERY_MINUTE = (
             "DTSTART:20261001T090000Z\r\nRRULE:FREQ=WEEKLY;INTERVAL=abc\r\n", id="bad-rule"
         ),
         pytest.param("DTSTART:20261001T090000Z\r\nRRULE:INTERVAL=2\r\n", id="no-freq"),
+        # dateutil never ends a daily rule with no step, and a weekly one breaks the expansion.
+        pytest.param("DTSTART:20261001T090000Z\r\nRRULE:FREQ=DAILY;INTERVAL=0\r\n", id="no-step"),
+        pytest.param(
+            "DTSTART:20261001T090000Z\r\nRRULE:FREQ=WEEKLY;INTERVAL=0\r\n", id="no-step-w"
+        ),
         pytest.param("DTEND:20261001T100000Z\r\n", id="no-start"),
         pytest.param(f"DTSTART:19900101T000000Z\r\n{_EVERY_MINUTE}", id="by-hour-and-minute"),
         pytest.param("DTSTART;VALUE=PERIOD:20261001T090000Z/PT1H\r\n", id="period-start"),
@@ -205,6 +210,38 @@ def test_a_huge_calendar_is_refused_quickly() -> None:
     with pytest.raises(InvalidInput) as caught:
         ical.parse(_daily_series(400), START, utc(2027, 1, 26), "Europe/Moscow")
     assert caught.value.params == {"field": "calendar", "reason": "too_large"}
+
+
+def _semester() -> bytes:
+    """Shaped like a full MIREA semester: 40 lessons every other week until the end of December,
+    and «N неделя» labels for 18 weeks in a row, each covering its seven days."""
+    monday = date(2026, 8, 31)
+    events = [
+        f"UID:week{n}\r\nDTSTART;VALUE=DATE:{monday + timedelta(weeks=n - 1):%Y%m%d}\r\n"
+        f"DTEND;VALUE=DATE:{monday + timedelta(weeks=n):%Y%m%d}\r\nSUMMARY:{n} неделя\r\n"
+        for n in range(1, 19)
+    ]
+    for i in range(40):
+        slot, weekday = divmod(i % 20, 6)  # six days, four slots, in the first or second week
+        day = monday + timedelta(days=weekday, weeks=i // 20)
+        events.append(
+            f"UID:lesson{i}\r\nDTSTART;TZID=Europe/Moscow:{day:%Y%m%d}T{9 + 2 * slot:02d}0000\r\n"
+            "RRULE:FREQ=WEEKLY;INTERVAL=2;UNTIL=20261230T210000Z\r\n"
+            f"SUMMARY:ПР Предмет {i}\r\n"
+        )
+    body = "".join(f"BEGIN:VEVENT\r\n{event}END:VEVENT\r\n" for event in events)
+    return f"BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{body}END:VCALENDAR\r\n".encode()
+
+
+def test_a_full_semester_with_week_labels_parses_quickly() -> None:
+    # Monday 7 September → Monday 28 December in Moscow: 16 weeks, one lesson of each series in
+    # every two of them. Labels: those 16 weeks and the one before, which the window's UTC edge
+    # still touches (as in the fixture test).
+    began = time.perf_counter()
+    table = ical.parse(_semester(), utc(2026, 9, 6, 21), utc(2026, 12, 27, 21), "Europe/Moscow")
+    assert time.perf_counter() - began < 1.5
+    assert len(table.lessons) == 40 * 8
+    assert [week.label for week in table.weeks] == [f"{n} неделя" for n in range(1, 18)]
 
 
 def test_more_recurring_events_than_a_timetable_has_are_refused(

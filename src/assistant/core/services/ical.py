@@ -8,7 +8,8 @@ process killed after `PARSE_SECONDS`: dateutil can spend minutes inside one call
 that never matches, and nothing can stop a thread.
 
 Callers use `parse_isolated` through `asyncio.to_thread`; `parse` is the same work in this
-process (a semester of a MIREA group takes ~0.3 s). A calendar that cannot be read is
+process (a full MIREA semester, ~46 series and 18 week labels, takes about 0.2 s; the child
+adds about as much again). A calendar that cannot be read is
 `InvalidInput(field="calendar", reason="not_calendar")`, one too big or too slow is
 `InvalidInput(field="calendar", reason="too_large")`.
 """
@@ -21,7 +22,7 @@ import re
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -168,6 +169,8 @@ def _usable(event: Any) -> bool:
         len(freq) == 1
         and str(freq[0]).upper() not in _SUB_DAILY
         and not any(part in rule for part in _TIME_PARTS)
+        # dateutil never ends most rules that do not step forward, and breaks on the rest.
+        and min(rule.get("INTERVAL", [1])) >= 1
     )
 
 
@@ -206,30 +209,73 @@ def _sanitize(calendar: Any) -> None:
             del calendar["X-WR-TIMEZONE"]
 
 
+def _all_day(event: Any) -> bool:
+    """Whether the library expands the event into dates: only if its start and its end are both
+    dates (a time in DTEND or in DURATION makes them all times)."""
+    if isinstance(event["DTSTART"].dt, datetime):
+        return False
+    end = event.get("DTEND")
+    if end is not None:
+        return not isinstance(end.dt, datetime)
+    length = event.get("DURATION")
+    return length is None or length.dt.seconds == 0
+
+
+def _streams(calendar: Any) -> tuple[Any, Any]:
+    """The calendar as two, each with its properties and other components: the timed events,
+    and the all-day week labels. Expanded together, labels that cover every day keep the
+    library's search at its 15-minute minimum step: ~7 s for a MIREA semester instead of
+    ~0.2 s. Other all-day events never become lessons or labels. A series (one UID) stays whole,
+    so a moved occurrence keeps its series; one with any timed part goes with the timed."""
+    series: dict[Any, list[Any]] = {}
+    timed, labels = calendar.copy(), calendar.copy()  # a copy has no subcomponents
+    for sub in calendar.subcomponents:
+        if sub.name == "VEVENT":
+            series.setdefault(sub.get("UID", id(sub)), []).append(sub)
+        else:
+            timed.add_component(sub)
+            labels.add_component(sub)
+    for events in series.values():
+        if not all(_all_day(event) for event in events):
+            timed.subcomponents += events
+        elif any(_WEEK.match(_text(event, "SUMMARY")) for event in events):
+            labels.subcomponents += events
+    return timed, labels
+
+
+def _take(found: list[Any], event: Any) -> None:
+    if len(found) >= MAX_OCCURRENCES:
+        raise InvalidInput(field="calendar", reason="too_large")
+    found.append(event)
+
+
 def _occurrences(calendar: Any, start: datetime, end: datetime, tz: str) -> list[Any]:
-    """The occurrences from `start` up to `end`, in time order, read lazily: expanding only
-    what the window needs keeps a huge or endless calendar from eating the CPU."""
+    """The occurrences of the window, under one budget. The timed ones are read lazily, in
+    time order, up to `end`: a huge or endless calendar costs only what the window needs."""
+    timed, labels = _streams(calendar)
     found: list[Any] = []
     end_day = end.astimezone(UTC).date()
-    for event in recurring_ical_events.of(calendar, skip_bad_series=True).after(start):
-        raw_start = event.get("DTSTART")
-        if raw_start is None:
-            continue
-        first = raw_start.dt
+    for event in recurring_ical_events.of(timed, skip_bad_series=True).after(start):
+        first = event["DTSTART"].dt
         if isinstance(first, datetime):
             if _moment(first, tz) >= end:
                 break
         elif first > end_day:
-            # Occurrences come in start order, but the library sorts a date against a time in
-            # the time's own zone: the next day's all-day items can come before a lesson still
-            # inside the window (its early morning in a zone east of UTC). A later date ends the
-            # expansion — an endless all-day series would otherwise be read up to the year 9999.
+            # A date here comes from a series with timed parts. The library sorts a date against
+            # a time in the time's own zone, so the next day can come before a lesson still in
+            # the window (its early morning east of UTC). A later date ends the expansion — an
+            # endless all-day series would otherwise be read up to the year 9999.
             if first > end_day + timedelta(days=1):
                 break
             continue
-        if len(found) >= MAX_OCCURRENCES:
-            raise InvalidInput(field="calendar", reason="too_large")
-        found.append(event)
+        _take(found, event)
+    # The labels in one call: read lazily, weeks that cover every day would keep the library
+    # at 15-minute steps (~0.9 s a semester). The budget counts them all the same.
+    stop = datetime.combine(end_day + timedelta(days=1), time(), UTC)
+    for event in recurring_ical_events.of(labels, skip_bad_series=True).between(start, stop):
+        # Events nested in other components ride in both calendars: a timed one counted above.
+        if not isinstance(event["DTSTART"].dt, datetime):
+            _take(found, event)
     return found
 
 
