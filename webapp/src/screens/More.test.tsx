@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Me } from "../api/types";
 import { Toasts } from "../components/Toasts";
 import { installTelegram } from "../test/fakeTelegram";
-import { me } from "../test/fixtures";
+import { me, scheduleSource } from "../test/fixtures";
 import { mockApi } from "../test/mockApi";
 import { renderWithApp } from "../test/render";
 import { MoreScreen, REPO_URL } from "./More";
@@ -148,5 +148,19 @@ describe("More", () => {
     expect(await screen.findByText("Версия 2.1.0")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Исходный код на GitHub" }));
     expect(app.openLink).toHaveBeenCalledWith(REPO_URL);
+  });
+});
+
+describe("More schedule entry", () => {
+  it("leads to the schedule and tells what is connected", async () => {
+    installTelegram();
+    mockApi({ "GET /me": me, "GET /health": HEALTH, "GET /schedule": { source: scheduleSource } });
+    const { unmount } = renderWithApp(<MoreScreen />, { path: "/more" });
+    const entry = await screen.findByRole("link", { name: "🎓 Расписание пар ИКБО-63-24" });
+    expect(entry).toHaveAttribute("href", "/more/schedule");
+    unmount();
+    mockApi({ "GET /me": me, "GET /health": HEALTH, "GET /schedule": { source: null } });
+    renderWithApp(<MoreScreen />, { path: "/more" });
+    expect(await screen.findByRole("link", { name: "🎓 Расписание пар Не подключено" })).toBeInTheDocument();
   });
 });

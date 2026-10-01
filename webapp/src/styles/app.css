@@ -487,6 +487,10 @@ textarea.input {
   cursor: default;
 }
 
+.button--danger {
+  color: var(--error);
+}
+
 .main-action {
   position: fixed;
   inset: auto 0 0;
@@ -950,4 +954,34 @@ textarea.input {
 
 .lesson__meta {
   font-size: 12px;
+}
+
+/* «Ещё» → «Расписание» */
+.card__sub {
+  display: block;
+  font-size: 13px;
+}
+
+.schedule__intro {
+  margin: 0 4px 12px;
+}
+
+.schedule__title {
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.schedule__actions {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.schedule__refused {
+  margin-top: 12px;
+}
+
+.schedule__cancel {
+  width: 100%;
 }

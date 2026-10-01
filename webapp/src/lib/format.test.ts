@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addDaysIso, bigDate, dayHeading, daysBetween, formatNumber, formatTemp, lessonMeta, localTimeHm,
-  localTodayIso, monthGrid, monthTitle, rangeLabel, weekOf, weekdayShort,
+  localTodayIso, monthGrid, monthTitle, rangeLabel, shortMoment, weekOf, weekdayShort,
 } from "./format";
 
 describe("format", () => {
@@ -67,5 +67,10 @@ describe("calendar helpers", () => {
   it("describes a lesson with whatever it has", () => {
     expect(lessonMeta("ЛК", "10:40", "12:10", "А-16")).toBe("ЛК · 10:40–12:10 · А-16");
     expect(lessonMeta(null, "10:40", "12:10", null)).toBe("10:40–12:10");
+  });
+
+  it("shows a moment in the city's zone", () => {
+    expect(shortMoment("2026-09-28T12:00:00Z", "Europe/Moscow", "ru")).toBe("28 сент., 15:00");
+    expect(shortMoment("2026-09-28T12:00:00Z", "Asia/Vladivostok", "en")).toBe("Sep 28, 22:00");
   });
 });

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { useCities, useHealth, useMe, useSetCity, useUpdateMe } from "../api/queries";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { Link } from "wouter";
+import { useCities, useHealth, useMe, useSchedule, useSetCity, useUpdateMe } from "../api/queries";
 import type { City } from "../api/types";
 import { Card } from "../components/Card";
 import { ErrorState, Loader } from "../components/States";
@@ -66,6 +67,7 @@ export function MoreScreen() {
   const t = useT();
   const me = useMe();
   const health = useHealth();
+  const schedule = useSchedule();
   const update = useUpdateMe();
   const setCity = useSetCity();
   const [query, setQuery] = useState("");
@@ -75,6 +77,7 @@ export function MoreScreen() {
   if (me.isPending) return <Loader />;
   if (me.isError) return <ErrorState onRetry={() => void me.refetch()} />;
   const profile = me.data;
+  const source = schedule.data?.source;
 
   const chooseCity = (city: City) =>
     setCity.mutate(city, {
@@ -126,7 +129,19 @@ export function MoreScreen() {
         )}
       </Card>
 
-      <Card index={1}>
+      <Link href="/more/schedule" className="card card--link" style={{ "--i": 1 } as CSSProperties}>
+        <span>
+          🎓 {t.schedule.entry}{" "}
+          {schedule.data && (
+            <span className="muted card__sub">
+              {source ? (source.title ?? t.schedule.untitled) : t.schedule.notConnected}
+            </span>
+          )}
+        </span>
+        <span aria-hidden>›</span>
+      </Link>
+
+      <Card index={2}>
         <label className="switch-row row field">
           <span>{t.more.morning}</span>
           <input
@@ -144,7 +159,7 @@ export function MoreScreen() {
         />
       </Card>
 
-      <Card title={t.more.language} index={2}>
+      <Card title={t.more.language} index={3}>
         <div className="segmented" role="group" aria-label={t.more.language}>
           {(["auto", "ru", "en"] as const).map((option) => (
             <button
@@ -160,7 +175,7 @@ export function MoreScreen() {
         </div>
       </Card>
 
-      <Card title={t.more.about} index={3}>
+      <Card title={t.more.about} index={4}>
         {health.data && <p className="muted">{t.more.version(health.data.version)}</p>}
         <button type="button" className="button" onClick={() => openLink(REPO_URL)}>
           {t.more.source}
