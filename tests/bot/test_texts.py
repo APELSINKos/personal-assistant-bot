@@ -1,19 +1,32 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from assistant.bot import texts
+from assistant.bot.routers.habits import habits_view
+from assistant.bot.routers.notes import notes_view
+from assistant.bot.routers.reminders import reminders_view
 from assistant.core.clients.cbr import Rate, Rates
-from assistant.core.i18n import translator
-from assistant.core.models import Lesson, Reminder
+from assistant.core.i18n import format_day, translator
+from assistant.core.models import Habit, Lesson, Note, Reminder, Repeat, User
 from assistant.core.services.digest import TodayData
+from assistant.core.services.habits import HabitStats
 from assistant.core.services.weather import Tip, WeatherNow
 
 RU, EN = translator("ru"), translator("en")
 MSK = ZoneInfo("Europe/Moscow")
+BUDGET = 3900  # what the bot keeps a message within, a margin under Telegram's 4096
+
+
+def utf16(text: str) -> int:
+    """A message's length as Telegram counts it: a character outside the BMP is two."""
+    return len(text.encode("utf-16-le")) // 2
+
+
 WEATHER = WeatherNow(
     city="Москва",
     temperature=9.6,
@@ -253,5 +266,117 @@ def test_a_cut_day_or_week_keeps_the_stale_warning() -> None:
         texts.schedule_day_text(day, day, [long] * 60, "5 неделя", "Europe/Moscow", RU, stale),
         texts.schedule_week_text(day, [long] * 60, "5 неделя", "Europe/Moscow", RU, stale),
     ):
-        assert len(text) <= texts.SCHEDULE_TEXT_LIMIT
+        assert len(text) <= texts.TEXT_LIMIT
         assert text.endswith("\n…\n\n⚠️ Данные от 24 сентября — источник пока недоступен.")
+
+
+EMOJI_LESSON = Lesson(
+    uid="u",
+    starts_at=LESSON.starts_at,
+    ends_at=LESSON.ends_at,
+    title="🎉" * 200,
+    kind="ЛАБ",
+    room="🎉" * 100,
+)
+TIPS = [
+    Tip("tip-precip-later", {"kind": "rain", "hour": "18:00"}),
+    Tip("tip-colder-evening"),
+    Tip("tip-wind"),
+    Tip("tip-heat"),
+]
+
+
+def fullest_day() -> TodayData:
+    """Every field at its maximum, the reminders made of emoji (two UTF-16 units each)."""
+    long = Lesson(
+        uid="u",
+        starts_at=LESSON.starts_at,
+        ends_at=LESSON.ends_at,
+        title="Т" * 200,
+        kind="ДОПДОПЛК",  # 8 characters, the most a kind keeps
+        room="А" * 100,
+    )
+    due = datetime(2026, 9, 28, 9, 30, tzinfo=UTC)
+    return day_data(
+        weather=replace(WEATHER, city="Г" * 100, tips=TIPS),
+        reminders=[Reminder(text="🎉" * 200, due_at=due) for _ in range(20)],
+        habits_total=10,
+        habits_done=10,
+        best_streak=("П" * 50, 3650),
+        notes_count=50,
+        has_schedule=True,
+        lessons=[long] * 12,
+        week_label="Н" * 40,
+    )
+
+
+@pytest.mark.parametrize("t", [RU, EN], ids=["ru", "en"])
+@pytest.mark.parametrize("render", [texts.today_text, texts.morning_text], ids=["day", "morning"])
+def test_my_day_and_the_digest_fit_telegram_however_full_the_day(t, render) -> None:
+    text = render(fullest_day(), "Ж" * 64, t)
+    assert utf16(text) <= BUDGET
+    lines = text.splitlines()
+    assert "Ж" * 64 in lines[0] and "Г" * 100 in lines[3]  # the header and the weather stay
+    reminders = [index for index, line in enumerate(lines) if line.endswith("🎉")]
+    assert 0 < len(reminders) < texts.DAY_REMINDERS_SHOWN  # cut from the end, first
+    assert lines[reminders[-1] + 1] == t("list-more", count=20 - len(reminders))
+    lessons = [line for line in lines if line.startswith("• 12:40–14:10")]
+    assert len(lessons) == texts.DAY_LESSONS_SHOWN and t("list-more", count=2) in lines
+
+
+@pytest.mark.parametrize("t", [RU, EN], ids=["ru", "en"])
+@pytest.mark.parametrize("render", [texts.today_text, texts.morning_text], ids=["day", "morning"])
+def test_the_lessons_are_cut_once_no_reminder_is_left(t, render, monkeypatch) -> None:
+    monkeypatch.setattr(texts, "TEXT_LIMIT", 1500)
+    text = render(fullest_day(), "Alex", t)
+    assert utf16(text) <= 1500
+    lines = text.splitlines()
+    assert not any(line.endswith("🎉") for line in lines) and t("list-more", count=20) in lines
+    lessons = [index for index, line in enumerate(lines) if line.startswith("• 12:40–14:10")]
+    assert 0 < len(lessons) < texts.DAY_LESSONS_SHOWN
+    assert lines[lessons[-1] + 1] == t("list-more", count=12 - len(lessons))
+
+
+@pytest.mark.parametrize("t", [RU, EN], ids=["ru", "en"])
+def test_a_day_or_a_week_of_emoji_titles_fits_telegram(t) -> None:
+    day, stale = date(2026, 9, 28), date(2026, 9, 24)
+    warning = t("schedule-stale", date=format_day(stale, t.lang))
+    for text in (
+        texts.schedule_day_text(
+            day, day, [EMOJI_LESSON] * 60, "🎉" * 40, "Europe/Moscow", t, stale
+        ),
+        texts.schedule_week_text(day, [EMOJI_LESSON] * 60, "🎉" * 40, "Europe/Moscow", t, stale),
+    ):
+        assert utf16(text) <= BUDGET and text.endswith(f"\n…\n\n{warning}")
+
+
+@pytest.mark.parametrize("t", [RU, EN], ids=["ru", "en"])
+def test_every_list_fits_telegram_at_its_maxima(t) -> None:
+    due = datetime(2026, 9, 28, 9, 30, tzinfo=UTC)
+    notes = [Note(id=n, user_id=1, text="🎉" * 500) for n in range(1, 51)]
+    pending = [
+        Reminder(id=n, user_id=1, text="🎉" * 200, due_at=due, repeat=Repeat.NONE)
+        for n in range(1, 21)
+    ]
+    stats = [
+        HabitStats(
+            habit=Habit(id=n, name="🎉" * 50),
+            done_today=None,
+            streak=3650,
+            done_days=3650,
+            total_days=3650,
+            last_days=(True,) * 9,
+        )
+        for n in range(1, 11)
+    ]
+    page, _ = notes_view(notes, 0, t)
+    assert utf16(page) <= BUDGET and page.endswith(f"\n…\n\n{t('page', current=1, total=10)}")
+    user = User(id=1, timezone="Europe/Moscow")
+    assert utf16(reminders_view(pending, 0, user, t)[0]) <= BUDGET
+    assert utf16(habits_view(stats, t)[0]) <= BUDGET
+
+
+def test_a_cut_list_keeps_its_tail_measured_like_telegram_too() -> None:
+    tail = ["", "🎉" * 1000]  # 1000 characters, 2000 units
+    text = texts.fit(["x" * 100] * 30, tail)
+    assert utf16(text) <= BUDGET and text.endswith("\n…\n\n" + "🎉" * 1000)

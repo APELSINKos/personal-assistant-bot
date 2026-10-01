@@ -7,7 +7,7 @@ from datetime import date
 from aiogram import Bot, F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-from assistant.bot import replies
+from assistant.bot import replies, texts
 from assistant.bot.context import Ctx
 from assistant.bot.keyboards import HabitCb, cancel_menu, main_menu
 from assistant.bot.sections import section
@@ -49,12 +49,11 @@ def habits_view(items: list[HabitStats], t: Translator) -> tuple[str, InlineKeyb
             ),
             "    " + t("habit-days", strip=strip, count=stats.streak),
         ]
-    lines += ["", t("habits-legend")]
     rows = [
         [_button(t("button-mark-today"), HabitCb(action="mark"))],
         [add, _button(t("button-delete"), HabitCb(action="delete"))],
     ]
-    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+    return texts.fit(lines, ["", t("habits-legend")]), InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def mark_view(
