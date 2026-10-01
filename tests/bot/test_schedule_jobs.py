@@ -158,6 +158,57 @@ async def test_a_failed_refresh_is_only_logged(
     assert count == 39  # the timetable is still there
 
 
+async def test_one_broken_source_does_not_hold_up_the_queue(
+    bot, sessionmaker, session, meteo, cbr, calendars, make_user, monkeypatch, caplog
+) -> None:
+    await connected(session, make_user, calendars, id=1)
+    await connected(session, make_user, calendars, id=2)
+    original = schedule.refresh
+
+    async def flaky(session, user, calendars, now=None):
+        if user.id == 1:
+            raise OSError("the parser did not start")
+        return await original(session, user, calendars, now)
+
+    monkeypatch.setattr(schedule, "refresh", flaky)
+    due = CONNECTED + timedelta(hours=7)
+    with caplog.at_level(logging.WARNING, logger="assistant.bot.scheduler"):
+        assert await at(due, bot, sessionmaker, meteo, cbr, calendars).refresh_schedules(due) == 1
+    [warning] = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert warning.getMessage() == (
+        "schedule of user 1 not refreshed: OSError('the parser did not start')"
+    )
+    assert warning.exc_info is not None  # with the traceback
+    session.expire_all()
+    first, second = await schedule.get_source(session, 1), await schedule.get_source(session, 2)
+    assert first is not None and first.next_refresh_at == schedule.next_refresh(1, due)
+    assert second is not None and second.ok_at == due  # refreshed in the same pass
+
+
+async def test_a_schedule_turned_off_meanwhile_is_skipped_quietly(
+    bot, sessionmaker, session, meteo, cbr, calendars, make_user, monkeypatch, caplog
+) -> None:
+    await connected(session, make_user, calendars, id=1)
+    await connected(session, make_user, calendars, id=2)
+    listed = schedule.due_sources
+
+    async def then_turned_off(session, now, limit):
+        due = await listed(session, now, limit)
+        async with sessionmaker() as other:  # the first user disconnects the schedule right then
+            await schedule.disconnect(other, 1)
+            await other.commit()
+        return due
+
+    monkeypatch.setattr(schedule, "due_sources", then_turned_off)
+    due = CONNECTED + timedelta(hours=7)
+    with caplog.at_level(logging.WARNING, logger="assistant.bot.scheduler"):
+        assert await at(due, bot, sessionmaker, meteo, cbr, calendars).refresh_schedules(due) == 1
+    assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []
+    session.expire_all()
+    source = await schedule.get_source(session, 2)
+    assert source is not None and source.ok_at == due
+
+
 async def test_without_a_downloader_nothing_is_refreshed(
     bot, sessionmaker, session, meteo, cbr, calendars, make_user
 ) -> None:

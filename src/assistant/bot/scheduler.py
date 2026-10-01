@@ -31,6 +31,7 @@ from assistant.bot.keyboards import fired_markup
 from assistant.core.clients.calendars import Calendars
 from assistant.core.clients.cbr import CbrClient
 from assistant.core.clients.openmeteo import OpenMeteoClient
+from assistant.core.errors import NotFound
 from assistant.core.i18n import Translator, resolve_language, translator
 from assistant.core.models import FsmState, Lesson, Reminder, User
 from assistant.core.services import digest, reminders, schedule, users
@@ -358,17 +359,34 @@ class Scheduler:
             due = await schedule.due_sources(session, now, REFRESH_BATCH)
         refreshed = 0
         for user_id in due:
-            async with self._sessionmaker() as session:
-                user = await session.get(User, user_id)
-                if user is None:
-                    continue
-                source = await schedule.refresh(session, user, self._calendars, now)
-                error = source.error
-                await session.commit()
+            try:
+                async with self._sessionmaker() as session:
+                    user = await session.get(User, user_id)
+                    if user is None:
+                        continue
+                    source = await schedule.refresh(session, user, self._calendars, now)
+                    error = source.error
+                    await session.commit()
+            except NotFound:
+                continue  # the schedule was disconnected meanwhile
+            except Exception as failure:
+                # An unexpected failure (the parser child did not start, a busy database) would
+                # keep this source first in the queue: every pass would download it again and
+                # fail the same way while the others wait. It waits for its next turn instead.
+                log.warning(
+                    "schedule of user %s not refreshed: %r", user_id, failure, exc_info=True
+                )
+                await self._postpone(user_id, now)
+                continue
             if error:
                 log.warning("schedule of user %s not refreshed: %s", user_id, error)
             refreshed += 1
         return refreshed
+
+    async def _postpone(self, user_id: int, now: datetime) -> None:
+        async with self._sessionmaker() as session:
+            await schedule.postpone(session, user_id, now)
+            await session.commit()
 
     async def cleanup(self, now: datetime) -> int:
         async with self._sessionmaker() as session:

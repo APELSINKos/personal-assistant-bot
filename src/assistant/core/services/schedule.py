@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -215,6 +215,16 @@ async def refresh(
     source.next_refresh_at = next_refresh(user.id, moment)
     await _replace(session, user.id, table)
     return source
+
+
+async def postpone(session: AsyncSession, user_id: int, now: datetime) -> None:
+    """Put the source off until its next regular refresh, so that one failing unexpectedly does
+    not stay first in the queue. A source gone meanwhile is no error."""
+    await session.execute(
+        update(ScheduleSource)
+        .where(ScheduleSource.user_id == user_id)
+        .values(next_refresh_at=next_refresh(user_id, now))
+    )
 
 
 async def disconnect(session: AsyncSession, user_id: int) -> bool:
