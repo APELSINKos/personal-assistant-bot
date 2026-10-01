@@ -17,6 +17,7 @@ import ipaddress
 import socket
 import zlib
 from collections.abc import Awaitable, Callable
+from http.cookiejar import CookieJar, DefaultCookiePolicy
 from typing import Protocol
 
 import httpx
@@ -143,6 +144,22 @@ def normalize(url: str) -> httpx.URL:
     ):
         raise _refused("forbidden_host")
     return parsed
+
+
+def calendar_client() -> httpx.AsyncClient:
+    """The client to give CalendarFetcher, apart from the weather's and the rates'.
+
+    The hosts are anyone's, so nothing of one is kept for another: no cookies (they would be
+    stored under the checked address and sent to every other site there), no kept-alive
+    connections (one verified for one name would carry the next name on that address), no
+    proxy from the environment (SNI would not get through it). Each phase may take the whole
+    TIMEOUT; the fetcher's own deadline still bounds the download."""
+    return httpx.AsyncClient(
+        timeout=TIMEOUT,
+        trust_env=False,
+        limits=httpx.Limits(max_keepalive_connections=0),
+        cookies=CookieJar(DefaultCookiePolicy(allowed_domains=[])),
+    )
 
 
 class CalendarFetcher:

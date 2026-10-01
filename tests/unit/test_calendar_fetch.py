@@ -12,7 +12,13 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 import httpx
 import pytest
 
-from assistant.core.clients.calendars import MAX_BYTES, CalendarFetcher, is_public, normalize
+from assistant.core.clients.calendars import (
+    MAX_BYTES,
+    CalendarFetcher,
+    calendar_client,
+    is_public,
+    normalize,
+)
 from assistant.core.errors import InvalidInput
 
 ICS = b"BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n"
@@ -385,6 +391,30 @@ async def test_a_slow_server_is_unreachable() -> None:
 
     got = await reason(fetcher(slow, timeout=0.05).fetch("https://uni.example/a"))
     assert got == "unreachable"
+
+
+async def test_the_calendar_client_shares_no_cookies_and_waits_ten_seconds() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, headers={"Set-Cookie": "planted=1; Path=/"}, stream=Body(ICS))
+
+    http = calendar_client()
+    http._transport = httpx.MockTransport(handler)  # the client as built, minus the network
+    # Two sites behind one address: what one of them sets must not reach the other.
+    table = {"uni.example": [PUBLIC], "other.example": [PUBLIC]}
+    calendars = CalendarFetcher(http, resolver(table))
+    try:
+        assert await calendars.fetch("https://uni.example/a.ics") == ICS
+        assert await calendars.fetch("https://other.example/b.ics") == ICS
+    finally:
+        await http.aclose()
+    assert [request.headers.get("cookie") for request in seen] == [None, None]
+    assert not http.cookies and http.trust_env is False
+    # Each phase gets the whole TIMEOUT; the fetcher's own deadline bounds the download.
+    phases = ("connect", "read", "write", "pool")
+    assert seen[1].extensions["timeout"] == dict.fromkeys(phases, 10.0)
 
 
 def test_normalize_and_public_helpers() -> None:

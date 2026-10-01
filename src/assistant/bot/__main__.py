@@ -11,7 +11,7 @@ from assistant.bot.app import build_dispatcher, create_bot
 from assistant.bot.directory import DirectoryCrawler
 from assistant.bot.scheduler import Scheduler
 from assistant.bot.setup import configure
-from assistant.core.clients.calendars import CalendarFetcher
+from assistant.core.clients.calendars import CalendarFetcher, calendar_client
 from assistant.core.clients.cbr import CbrClient
 from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.config import get_settings
@@ -32,9 +32,13 @@ async def main() -> None:
     # only one.
     engine = create_engine(settings.database_url)
     sessionmaker = make_sessionmaker(engine)
-    async with httpx.AsyncClient(timeout=settings.http_timeout) as http:
+    async with (
+        httpx.AsyncClient(timeout=settings.http_timeout) as http,
+        calendar_client() as calendar_http,
+    ):
         bot = create_bot(settings)
-        meteo, cbr, calendars = OpenMeteoClient(http), CbrClient(http), CalendarFetcher(http)
+        meteo, cbr = OpenMeteoClient(http), CbrClient(http)
+        calendars = CalendarFetcher(calendar_http)
         dp = build_dispatcher(sessionmaker, meteo, cbr, settings, calendars=calendars)
         scheduler = Scheduler(
             bot, sessionmaker, meteo, cbr, interval=settings.scheduler_interval, calendars=calendars
