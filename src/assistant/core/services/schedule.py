@@ -2,7 +2,8 @@
 
 A source is downloaded (or, for a file, kept) and expanded into the lessons of a rolling
 window; every refresh replaces them as a whole. Nothing is written until the new calendar
-has been downloaded and parsed, so a failure never touches what was there before.
+has been downloaded and parsed, so a failure never touches what was there before; and a
+refresh writes nothing at all if the source was switched or disconnected meanwhile.
 """
 
 from __future__ import annotations
@@ -193,11 +194,28 @@ async def refresh(
     now: datetime | None = None,
 ) -> ScheduleSource:
     """Download (or, for a file, re-read) the calendar and replace the lessons. A failure is
-    only recorded on the source — the lessons already there stay."""
+    only recorded on the source — the lessons already there stay.
+
+    The bot and the API may change the source during the download and the parse, so the result
+    is written only if the source is still the one downloaded. Switched meanwhile, the source is
+    returned as it is now, untouched; disconnected meanwhile, NotFound."""
     source = await get_source(session, user.id)
     if source is None:
         raise NotFound(entity="schedule")
     moment = now or utcnow()
+    # The source as read before the wait; a connect or a refresh since changes fetched_at.
+    unchanged = (
+        ScheduleSource.user_id == user.id,
+        ScheduleSource.kind == source.kind,
+        ScheduleSource.mirea_id.is_not_distinct_from(source.mirea_id),
+        ScheduleSource.url.is_not_distinct_from(source.url),
+        ScheduleSource.fetched_at == source.fetched_at,
+    )
+    values: dict[str, object] = {
+        "fetched_at": moment,
+        "next_refresh_at": next_refresh(user.id, moment),
+    }
+    table: ical.Timetable | None = None
     try:
         if source.kind is ScheduleKind.FILE:
             body = source.body or b""
@@ -205,16 +223,22 @@ async def refresh(
             body = await calendars.fetch(source.url or "")
         table = await _timetable(body, user, moment)
     except InvalidInput as error:
-        source.error = str(error.params.get("reason") or "unreachable")[:32]
-        source.fetched_at = moment
-        source.next_refresh_at = next_refresh(user.id, moment)
-        await session.flush()
-        return source
-    source.fetched_at = source.ok_at = moment
-    source.error = None
-    source.next_refresh_at = next_refresh(user.id, moment)
-    await _replace(session, user.id, table)
-    return source
+        values["error"] = str(error.params.get("reason") or "unreachable")[:32]
+    else:
+        values.update(ok_at=moment, error=None)
+    result = await session.execute(
+        update(ScheduleSource)
+        .where(*unchanged)
+        .values(**values)
+        .execution_options(synchronize_session=False)  # the source is read again below
+    )
+    written = bool(result.rowcount)  # type: ignore[attr-defined]
+    current = await session.get(ScheduleSource, user.id, populate_existing=True)
+    if current is None:
+        raise NotFound(entity="schedule")
+    if written and table is not None:
+        await _replace(session, user.id, table)
+    return current
 
 
 async def postpone(session: AsyncSession, user_id: int, now: datetime) -> None:

@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from assistant.core.services import groups
+from assistant.core.services import groups, schedule
 from assistant.core.services.group_names import GroupHeader
 from tests.api.conftest import NOW
 
@@ -287,6 +287,17 @@ async def test_a_disconnect_waits_for_a_running_refresh(
     assert ((await refresh).status_code, (await off).status_code) == (200, 204)
     days = (await client.get(WEEK, headers=auth())).json()["days"]
     assert all(day["items"] == [] for day in days)
+
+
+async def test_a_refresh_of_a_source_disconnected_by_the_bot_is_not_found(
+    client, auth, ready, clock, monkeypatch, session
+) -> None:
+    refresh, go = await held_refresh(client, auth, ready, clock, monkeypatch)
+    # The bot's process takes no lock of the API's.
+    assert await schedule.disconnect(session, 1)
+    await session.commit()
+    go.set()
+    assert problem(await refresh) == (404, None, None)
 
 
 async def test_lesson_alerts(client, auth, ready) -> None:

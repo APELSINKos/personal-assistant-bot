@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import func, select
 
 from assistant.core.errors import InvalidInput, NotFound
-from assistant.core.models import Lesson, ScheduleKind, WeekLabel
+from assistant.core.models import Lesson, ScheduleKind, ScheduleSource, User, WeekLabel
 from assistant.core.services import groups, ical, schedule
 from assistant.core.services.group_names import GroupHeader
 from tests.stubs import StubCalendars
@@ -42,6 +42,20 @@ async def with_group(session) -> None:
 
 async def lesson_count(session) -> int:
     return int(await session.scalar(select(func.count()).select_from(Lesson)) or 0)
+
+
+def meanwhile(calendars, url: str, action, monkeypatch) -> None:
+    """`action` runs once, while `url` is being downloaded, as the other process (bot or API)
+    may."""
+    fetch = calendars.fetch
+    pending = [action]
+
+    async def fetch_after(link: str) -> bytes:
+        if link == url and pending:
+            await pending.pop()()
+        return await fetch(link)
+
+    monkeypatch.setattr(calendars, "fetch", fetch_after)
 
 
 async def test_connect_a_mirea_group(session, make_user, calendars) -> None:
@@ -160,6 +174,84 @@ async def test_a_failed_refresh_keeps_the_lessons(session, make_user, calendars)
     del calendars.errors[GROUP_URL]  # back again
     source = await schedule.refresh(session, user, calendars, later + timedelta(hours=6))
     assert source.error is None and source.ok_at == later + timedelta(hours=6)
+
+
+@pytest.mark.parametrize("fails", [False, True], ids=["downloaded", "download-failed"])
+async def test_a_refresh_writes_nothing_once_the_source_was_switched(
+    session, sessionmaker, make_user, calendars, monkeypatch, fails
+) -> None:
+    user = await make_user()
+    await with_group(session)
+    await schedule.connect_mirea(session, user, 4805, calendars, NOW)
+    await session.commit()
+
+    async def switch() -> None:
+        # At the very moment the group was connected: only what the source is tells them apart.
+        async with sessionmaker() as other:
+            owner = await other.get_one(User, user.id)
+            await schedule.connect_url(other, owner, "https://uni.example/t.ics", calendars, NOW)
+            await other.commit()
+
+    meanwhile(calendars, GROUP_URL, switch, monkeypatch)
+    if fails:
+        calendars.errors[GROUP_URL] = "unreachable"
+    source = await schedule.refresh(session, user, calendars, NOW + timedelta(hours=6))
+    await session.commit()
+    # The link as it was connected: neither the group's lessons nor its error or times.
+    assert (source.kind, source.title, source.error) == (ScheduleKind.URL, "Physics 101", None)
+    assert source.fetched_at == source.ok_at == NOW
+    lessons = await schedule.lessons_between(
+        session, user.id, NOW - timedelta(days=7), NOW + timedelta(days=120)
+    )
+    titles = {lesson.title for lesson in lessons}
+    assert "Physics lecture" in titles and "Разработка баз данных" not in titles
+
+
+async def test_a_refresh_writes_nothing_once_another_refresh_came_first(
+    session, sessionmaker, make_user, calendars, monkeypatch
+) -> None:
+    user = await make_user()
+    await with_group(session)
+    await schedule.connect_mirea(session, user, 4805, calendars, NOW)
+    await session.commit()
+    first = NOW + timedelta(hours=6)
+
+    async def refresh_elsewhere() -> None:
+        async with sessionmaker() as other:
+            owner = await other.get_one(User, user.id)
+            await schedule.refresh(other, owner, calendars, first)
+            await other.commit()
+
+    meanwhile(calendars, GROUP_URL, refresh_elsewhere, monkeypatch)
+    source = await schedule.refresh(session, user, calendars, first + timedelta(minutes=1))
+    await session.commit()
+    # The same group both times: only fetched_at tells that the source changed meanwhile.
+    assert source.fetched_at == source.ok_at == first
+    assert source.next_refresh_at == first + timedelta(hours=6, minutes=1)
+
+
+@pytest.mark.parametrize("fails", [False, True], ids=["downloaded", "download-failed"])
+async def test_a_refresh_of_a_source_disconnected_meanwhile_is_not_found(
+    session, sessionmaker, make_user, calendars, monkeypatch, fails
+) -> None:
+    user = await make_user()
+    await with_group(session)
+    await schedule.connect_mirea(session, user, 4805, calendars, NOW)
+    await session.commit()
+
+    async def disconnect() -> None:
+        async with sessionmaker() as other:
+            assert await schedule.disconnect(other, user.id)
+            await other.commit()
+
+    meanwhile(calendars, GROUP_URL, disconnect, monkeypatch)
+    if fails:
+        calendars.errors[GROUP_URL] = "unreachable"
+    with pytest.raises(NotFound):
+        await schedule.refresh(session, user, calendars, NOW + timedelta(hours=6))
+    await session.rollback()
+    assert await session.scalar(select(func.count()).select_from(ScheduleSource)) == 0
+    assert await lesson_count(session) == 0
 
 
 async def test_a_file_is_read_again_as_the_window_moves(session, make_user) -> None:
