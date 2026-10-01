@@ -505,7 +505,8 @@ textarea.input {
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
+  /* Concentric with the options (22px + 4px padding + 1px border); a pill grows rounder with rows. */
+  border-radius: 27px;
 }
 
 .segmented--wrap {
