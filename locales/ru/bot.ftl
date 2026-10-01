@@ -269,3 +269,6 @@ repeat-weekends = по выходным в { $time }
 repeat-weekly = { $days } в { $time }
 repeat-biweekly = раз в 2 недели: { $days } в { $time }
 repeat-monthly = каждый месяц { $day }-го в { $time }
+
+## Schedule
+lesson-alert = 🎓 Через { $minutes } мин: { $lesson }

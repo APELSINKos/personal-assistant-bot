@@ -8,8 +8,10 @@ import logging
 import httpx
 
 from assistant.bot.app import build_dispatcher, create_bot
+from assistant.bot.directory import DirectoryCrawler
 from assistant.bot.scheduler import Scheduler
 from assistant.bot.setup import configure
+from assistant.core.clients.calendars import CalendarFetcher
 from assistant.core.clients.cbr import CbrClient
 from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.config import get_settings
@@ -32,10 +34,15 @@ async def main() -> None:
     sessionmaker = make_sessionmaker(engine)
     async with httpx.AsyncClient(timeout=settings.http_timeout) as http:
         bot = create_bot(settings)
-        meteo, cbr = OpenMeteoClient(http), CbrClient(http)
+        meteo, cbr, calendars = OpenMeteoClient(http), CbrClient(http), CalendarFetcher(http)
         dp = build_dispatcher(sessionmaker, meteo, cbr, settings)
-        scheduler = Scheduler(bot, sessionmaker, meteo, cbr, interval=settings.scheduler_interval)
-        background = asyncio.create_task(scheduler.run(), name="scheduler")
+        scheduler = Scheduler(
+            bot, sessionmaker, meteo, cbr, interval=settings.scheduler_interval, calendars=calendars
+        )
+        crawler = DirectoryCrawler(sessionmaker, calendars) if settings.mirea_directory else None
+        background = [asyncio.create_task(scheduler.run(), name="scheduler")]
+        if crawler is not None:
+            background.append(asyncio.create_task(crawler.run(), name="mirea-directory"))
         try:
             await configure(bot, settings)
             # "Bot started" is logged by a startup handler (app.announce_start) inside
@@ -43,13 +50,16 @@ async def main() -> None:
             await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
         finally:
             try:
-                # Let the current tick finish its writes; cancel only if it hangs.
+                # Let the current tick and crawl request finish their writes; cancel only if
+                # they hang.
                 scheduler.stop()
-                await asyncio.wait_for(background, SHUTDOWN_GRACE)
+                if crawler is not None:
+                    crawler.stop()
+                await asyncio.wait_for(asyncio.gather(*background), SHUTDOWN_GRACE)
             except TimeoutError:
-                log.warning("scheduler did not stop in %d s and was cancelled", SHUTDOWN_GRACE)
+                log.warning("background tasks did not stop in %d s, cancelled", SHUTDOWN_GRACE)
             except Exception:
-                log.exception("scheduler task ended with an error")
+                log.exception("a background task ended with an error")
             finally:
                 await bot.session.close()
                 await engine.dispose()

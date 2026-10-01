@@ -15,7 +15,7 @@ from assistant.core.i18n import (
     format_short_day,
     format_weekday,
 )
-from assistant.core.models import Reminder
+from assistant.core.models import Lesson, Reminder
 from assistant.core.services import reminders
 from assistant.core.services.digest import TodayData
 from assistant.core.services.phrases import Parsed
@@ -236,3 +236,13 @@ def saved_text(reminder: Reminder, tz: str, local_now: datetime, t: Translator) 
         time=local.strftime("%H:%M"),
         text=reminder.text,
     )
+
+
+def lesson_name(lesson: Lesson) -> str:
+    """«ЛК Разработка баз данных · А-16»: the type, the subject and the room when known."""
+    name = f"{lesson.kind} {lesson.title}" if lesson.kind else lesson.title
+    return f"{name} · {lesson.room}" if lesson.room else name
+
+
+def lesson_alert_text(lesson: Lesson, minutes: int, t: Translator) -> str:
+    return t("lesson-alert", minutes=minutes, lesson=lesson_name(lesson))

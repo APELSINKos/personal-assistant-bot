@@ -257,3 +257,6 @@ repeat-weekends = on weekends at { $time }
 repeat-weekly = { $days } at { $time }
 repeat-biweekly = every other week: { $days } at { $time }
 repeat-monthly = monthly on day { $day } at { $time }
+
+## Schedule
+lesson-alert = 🎓 In { $minutes } min: { $lesson }
