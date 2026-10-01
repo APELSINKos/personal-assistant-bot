@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import gzip
+import ipaddress
 import socket
 import struct
 import tracemalloc
@@ -24,6 +25,7 @@ from assistant.core.errors import InvalidInput
 ICS = b"BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n"
 PUBLIC = "93.184.215.14"
 MIB = 2**20
+MOST_PIECES = 65_536  # raw pieces (network reads) one download may take
 
 
 def resolver(table: dict[str, list[str]]) -> Callable[[str, int], Awaitable[list[str]]]:
@@ -88,6 +90,13 @@ def gzip_bomb(mebibytes: int) -> bytes:
 def raw_deflate(data: bytes) -> bytes:
     deflate = zlib.compressobj(wbits=-zlib.MAX_WBITS)
     return deflate.compress(data) + deflate.flush()
+
+
+def gzip_with_comment(data: bytes, size: int) -> bytes:
+    """A gzip member of `data` whose header carries a comment (FCOMMENT) of `size` bytes."""
+    header = b"\x1f\x8b\x08\x10\x00\x00\x00\x00\x00\xff" + b"c" * size + b"\x00"
+    trailer = struct.pack("<II", zlib.crc32(data), len(data) % 2**32)
+    return header + raw_deflate(data) + trailer
 
 
 async def reason(call: Awaitable[bytes]) -> str:
@@ -181,6 +190,9 @@ async def test_only_plain_https_links(url: str) -> None:
         ["64:ff9b::169.254.169.254"],
         ["::ffff:0:10.0.0.1"],  # IPv4-translated
         ["fec0::1"],  # site-local, deprecated
+        ["2002:a00:1::1"],  # 6to4, here of 10.0.0.1
+        ["2002:5db8:d70e::1"],  # 6to4 of a public address: a relay's business, not ours
+        ["2001:0:4136:e378:8000:63bf:3fff:fdd2"],  # Teredo
         [PUBLIC, "10.0.0.1"],  # one private address is enough to refuse
         [],
     ],
@@ -331,10 +343,54 @@ async def test_head_of_a_gzip_bomb_decodes_only_the_beginning() -> None:
 
 
 async def test_raw_bytes_past_the_limit_are_too_large_even_if_they_decode_to_little() -> None:
-    # A small gzip member, then junk the decoder only puts aside.
-    body = Body(gzip.compress(ICS, mtime=0) + bytes(200_000))
+    # A gzip member whose header carries 200 KB of comment: the decoder reads it all, giving
+    # nothing, before the calendar starts.
+    body = Body(gzip_with_comment(ICS, 200_000))
     got = await reason(fetcher(coded(body, "gzip"), max_bytes=4096).fetch("https://uni.example/a"))
     assert got == "too_large"
+
+
+class Drip(httpx.AsyncByteStream):
+    """`head` in one piece, then `count` pieces of one byte each; notes how many were read."""
+
+    def __init__(self, head: bytes, count: int) -> None:
+        self.head, self.count, self.pulled = head, count, 0
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        if self.head:
+            yield self.head
+        for _ in range(self.count):
+            self.pulled += 1
+            yield b"x"
+
+
+@pytest.mark.parametrize(
+    ("coding", "member"),
+    [
+        ("gzip", gzip.compress(ICS, mtime=0)),
+        ("deflate", zlib.compress(ICS)),
+        ("deflate", raw_deflate(ICS)),
+    ],
+    ids=["gzip", "deflate", "raw-deflate"],
+)
+async def test_nothing_after_the_end_of_the_compressed_body_is_read(
+    coding: str, member: bytes
+) -> None:
+    # Read on, junk in one-byte pieces made the decoder copy all it had put aside again for
+    # each piece: 400 KB of it held the event loop for 2.7 s.
+    body = Drip(member, 50_000)
+    assert await fetcher(coded(body, coding)).fetch("https://uni.example/a") == ICS
+    assert body.pulled == 0
+
+
+async def test_a_body_in_more_pieces_than_any_server_sends_is_refused() -> None:
+    # A 2 MB calendar arrives in about 1 500 network reads even over a slow link; every read
+    # costs the event loop, so a server that drips its body a byte at a time is cut off.
+    exact = Drip(b"", MOST_PIECES)
+    assert await fetcher(coded(exact)).fetch("https://uni.example/a") == b"x" * MOST_PIECES
+    more = Drip(b"", MOST_PIECES + 1)
+    assert await reason(fetcher(coded(more)).fetch("https://uni.example/a")) == "unreachable"
+    assert more.pulled == MOST_PIECES + 1
 
 
 async def test_a_damaged_gzip_body_is_unreachable() -> None:
@@ -420,3 +476,12 @@ async def test_the_calendar_client_shares_no_cookies_and_waits_ten_seconds() -> 
 def test_normalize_and_public_helpers() -> None:
     assert str(normalize(" WEBCAL://uni.example/a.ics ")) == "https://uni.example/a.ics"
     assert is_public(PUBLIC) and not is_public("192.168.1.1") and not is_public("::ffff:127.0.0.1")
+
+
+def test_6to4_and_teredo_are_refused_whatever_python_thinks_of_them(monkeypatch) -> None:
+    # Not every Python release counts these tunnel prefixes as non-global; the check does not
+    # rely on its verdict.
+    monkeypatch.setattr(ipaddress.IPv6Address, "is_global", property(lambda self: True))
+    assert not is_public("2002:a00:1::1")
+    assert not is_public("2001:0:4136:e378:8000:63bf:3fff:fdd2")
+    assert is_public("2001:4860:4860::8888")

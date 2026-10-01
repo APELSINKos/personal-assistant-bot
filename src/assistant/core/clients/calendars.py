@@ -5,7 +5,8 @@ request then goes to that very address (the name travels in Host and SNI, so TLS
 the certificate), which closes the window between the check and the connection. Redirects are
 followed by hand, up to three, each checked the same way. The body is read raw and asked for
 without any content coding; one gzip or deflate layer a server sends anyway is undone here,
-under the same size limit, and anything else is refused.
+under the same size limit and only up to its end, and anything else is refused. A body that
+comes in more than MAX_PIECES pieces is refused too.
 
 Every failure, too_large included, is InvalidInput(field="url", reason=…): the user gave a link.
 """
@@ -33,9 +34,12 @@ URL_LENGTH = 2000
 TIMEOUT = 10.0  # seconds for the whole download, redirects included
 _REDIRECTS = frozenset({301, 302, 303, 307, 308})
 # Raw bytes allowed past the limit. Compressed data never runs much longer than what it decodes
-# to; beyond this it is padding the decoder only sits on (gzip header fields, empty blocks,
-# junk after the end).
+# to; beyond this it is padding the decoder only sits on (gzip header fields, empty blocks).
+# Nothing after the end of the compressed data is read at all.
 _RAW_EXTRA = 64 * 1024
+# Raw pieces (network reads) one download may take. A 2 MB body over a slow link comes in about
+# 1 500; every piece costs the event loop a turn, so a server that drips its body is cut off.
+MAX_PIECES = 65_536
 # IPv6 forms that carry an IPv4 address in their last 32 bits: IPv4-mapped, IPv4-compatible,
 # IPv4-translated and NAT64's well-known prefix. That IPv4 is where the packet ends up (under
 # DNS64 an A record pointing inside comes back as 64:ff9b::10.x), so it is the one judged.
@@ -44,6 +48,9 @@ _CARRY_IPV4 = tuple(
     ipaddress.IPv6Network(network)
     for network in ("::ffff:0:0/96", "::/96", "::ffff:0:0:0/96", "64:ff9b::/96")
 )
+# The 6to4 and Teredo tunnels: an IPv4 address rides elsewhere in them, through relays. Refused
+# outright, whatever the Python release thinks of them (not every one counts them as global).
+_TUNNELS = tuple(ipaddress.IPv6Network(network) for network in ("2002::/16", "2001::/32"))
 
 Resolver = Callable[[str, int], Awaitable[list[str]]]
 
@@ -61,10 +68,17 @@ def _refused(reason: str) -> InvalidInput:
 
 
 class _Decoder(Protocol):
+    @property
+    def eof(self) -> bool:
+        """Whether the end of the compressed data has been reached."""
+        ...
+
     def decompress(self, data: bytes, max_length: int, /) -> bytes: ...
 
 
 class _Identity:
+    eof = False  # a plain body ends only with the response
+
     def decompress(self, data: bytes, max_length: int, /) -> bytes:
         return data[:max_length]
 
@@ -76,6 +90,10 @@ class _Deflate:
     def __init__(self) -> None:
         self._inflate = zlib.decompressobj()
         self._first = True
+
+    @property
+    def eof(self) -> bool:
+        return self._inflate.eof
 
     def decompress(self, data: bytes, max_length: int, /) -> bytes:
         first, self._first = self._first, False
@@ -119,6 +137,8 @@ def is_public(address: str) -> bool:
     if isinstance(ip, ipaddress.IPv6Address):
         if ip.is_site_local:
             return False  # fec0::/10, deprecated, yet is_global still says yes
+        if any(ip in network for network in _TUNNELS):
+            return False
         if any(ip in network for network in _CARRY_IPV4):
             ip = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
     # is_global is false for private, loopback, link-local (cloud metadata), CGNAT, reserved.
@@ -230,11 +250,15 @@ class CalendarFetcher:
         raise _refused("unreachable")
 
     async def _read(self, response: httpx.Response, limit: int, strict_size: bool) -> bytes:
-        """At most `limit` decoded bytes; past it, too_large (fetch) or the cut (head)."""
+        """At most `limit` decoded bytes; past it, too_large (fetch) or the cut (head). Only
+        the first gzip member or deflate stream is read: whatever follows its end is not."""
         decoder = _decoder(response.headers)
         body = bytearray()
-        received = 0
+        received = pieces = 0
         async for chunk in response.aiter_raw():
+            pieces += 1
+            if pieces > MAX_PIECES:
+                raise _refused("unreachable")
             received += len(chunk)
             # max_length bounds what one chunk may expand to, so a bomb stops at limit + 1
             # bytes. It is never 0 here, which zlib would take as «no limit».
@@ -243,6 +267,8 @@ class CalendarFetcher:
                 if strict_size:
                     raise _refused("too_large")
                 return bytes(body[:limit])
+            if decoder.eof:
+                break
         return bytes(body)
 
     async def _run(self, url: str, limit: int, strict_size: bool) -> bytes:
