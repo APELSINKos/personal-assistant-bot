@@ -3,7 +3,9 @@
 Only https on port 443. The host is resolved here and every address must be public; the
 request then goes to that very address (the name travels in Host and SNI, so TLS still checks
 the certificate), which closes the window between the check and the connection. Redirects are
-followed by hand, up to three, each checked the same way.
+followed by hand, up to three, each checked the same way. The body is read raw and asked for
+without any content coding; one gzip or deflate layer a server sends anyway is undone here,
+under the same size limit, and anything else is refused.
 """
 
 from __future__ import annotations
@@ -11,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import socket
+import zlib
 from collections.abc import Awaitable, Callable
 from typing import Protocol
 
@@ -26,6 +29,10 @@ MAX_REDIRECTS = 3
 URL_LENGTH = 2000
 TIMEOUT = 10.0  # seconds for the whole download, redirects included
 _REDIRECTS = frozenset({301, 302, 303, 307, 308})
+# Raw bytes allowed past the limit. Compressed data never runs much longer than what it decodes
+# to; beyond this it is padding the decoder only sits on (gzip header fields, empty blocks,
+# junk after the end).
+_RAW_EXTRA = 64 * 1024
 
 Resolver = Callable[[str, int], Awaitable[list[str]]]
 
@@ -40,6 +47,54 @@ class Calendars(Protocol):
 
 def _refused(reason: str) -> InvalidInput:
     return InvalidInput(field="url", reason=reason)
+
+
+class _Decoder(Protocol):
+    def decompress(self, data: bytes, max_length: int, /) -> bytes: ...
+
+
+class _Identity:
+    def decompress(self, data: bytes, max_length: int, /) -> bytes:
+        return data[:max_length]
+
+
+class _Deflate:
+    """deflate as servers send it: zlib-wrapped, as the RFC means it, or bare, as some still
+    do. Like httpx, the bare form is tried when the first chunk does not read as zlib."""
+
+    def __init__(self) -> None:
+        self._inflate = zlib.decompressobj()
+        self._first = True
+
+    def decompress(self, data: bytes, max_length: int, /) -> bytes:
+        first, self._first = self._first, False
+        try:
+            return self._inflate.decompress(data, max_length)
+        except zlib.error:
+            if not first:
+                raise
+            self._inflate = zlib.decompressobj(-zlib.MAX_WBITS)
+            return self._inflate.decompress(data, max_length)
+
+
+def _decoder(headers: httpx.Headers) -> _Decoder:
+    """What undoes the body's content coding: nothing, or one gzip or deflate layer.
+
+    Anything else is refused before a byte is read: every extra layer multiplies what a few
+    bytes expand to (two gzip layers make 128 MiB of 400 bytes), and httpx would decode each
+    without a limit."""
+    codings = [
+        coding
+        for value in headers.get_list("content-encoding", split_commas=True)
+        if (coding := value.lower()) not in ("", "identity")
+    ]
+    if not codings:
+        return _Identity()
+    if codings in (["gzip"], ["x-gzip"]):
+        return zlib.decompressobj(zlib.MAX_WBITS | 16)
+    if codings == ["deflate"]:
+        return _Deflate()
+    raise _refused("unreachable")
 
 
 async def resolve_host(host: str, port: int) -> list[str]:
@@ -119,6 +174,8 @@ class CalendarFetcher:
                     "Host": current.host,
                     "User-Agent": USER_AGENT,
                     "Accept": "text/calendar, */*;q=0.5",
+                    # httpx would ask for gzip and undo any stack of layers without a limit
+                    "Accept-Encoding": "identity",
                 },
                 extensions={"sni_hostname": current.host},
             )
@@ -132,23 +189,33 @@ class CalendarFetcher:
                     continue
                 if response.status_code != 200:
                     raise _refused("unreachable")
-                body = bytearray()
-                async for chunk in response.aiter_bytes():
-                    body += chunk
-                    if len(body) > limit:
-                        if strict_size:
-                            raise _refused("too_large")
-                        return bytes(body[:limit])
-                return bytes(body)
+                return await self._read(response, limit, strict_size)
             finally:
                 await response.aclose()
         raise _refused("unreachable")
+
+    async def _read(self, response: httpx.Response, limit: int, strict_size: bool) -> bytes:
+        """At most `limit` decoded bytes; past it, too_large (fetch) or the cut (head)."""
+        decoder = _decoder(response.headers)
+        body = bytearray()
+        received = 0
+        async for chunk in response.aiter_raw():
+            received += len(chunk)
+            # max_length bounds what one chunk may expand to, so a bomb stops at limit + 1
+            # bytes. It is never 0 here, which zlib would take as «no limit».
+            body += decoder.decompress(chunk, limit + 1 - len(body))
+            if len(body) > limit or received > limit + _RAW_EXTRA:
+                if strict_size:
+                    raise _refused("too_large")
+                return bytes(body[:limit])
+        return bytes(body)
 
     async def _run(self, url: str, limit: int, strict_size: bool) -> bytes:
         try:
             async with asyncio.timeout(self._timeout):
                 return await self._download(url, limit, strict_size)
-        except (httpx.HTTPError, TimeoutError, OSError) as error:
+        except (httpx.HTTPError, TimeoutError, OSError, zlib.error) as error:
+            # zlib.error: a damaged gzip or deflate body
             raise _refused("unreachable") from error
 
     async def fetch(self, url: str) -> bytes:
