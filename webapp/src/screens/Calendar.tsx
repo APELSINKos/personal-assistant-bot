@@ -77,6 +77,25 @@ function LessonRow({ lesson }: { lesson: LessonItem }) {
   );
 }
 
+/** A reminder: a link to its editor in a row that swipes (or, with a mouse, clicks) to delete. */
+function ReminderRow({ reminder, onDelete }: { reminder: ReminderItem; onDelete: () => void }) {
+  const t = useT();
+  return (
+    <SwipeRow onDelete={onDelete} deleteLabel={t.calendar.delete}>
+      <Link href={`/calendar/${reminder.id}`} className="cal-item">
+        <span className="time">{reminder.time}</span>
+        <span className="cal-item__body">
+          <span className="cal-item__text">
+            {reminder.repeat !== "none" ? "↻ " : ""}
+            {reminder.text}
+          </span>
+          {reminder.description && <span className="muted cal-item__sub">{reminder.description}</span>}
+        </span>
+      </Link>
+    </SwipeRow>
+  );
+}
+
 export function CalendarScreen() {
   const t = useT();
   const lang = useLang();
@@ -133,6 +152,12 @@ export function CalendarScreen() {
       item.repeat === "none" ? t.calendar.confirmDelete : t.calendar.confirmDeleteSeries(item.text);
     if (await confirmAction(question)) remove.mutate(item.id);
   };
+  const row = (item: AgendaItem, index: number) =>
+    item.kind === "lesson" ? (
+      <LessonRow key={`lesson-${item.time}-${index}`} lesson={item} />
+    ) : (
+      <ReminderRow key={`${item.id}-${item.time}`} reminder={item} onDelete={() => void onDelete(item)} />
+    );
   const onTouchStart = (event: TouchEvent) => {
     const touch = event.touches[0];
     swipeStart.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
@@ -253,24 +278,7 @@ export function CalendarScreen() {
       ) : !days ? (
         <Loader />
       ) : (
-        dayItems.map((item, index) =>
-          item.kind === "lesson" ? (
-            <LessonRow key={`lesson-${item.time}-${index}`} lesson={item} />
-          ) : (
-          <SwipeRow key={`${item.id}-${item.time}`} onDelete={() => void onDelete(item)} deleteLabel={t.calendar.delete}>
-            <Link href={`/calendar/${item.id}`} className="cal-item">
-              <span className="time">{item.time}</span>
-              <span className="cal-item__body">
-                <span className="cal-item__text">
-                  {item.repeat !== "none" ? "↻ " : ""}
-                  {item.text}
-                </span>
-                {item.description && <span className="muted cal-item__sub">{item.description}</span>}
-              </span>
-            </Link>
-          </SwipeRow>
-          ),
-        )
+        dayItems.map(row)
       )}
       <Fab href={`/calendar/new/${day}`} label={t.calendar.add} />
     </>
