@@ -383,10 +383,11 @@ same `runuser` line with `alembic upgrade head` instead, and start them again.
 
 ### Going from 2.2 to 2.3
 
-Version 2.3 changes two files that are installed by hand: both units gain
+Version 2.3 changes three files that are installed by hand: both units gain
 `IPAddressDeny=` (no connections to link-local or private networks) and the
 Caddyfile lets calendar files of up to 2 MB through to the API. Install them
-before the 2.3 deploy — both work with 2.2 as well:
+once 2.3 is on `main`, before or after its deploy — the order does not matter,
+both files work with 2.2 and 2.3 alike:
 
 ```bash
 ssh <server> 'sudo bash -s' <<'EOF'
@@ -406,10 +407,14 @@ caddy validate --config /etc/caddy/Caddyfile.new --adapter caddyfile
 mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
 systemctl reload caddy
 systemctl show -p IPAddressDeny --value assistant-bot
+sleep 20
+journalctl -u assistant-bot -n 20 -o cat --no-pager | grep -iE "started|error|exception" || true
+curl -s http://127.0.0.1:8000/api/health; echo
 EOF
 ```
 
-Expected: `Valid configuration` and the denied ranges. On its first start 2.3
+Expected: `Valid configuration`, the denied ranges, `Bot started` and no errors in
+the journal, and the health JSON. On its first start 2.3
 builds the MIREA group directory: about 35 minutes of requests, three a
 second; the bot's journal says `MIREA directory, full crawl: …` when it is
 done. Until then a group the crawl has not reached yet cannot be found, and
@@ -425,6 +430,7 @@ code that is still deployed, then deploy the 2.2 commit on purpose:
 ssh <server> 'sudo bash -s' <<'EOF'
 set -euo pipefail
 systemctl stop assistant-bot assistant-api
+systemctl start assistant-backup.service
 cd /opt/assistant/app
 runuser -u assistant -- bash -c 'set -a; . /etc/assistant/assistant.env; set +a; exec .venv/bin/alembic downgrade 0002'
 EOF
@@ -432,8 +438,14 @@ ssh <server> 'sudo DEPLOY_ALLOW_OLDER=1 /usr/local/sbin/assistant-deploy <v2.2.0
 ```
 
 The downgrade drops the schedule tables: timetables, the group directory and
-the lesson alert settings are gone, reminders, notes and habits stay. The new
-units and Caddyfile can stay as they are.
+the lesson alert settings are gone, reminders, notes and habits stay. That is
+why `assistant-backup.service` runs first: the deploy's own snapshot is taken
+after the downgrade, when those tables are already gone. The copy is written to
+`/var/backups/assistant/assistant-<UTC date>.db` and replaces today's nightly
+copy if it is already there (the script names the file by the UTC date and
+overwrites it, and so does the nightly run at 03:30 UTC, so before that time
+copy the file under another name). If the copy fails, the script stops before
+the downgrade. The new units and Caddyfile can stay as they are.
 
 ## 8. Restore from a backup
 
