@@ -64,6 +64,11 @@ class HabitCb(CallbackData, prefix="h"):
     value: str = ""
 
 
+class ScheduleCb(CallbackData, prefix="sc"):
+    action: str
+    value: str = ""  # an ISO date, a group number or alert minutes
+
+
 class SettingsCb(CallbackData, prefix="s"):
     action: str
     value: str = ""

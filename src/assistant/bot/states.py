@@ -23,6 +23,12 @@ class HabitForm(StatesGroup):
     name = State()
 
 
+class ScheduleForm(StatesGroup):
+    group = State()  # a MIREA group name to search for
+    url = State()  # a calendar link
+    file = State()  # an .ics file
+
+
 class SettingsForm(StatesGroup):
     city = State()
     time = State()

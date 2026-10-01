@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, tzinfo
+from datetime import date, datetime, timedelta, tzinfo
 from zoneinfo import ZoneInfo
 
 from babel.dates import format_date, format_datetime
@@ -15,7 +15,7 @@ from assistant.core.i18n import (
     format_short_day,
     format_weekday,
 )
-from assistant.core.models import Lesson, Reminder
+from assistant.core.models import Lesson, Reminder, ScheduleSource
 from assistant.core.services import reminders
 from assistant.core.services.digest import TodayData
 from assistant.core.services.phrases import Parsed
@@ -34,7 +34,7 @@ DAY_LESSONS_SHOWN = 10
 # A lesson line keeps its time and as much of the name as fits: titles and rooms come from outside
 # calendars, and ten long ones next to the reminders would push «Мой день» and the morning digest
 # past Telegram's 4096 characters.
-LESSON_NAME_LIMIT = 80
+LESSON_NAME_LIMIT = 81
 
 
 def temp(value: float | None) -> str:
@@ -281,3 +281,92 @@ def lesson_name(lesson: Lesson) -> str:
 
 def lesson_alert_text(lesson: Lesson, minutes: int, t: Translator) -> str:
     return t("lesson-alert", minutes=minutes, lesson=lesson_name(lesson))
+
+
+# Telegram's limit is 4096 characters; a busy week is cut a little before it.
+SCHEDULE_TEXT_LIMIT = 3900
+_SOURCE_ERRORS = ("forbidden_host", "unreachable", "too_large", "not_calendar")
+
+
+def _fit(lines: list[str], limit: int = SCHEDULE_TEXT_LIMIT) -> str:
+    text = "\n".join(lines)
+    if len(text) <= limit:
+        return text
+    kept: list[str] = []
+    size = 0
+    for line in lines:
+        if size + len(line) + 1 > limit - 2:
+            break
+        kept.append(line)
+        size += len(line) + 1
+    return "\n".join([*kept, "…"])
+
+
+def day_title(day: date, today: date, t: Translator) -> str:
+    """«Сегодня · понедельник, 28 сентября», or «среда, 30 сентября» further away."""
+    full = f"{format_weekday(day, t.lang)}, {format_day(day, t.lang)}"
+    word = {0: "day-today", 1: "day-tomorrow", -1: "day-yesterday"}.get((day - today).days)
+    return f"{t(word)} · {full}" if word else full
+
+
+def _stale_line(stale_since: date | None, t: Translator) -> list[str]:
+    if stale_since is None:
+        return []
+    return ["", t("schedule-stale", date=format_day(stale_since, t.lang))]
+
+
+def schedule_day_text(
+    day: date,
+    today: date,
+    lessons: list[Lesson],
+    week: str | None,
+    tz: str,
+    t: Translator,
+    stale_since: date | None = None,
+) -> str:
+    title = day_title(day, today, t)
+    head = t("schedule-day-week", day=title, week=week) if week else t("schedule-day", day=title)
+    body = [lesson_line(lesson, tz, t) for lesson in lessons] or [t("schedule-free")]
+    return _fit([head, "", *body, *_stale_line(stale_since, t)])
+
+
+def schedule_week_text(
+    monday: date,
+    lessons: list[Lesson],
+    week: str | None,
+    tz: str,
+    t: Translator,
+    stale_since: date | None = None,
+) -> str:
+    span = f"{format_day(monday, t.lang)} – {format_day(monday + timedelta(days=6), t.lang)}"
+    lines = [
+        t("schedule-week-label", week=week, range=span) if week else t("schedule-week", range=span)
+    ]
+    days: dict[date, list[Lesson]] = {}
+    for lesson in lessons:
+        days.setdefault(to_local(lesson.starts_at, tz).date(), []).append(lesson)
+    if not days:
+        lines += ["", t("schedule-free")]
+    for day in sorted(days):
+        lines += [
+            "",
+            format_short_day(day, t.lang),
+            *(lesson_line(item, tz, t) for item in days[day]),
+        ]
+    return _fit([*lines, *_stale_line(stale_since, t)])
+
+
+def schedule_source_text(source: ScheduleSource, tz: str, now: datetime, t: Translator) -> str:
+    title = source.title or t("schedule-source-untitled")
+    lines = [t("schedule-source-title"), "", t(f"schedule-source-{source.kind.value}", title=title)]
+    if source.ok_at is not None:
+        lines.append(t("schedule-updated", when=short_moment(source.ok_at, tz, t.lang, now)))
+    if source.error:
+        lines.append(t("schedule-failed"))
+    minutes = source.lesson_reminder_minutes
+    lines.append(t("schedule-alerts-on", minutes=minutes) if minutes else t("schedule-alerts-off"))
+    return "\n".join(lines)
+
+
+def schedule_error_text(reason: str, t: Translator) -> str:
+    return t(f"schedule-error-{reason if reason in _SOURCE_ERRORS else 'unreachable'}")

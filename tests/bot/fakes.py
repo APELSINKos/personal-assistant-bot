@@ -78,8 +78,11 @@ def message_update(
     lang: str = "ru",
     chat_type: str = "private",
     sticker: bool = False,
+    document: dict[str, Any] | None = None,
 ) -> Update:
     extra: dict[str, Any] = {}
+    if document is not None:
+        extra["document"] = {"file_id": "doc", "file_unique_id": "doc-u", **document}
     if sticker:
         extra["sticker"] = {
             "file_id": "x",
