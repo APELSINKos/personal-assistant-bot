@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import icalendar
 import recurring_ical_events
@@ -21,6 +22,8 @@ from assistant.core.timeutil import UTC, local_to_utc
 # More occurrences than any timetable has in the window: a bigger calendar is refused as
 # "too_large" instead of being expanded for a minute (6000 daily series take ~60 s in full).
 MAX_OCCURRENCES = 3000
+# More recurring events than any timetable has: refused as "too_large" before expanding.
+MAX_SERIES = 500
 TITLE_LENGTH = 200
 ROOM_LENGTH = 100
 LABEL_LENGTH = 40
@@ -29,6 +32,10 @@ UID_LENGTH = 255
 _KIND_LENGTH = 8
 # A lesson never repeats more often than daily; such rules only make the expansion explode.
 _SUB_DAILY = frozenset({"SECONDLY", "MINUTELY", "HOURLY"})
+# A timetable puts the time in DTSTART; these parts only multiply the occurrences of a day.
+_TIME_PARTS = ("BYSECOND", "BYMINUTE", "BYHOUR")
+# What the library reads from every event without a guard, with the type it needs.
+_TYPED = (("DTEND", date), ("RECURRENCE-ID", date), ("DURATION", timedelta))
 # «5 неделя», «5-я неделя», «Неделя 5», "Week 5", "5 week" — the all-day events that name weeks.
 _WEEK = re.compile(
     r"^\s*(?:\d{1,2}\s*(?:-?я\s*)?(?:неделя|нед\.?|week)|(?:неделя|week)\s*\d{1,2})\s*$",
@@ -122,16 +129,62 @@ def _end_of(event: Any, start: datetime | date) -> datetime | date:
     return start
 
 
-def _without_sub_daily(calendar: Any) -> None:
-    calendar.subcomponents = [
-        sub
-        for sub in calendar.subcomponents
-        if not (
-            sub.name == "VEVENT"
-            and sub.get("RRULE") is not None
-            and any(str(freq).upper() in _SUB_DAILY for freq in sub["RRULE"].get("FREQ", []))
-        )
-    ]
+def _usable(event: Any) -> bool:
+    """One start, end, rule, sequence and UID of the types the library expects, repeating at
+    most daily. The library reads them unguarded: a bad one would sink the whole calendar."""
+    if not isinstance(event["DTSTART"].dt, date):
+        return False
+    for key, kind in _TYPED:
+        value = event.get(key)
+        if value is not None and not isinstance(value.dt, kind):
+            return False
+    if not isinstance(event.get("SEQUENCE", 0), int) or not isinstance(event.get("UID", ""), str):
+        return False
+    rule = event.get("RRULE")
+    if rule is None:
+        return True
+    # Several RRULE lines come as a list, an unreadable one as text.
+    freq = rule.get("FREQ", []) if isinstance(rule, icalendar.vRecur) else []
+    return (
+        len(freq) == 1
+        and str(freq[0]).upper() not in _SUB_DAILY
+        and not any(part in rule for part in _TIME_PARTS)
+    )
+
+
+def _drop_unusable(component: Any) -> int:
+    """Removes the events `_usable` refuses at any depth (the library walks them all) and
+    returns how many recurring ones are left."""
+    kept: list[Any] = []
+    series = 0
+    for sub in component.subcomponents:
+        if sub.name == "VEVENT":
+            try:
+                usable = _usable(sub)
+            except Exception:  # whatever one odd event raises costs only that event
+                usable = False
+            if not usable:
+                continue
+            if "RRULE" in sub:
+                series += 1
+        series += _drop_unusable(sub)
+        kept.append(sub)
+    component.subcomponents = kept
+    return series
+
+
+def _sanitize(calendar: Any) -> None:
+    """Drops what the expansion cannot read or would explode on: an odd event or header costs
+    only itself, not the calendar."""
+    if _drop_unusable(calendar) > MAX_SERIES:
+        raise InvalidInput(field="calendar", reason="too_large")
+    zone = calendar.get("X-WR-TIMEZONE")
+    if zone is not None:
+        try:
+            ZoneInfo(str(zone))  # what the library does with it
+        except Exception:  # unknown ("GMT+3", Windows names), not a key, or a folder ("Europe")
+            # Floating times are then read in the city zone, as without the header.
+            del calendar["X-WR-TIMEZONE"]
 
 
 def _occurrences(calendar: Any, start: datetime, end: datetime, tz: str) -> list[Any]:
@@ -168,7 +221,7 @@ def parse(body: bytes, start: datetime, end: datetime, tz: str) -> Timetable:
     try:
         calendar = icalendar.Calendar.from_ical(body)
         mirea = any(sub.name == "X-SCHEDULE-VERSION" for sub in calendar.subcomponents)
-        _without_sub_daily(calendar)
+        _sanitize(calendar)
         occurrences = _occurrences(calendar, start, end, tz)
     except InvalidInput:
         raise

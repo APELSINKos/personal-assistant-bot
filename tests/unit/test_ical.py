@@ -137,6 +137,56 @@ def test_a_broken_event_is_skipped_not_fatal() -> None:
     assert [item.title for item in table.lessons] == ["Good"]
 
 
+_EVERY_MINUTE = (
+    f"RRULE:FREQ=DAILY;BYHOUR={','.join(map(str, range(24)))};"
+    f"BYMINUTE={','.join(map(str, range(60)))}\r\n"
+)
+
+
+@pytest.mark.parametrize(
+    "lines",
+    [
+        pytest.param(
+            "DTSTART:20261001T090000Z\r\nRRULE:FREQ=WEEKLY\r\nRRULE:FREQ=DAILY\r\n", id="two-rules"
+        ),
+        pytest.param(
+            "DTSTART:20261001T090000Z\r\nRRULE:FREQ=WEEKLY;INTERVAL=abc\r\n", id="bad-rule"
+        ),
+        pytest.param("DTSTART:20261001T090000Z\r\nRRULE:INTERVAL=2\r\n", id="no-freq"),
+        pytest.param("DTEND:20261001T100000Z\r\n", id="no-start"),
+        pytest.param(f"DTSTART:19900101T000000Z\r\n{_EVERY_MINUTE}", id="by-hour-and-minute"),
+        pytest.param("DTSTART;VALUE=PERIOD:20261001T090000Z/PT1H\r\n", id="period-start"),
+        pytest.param(
+            "DTSTART:20261001T090000Z\r\nDTEND:20261001T100000Z\r\nDTEND:20261001T110000Z\r\n",
+            id="two-ends",
+        ),
+        pytest.param("DTSTART:20261001T090000Z\r\nDURATION:20261001T100000Z\r\n", id="time-length"),
+        pytest.param("DTSTART:20261001T090000Z\r\nSEQUENCE:abc\r\n", id="text-sequence"),
+        pytest.param("UID:again\r\nDTSTART:20261001T090000Z\r\n", id="two-uids"),
+    ],
+)
+def test_a_bad_event_among_good_ones_is_dropped(lines: str) -> None:
+    body = (
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
+        f"BEGIN:VEVENT\r\nUID:bad\r\n{lines}SUMMARY:Bad\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:good\r\nDTSTART:20261001T090000Z\r\nSUMMARY:Good\r\nEND:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    ).encode()
+    table = ical.parse(body, START, END, "Europe/Moscow")
+    assert [item.title for item in table.lessons] == ["Good"]
+
+
+def test_an_unknown_x_wr_timezone_is_ignored() -> None:
+    # Outlook writes its own names there; floating times are then read in the city zone.
+    body = (
+        b"BEGIN:VCALENDAR\r\nVERSION:2.0\r\nX-WR-TIMEZONE:Customized Time Zone\r\n"
+        b"BEGIN:VEVENT\r\nUID:a\r\nDTSTART:20261001T090000\r\nSUMMARY:Math\r\n"
+        b"END:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+    table = ical.parse(body, START, END, "Asia/Yekaterinburg")
+    assert [item.starts_at for item in table.lessons] == [utc(2026, 10, 1, 4)]
+
+
 def _daily_series(count: int) -> bytes:
     events = "".join(
         f"BEGIN:VEVENT\r\nUID:e{i}\r\n"
@@ -151,6 +201,17 @@ def test_a_huge_calendar_is_refused_quickly() -> None:
     # 400 daily series × 120 days would be 48 000 lessons; the expansion stops at the limit.
     with pytest.raises(InvalidInput) as caught:
         ical.parse(_daily_series(400), START, utc(2027, 1, 26), "Europe/Moscow")
+    assert caught.value.params == {"field": "calendar", "reason": "too_large"}
+
+
+def test_more_recurring_events_than_a_timetable_has_are_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ical, "MAX_SERIES", 3)
+    # Three daily series over the two weeks of the window.
+    assert len(ical.parse(_daily_series(3), START, END, "Europe/Moscow").lessons) == 3 * 14
+    with pytest.raises(InvalidInput) as caught:
+        ical.parse(_daily_series(4), START, END, "Europe/Moscow")
     assert caught.value.params == {"field": "calendar", "reason": "too_large"}
 
 
