@@ -5,6 +5,7 @@ menu-reminders = ⏰ Reminders
 menu-notes = 📝 Notes
 menu-habits = 🎯 Habits
 menu-rates = 💱 Exchange rates
+menu-schedule = 🎓 Schedule
 menu-settings = ⚙️ Settings
 menu-cancel = ❌ Cancel
 
@@ -65,6 +66,7 @@ welcome =
     📝 Notes — keep what you don't want to forget
     🎯 Habits — mark them daily and keep the streak
     💱 Exchange rates — USD and EUR by the Bank of Russia
+    🎓 Schedule — your MIREA group's classes or any calendar
     ⚙️ Settings — city, morning digest and language
 
     Pick a section in the menu below 👇
@@ -74,8 +76,8 @@ app-open = Open the app with the button below 👇
 menu-button = Open
 stale-button = This button is outdated — open the section again from the menu.
 bot-name = Personal Assistant
-bot-short-description = Weather with tips, reminders, notes, habits and exchange rates — in one chat.
-bot-description = Personal assistant: smart weather, reminders, notes, a habit tracker, exchange rates and a morning digest the bot sends on its own.
+bot-short-description = Weather with tips, reminders, class schedule, notes, habits and exchange rates — in one chat.
+bot-description = Personal assistant: smart weather, reminders, a class schedule, notes, a habit tracker, exchange rates and a morning digest the bot sends on its own.
 cmd-start = Main menu
 cmd-app = Open the app
 cmd-settings = Settings
@@ -105,6 +107,10 @@ today-reminders = { $count ->
     }
 list-item-time = • { $time } — { $text }
 list-more = …and { $count } more
+today-lessons = 🎓 Classes:
+today-lessons-week = 🎓 Classes · { $week }:
+today-lessons-none = 🎓 No classes today
+lesson-line = • { $start }–{ $end } { $lesson }
 today-habits = 🎯 Habits: { $done } of { $total }
 today-habits-none = 🎯 No habits yet
 today-streak = 🔥 Best streak: “{ $name }” — { $count } { $count ->

@@ -24,9 +24,15 @@ MENU_KEYS: tuple[str, ...] = (
     "notes",
     "habits",
     "rates",
+    "schedule",
     "settings",
 )
-_ROWS = (("weather", "today"), ("reminders", "notes"), ("habits", "rates"), ("settings",))
+_ROWS = (
+    ("weather", "today"),
+    ("reminders", "notes"),
+    ("habits", "rates"),
+    ("schedule", "settings"),
+)
 
 
 class NoteCb(CallbackData, prefix="n"):

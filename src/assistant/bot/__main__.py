@@ -35,7 +35,7 @@ async def main() -> None:
     async with httpx.AsyncClient(timeout=settings.http_timeout) as http:
         bot = create_bot(settings)
         meteo, cbr, calendars = OpenMeteoClient(http), CbrClient(http), CalendarFetcher(http)
-        dp = build_dispatcher(sessionmaker, meteo, cbr, settings)
+        dp = build_dispatcher(sessionmaker, meteo, cbr, settings, calendars=calendars)
         scheduler = Scheduler(
             bot, sessionmaker, meteo, cbr, interval=settings.scheduler_interval, calendars=calendars
         )

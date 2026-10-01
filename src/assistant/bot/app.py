@@ -14,6 +14,7 @@ from assistant.bot.db_commit import install_commit_before_request
 from assistant.bot.fsm_storage import SqliteStorage
 from assistant.bot.middlewares import DbSession, PrivateOnly, UserContext
 from assistant.bot.routers import SECTION_ROUTERS, errors, fallback, menu, start
+from assistant.core.clients.calendars import Calendars
 from assistant.core.clients.cbr import CbrClient
 from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.config import Settings
@@ -39,6 +40,8 @@ def build_dispatcher(
     cbr: CbrClient,
     settings: Settings,
     sections: Sequence[Router] | None = None,
+    *,
+    calendars: Calendars,
 ) -> Dispatcher:
     # Keyword arguments become workflow data, visible to middlewares as data["meteo"] etc.
     # The error handler reads the user's saved language with its own session from
@@ -51,6 +54,7 @@ def build_dispatcher(
         sessionmaker=sessionmaker,
         meteo=meteo,
         cbr=cbr,
+        calendars=calendars,
         settings=settings,
     )
     for observer in (dp.message, dp.callback_query):

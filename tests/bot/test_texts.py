@@ -8,7 +8,7 @@ import pytest
 from assistant.bot import texts
 from assistant.core.clients.cbr import Rate, Rates
 from assistant.core.i18n import translator
-from assistant.core.models import Reminder
+from assistant.core.models import Lesson, Reminder
 from assistant.core.services.digest import TodayData
 from assistant.core.services.weather import Tip, WeatherNow
 
@@ -162,3 +162,42 @@ def test_rates_text() -> None:
         "\n"
         "Конвертер 👇"
     )
+
+
+LESSON = Lesson(
+    uid="75bb3b9e",
+    starts_at=datetime(2026, 9, 28, 9, 40, tzinfo=UTC),
+    ends_at=datetime(2026, 9, 28, 11, 10, tzinfo=UTC),
+    title="Разработка баз данных",
+    kind="ПР",
+    room="И-212-б (В-78)",
+)
+LESSON_LINE = "• 12:40–14:10 ПР Разработка баз данных · И-212-б (В-78)"
+
+
+def test_lessons_follow_the_reminders_in_my_day() -> None:
+    data = day_data(has_schedule=True, lessons=[LESSON], week_label="5 неделя")
+    lines = texts.today_text(data, "Alex", RU).splitlines()
+    after = lines.index("• 12:30 — встреча")
+    assert lines[after + 1 : after + 3] == ["🎓 Пары · 5 неделя:", LESSON_LINE]
+    lines = texts.morning_text(data, "Alex", RU).splitlines()
+    after = lines.index("• 12:30 — встреча")
+    assert lines[after + 1 : after + 3] == ["🎓 Пары · 5 неделя:", LESSON_LINE]
+
+
+def test_a_connected_day_without_lessons_says_so() -> None:
+    text = texts.today_text(day_data(has_schedule=True), "Alex", RU)
+    assert "🎓 Пар сегодня нет" in text
+    english = texts.morning_text(day_data(has_schedule=True, lessons=[LESSON]), "Alex", EN)
+    assert "🎓 Classes:\n" + LESSON_LINE in english
+
+
+def test_no_timetable_no_lesson_lines() -> None:
+    assert "🎓" not in texts.today_text(day_data(), "Alex", RU)
+
+
+def test_lesson_names_without_a_type_or_a_room() -> None:
+    plain = Lesson(uid="u", starts_at=LESSON.starts_at, ends_at=LESSON.ends_at, title="Physics")
+    assert texts.lesson_name(plain) == "Physics"
+    assert texts.lesson_name(LESSON) == "ПР Разработка баз данных · И-212-б (В-78)"
+    assert texts.lesson_alert_text(plain, 15, EN) == "🎓 In 15 min: Physics"

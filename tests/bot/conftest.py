@@ -10,7 +10,7 @@ from assistant.bot.app import build_dispatcher
 from assistant.bot.db_commit import install_commit_before_request
 from assistant.core.config import Settings
 from tests.bot.fakes import FakeSession
-from tests.stubs import StubCbr, StubMeteo
+from tests.stubs import StubCalendars, StubCbr, StubMeteo
 
 
 @pytest.fixture
@@ -41,9 +41,16 @@ def cbr() -> StubCbr:
 
 
 @pytest.fixture
-def make_dp(sessionmaker, meteo: StubMeteo, cbr: StubCbr, settings: Settings):
+def calendars() -> StubCalendars:
+    return StubCalendars()
+
+
+@pytest.fixture
+def make_dp(
+    sessionmaker, meteo: StubMeteo, cbr: StubCbr, calendars: StubCalendars, settings: Settings
+):
     def _make(sections: Sequence[Router] | None = None) -> Dispatcher:
-        return build_dispatcher(sessionmaker, meteo, cbr, settings, sections)
+        return build_dispatcher(sessionmaker, meteo, cbr, settings, sections, calendars=calendars)
 
     return _make
 

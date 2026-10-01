@@ -11,7 +11,8 @@ from sqlalchemy import func, select
 from assistant.bot import sections
 from assistant.bot.context import Ctx
 from assistant.bot.fsm_storage import current_session
-from assistant.bot.keyboards import menu_key, paginate, preview
+from assistant.bot.keyboards import main_menu, menu_key, paginate, preview
+from assistant.core.i18n import translator
 from assistant.core.models import User
 from assistant.core.services import users
 from tests.bot.fakes import callback_update, message_update
@@ -189,6 +190,7 @@ async def test_app_command_without_webapp(feed, fake) -> None:
 
 def test_helpers() -> None:
     assert menu_key("⚙️ Settings") == "settings"
+    assert menu_key("🎓 Расписание") == "schedule" and menu_key("🎓 Schedule") == "schedule"
     assert menu_key("nope") is None and menu_key(None) is None
     assert preview("a" * 70) == "a" * 59 + "…"
     assert preview("line1\nline2") == "line1 line2"
@@ -247,3 +249,13 @@ async def test_error_message_falls_back_to_telegram_language(
 def test_one_users_updates_are_handled_one_at_a_time(dp) -> None:
     # Two quick messages (or a double tap) of the same user must not race through a dialog.
     assert isinstance(dp.fsm.events_isolation, SimpleEventIsolation)
+
+
+def test_the_menu_has_four_rows_of_two() -> None:
+    rows = [[button.text for button in row] for row in main_menu(translator("ru")).keyboard]
+    assert rows == [
+        ["🌤 Погода", "📅 Мой день"],
+        ["⏰ Напоминания", "📝 Заметки"],
+        ["🎯 Привычки", "💱 Курс валют"],
+        ["🎓 Расписание", "⚙️ Настройки"],
+    ]

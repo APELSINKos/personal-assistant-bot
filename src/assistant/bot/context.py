@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from assistant.core.clients.calendars import Calendars
 from assistant.core.clients.cbr import CbrClient
 from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.config import Settings
@@ -22,6 +23,7 @@ class Ctx:
     state: FSMContext
     meteo: OpenMeteoClient
     cbr: CbrClient
+    calendars: Calendars
     settings: Settings
 
     @property

@@ -29,6 +29,8 @@ NO_VALUE = "—"
 # 200 characters each, rendering all of them could blow that limit on its own. Cap the
 # rendered list and summarise the rest in one line instead.
 DAY_REMINDERS_SHOWN = 10
+# A day has a handful of lessons; a calendar full of events is capped the same way.
+DAY_LESSONS_SHOWN = 10
 
 
 def temp(value: float | None) -> str:
@@ -86,6 +88,30 @@ def _reminder_lines(data: TodayData, t: Translator) -> list[str]:
     return lines
 
 
+def lesson_line(lesson: Lesson, tz: tzinfo | str, t: Translator) -> str:
+    """«• 12:40–14:10 ПР Разработка баз данных · И-212-б» in the user's zone."""
+    return t(
+        "lesson-line",
+        start=local_time(lesson.starts_at, tz),
+        end=local_time(lesson.ends_at, tz),
+        lesson=lesson_name(lesson),
+    )
+
+
+def _lesson_lines(data: TodayData, t: Translator) -> list[str]:
+    if not data.has_schedule:
+        return []
+    if not data.lessons:
+        return [t("today-lessons-none")]
+    zone = data.local_now.tzinfo or ZoneInfo("UTC")
+    head = t("today-lessons-week", week=data.week_label) if data.week_label else t("today-lessons")
+    shown = data.lessons[:DAY_LESSONS_SHOWN]
+    lines = [head, *(lesson_line(lesson, zone, t) for lesson in shown)]
+    if len(data.lessons) > len(shown):
+        lines.append(t("list-more", count=len(data.lessons) - len(shown)))
+    return lines
+
+
 def _rates_line(rates: Rates, t: Translator) -> str:
     return t(
         "today-rates",
@@ -107,6 +133,7 @@ def today_text(data: TodayData, name: str, t: Translator) -> str:
     else:
         lines.append(t("today-weather-unavailable"))
     lines += ["", t("today-reminders", count=len(data.reminders)), *_reminder_lines(data, t)]
+    lines += _lesson_lines(data, t)
     if data.habits_total:
         lines.append(t("today-habits", done=data.habits_done, total=data.habits_total))
     else:
@@ -138,6 +165,7 @@ def morning_text(data: TodayData, name: str, t: Translator) -> str:
     else:
         lines.append(t("today-weather-unavailable"))
     lines += ["", t("morning-reminders", count=len(data.reminders)), *_reminder_lines(data, t)]
+    lines += _lesson_lines(data, t)
     extra: list[str] = []
     if data.habits_total:
         extra.append(t("morning-habits", count=data.habits_total))
