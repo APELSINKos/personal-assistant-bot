@@ -35,14 +35,22 @@ function weekDaysFrom(monthDays: AgendaDay[] | undefined, weekIsos: string[]): A
   return weekIsos.every((iso) => byDate.has(iso)) ? weekIsos.map((iso) => byDate.get(iso) as AgendaDay) : undefined;
 }
 
+const MAX_DOTS = 3;
+
+/** At most three dots, lessons first. When a day has both kinds the lessons take at most two of them,
+ *  so a reminder is never hidden behind a full day of classes. */
 function Dots({ items }: { items: AgendaItem[] }) {
+  const lessons = items.filter((item) => item.kind === "lesson").length;
+  const reminders = items.length - lessons;
+  const lessonDots = Math.min(lessons, reminders > 0 ? MAX_DOTS - 1 : MAX_DOTS);
+  const reminderDots = Math.min(reminders, MAX_DOTS - lessonDots);
   return (
     <span className="cal-dots" aria-hidden>
-      {items.slice(0, 3).map((item, index) => (
-        <i
-          key={`${item.kind}-${item.time}-${index}`}
-          className={item.kind === "lesson" ? "cal-dot cal-dot--lesson" : "cal-dot"}
-        />
+      {Array.from({ length: lessonDots }, (_, index) => (
+        <i key={`lesson-${index}`} className="cal-dot cal-dot--lesson" />
+      ))}
+      {Array.from({ length: reminderDots }, (_, index) => (
+        <i key={`reminder-${index}`} className="cal-dot" />
       ))}
     </span>
   );

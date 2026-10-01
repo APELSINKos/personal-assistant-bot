@@ -312,3 +312,59 @@ describe("Calendar lessons", () => {
     expect(await screen.findByRole("button", { name: "Завтра · среда, 30 сентября, 1 пара" })).toBeInTheDocument();
   });
 });
+
+describe("Calendar dots", () => {
+  const PERIODS: [start: string, end: string][] = [
+    ["09:00", "10:30"], ["10:40", "12:10"], ["12:40", "14:10"], ["14:20", "15:50"], ["16:00", "17:30"],
+  ];
+  /** A day's first `count` lessons, one after another. */
+  const classes = (count: number) =>
+    PERIODS.slice(0, count).map(([start, end], index) => lesson(start, end, `Пара ${index + 1}`));
+  /** A day's reminders, in the evening — after the lessons, as in a real timetable day. */
+  const reminders = (count: number) =>
+    Array.from({ length: count }, (_, index) => item(20 + index, `${18 + index}:00`, `Дело ${index + 1}`));
+  /** The dots of a calendar cell, left to right: a lesson's (mint) or a reminder's (amber). */
+  const dotKinds = (cell: HTMLElement) =>
+    Array.from(cell.querySelectorAll(".cal-dot"), (dot) =>
+      dot.classList.contains("cal-dot--lesson") ? "lesson" : "reminder",
+    );
+
+  it("leaves a dot for a reminder after at most two lesson dots", async () => {
+    at("2026-09-29T09:00:00Z");
+    installTelegram();
+    mockApi({
+      "GET /me": me,
+      "GET /agenda?from=2026-09-28&to=2026-10-04": week("2026-09-28", {
+        "2026-09-28": [...classes(3), ...reminders(1)],
+        "2026-09-29": [...classes(1), ...reminders(4)],
+        "2026-09-30": classes(5),
+        "2026-10-01": reminders(4),
+      }),
+    });
+    renderWithApp(<CalendarScreen />, { path: "/calendar" });
+    expect(await screen.findByText("1 пара · 4 напоминания")).toBeInTheDocument();
+    const cell = (name: string) => screen.getByRole("button", { name });
+    expect(dotKinds(cell("Вчера · понедельник, 28 сентября"))).toEqual(["lesson", "lesson", "reminder"]);
+    expect(dotKinds(cell("Сегодня · вторник, 29 сентября"))).toEqual(["lesson", "reminder", "reminder"]);
+    // Only one kind: up to three of it, as before.
+    expect(dotKinds(cell("Завтра · среда, 30 сентября"))).toEqual(["lesson", "lesson", "lesson"]);
+    expect(dotKinds(cell("Послезавтра · четверг, 1 октября"))).toEqual(["reminder", "reminder", "reminder"]);
+  });
+
+  it("draws the same dots in the month grid", async () => {
+    at("2026-09-29T09:00:00Z");
+    installTelegram();
+    const busy = { "2026-09-29": [...classes(3), ...reminders(1)] };
+    mockApi({
+      "GET /me": me,
+      "GET /agenda?from=2026-09-28&to=2026-10-04": week("2026-09-28", busy),
+      "GET /agenda?from=2026-08-31&to=2026-10-04": range("2026-08-31", "2026-10-04", busy),
+    });
+    renderWithApp(<CalendarScreen />, { path: "/calendar" });
+    fireEvent.click(await screen.findByRole("button", { name: "Календарь Показать месяц" }));
+    const cell = await screen.findByRole("button", {
+      name: "Сегодня · вторник, 29 сентября, 3 пары · 1 напоминание",
+    });
+    expect(dotKinds(cell)).toEqual(["lesson", "lesson", "reminder"]);
+  });
+});

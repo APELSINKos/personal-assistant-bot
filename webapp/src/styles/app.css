@@ -808,10 +808,18 @@ textarea.input {
   background: #b36b00;
 }
 
-/* Lessons get the mint accent in both themes (#0f9d76 is ~3.2:1 on the light background). */
-.cal-dot--lesson,
-[data-theme="light"] .cal-dot--lesson {
+/* Lessons get the mint accent. On the light theme the dots sit on the page's glows (the body's
+   radial gradients), not on the flat --bg-base: there --accent (#0f9d76) measured only 2.8-2.9:1 on
+   rendered pixels (3.16:1 on the flat colour) — under the 3:1 non-text minimum. --accent-text
+   (#0b7a5c) measured >= 4.3:1 at every dot of the strip and the month grid (over 4:1 anywhere on
+   the page), so the light theme uses it. The dark theme keeps --accent: >= 7.4:1 even on its
+   brightest glow. The selected strip cell's rule below is more specific, so it still wins. */
+.cal-dot--lesson {
   background: var(--accent);
+}
+
+[data-theme="light"] .cal-dot--lesson {
+  background: var(--accent-text);
 }
 
 /* In the strip the fill covers the whole cell, so the dot needs the on-accent colour; in the
