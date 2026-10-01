@@ -4,7 +4,10 @@ import {
 import { toast } from "../components/toastStore";
 import { haptic } from "../telegram";
 import { api, ApiError } from "./client";
-import type { Agenda, City, Habit, Health, Me, Note, ParsedPhrase, Reminder, ReminderInput, Today } from "./types";
+import type {
+  Agenda, AlertMinutes, City, GroupSearch, Habit, Health, Me, Note, ParsedPhrase, Reminder, ReminderInput,
+  ScheduleState, Today,
+} from "./types";
 
 export const keys = {
   me: ["me"],
@@ -15,9 +18,14 @@ export const keys = {
   health: ["health"],
   cities: (query: string) => ["cities", query] as const,
   agenda: (from: string, to: string) => ["agenda", from, to] as const,
+  schedule: ["schedule"],
+  groups: (query: string) => ["groups", query] as const,
 } as const;
 
-const OWN_TEXT_REASONS = new Set(["past", "duplicate", "phrase_not_understood", "repeat_invalid", "needs_time", "schedule", "length"]);
+const OWN_TEXT_REASONS = new Set([
+  "past", "duplicate", "phrase_not_understood", "repeat_invalid", "needs_time", "schedule", "length",
+  "forbidden_host", "unreachable", "too_large", "not_calendar", "source",
+]);
 
 /** The key in the `errors` dictionary that explains a failed request. */
 export function errorCode(error: unknown): string {
@@ -334,6 +342,87 @@ export function useSetCity() {
         client.invalidateQueries({ queryKey: keys.reminders }),
         client.invalidateQueries({ queryKey: keys.habits }),
       ]);
+    },
+  });
+}
+
+export const useSchedule = () =>
+  useQuery({ queryKey: keys.schedule, queryFn: () => api<ScheduleState>("/schedule") });
+
+export function useGroups(query: string) {
+  const trimmed = query.trim();
+  return useQuery({
+    queryKey: keys.groups(trimmed),
+    queryFn: ({ signal }) =>
+      api<GroupSearch>(`/schedule/groups?q=${encodeURIComponent(trimmed)}`, { signal }),
+    enabled: trimmed.length >= 2,
+    staleTime: 5 * 60_000,
+  });
+}
+
+/** A changed timetable changes the calendar and «Сегодня» too. */
+function useScheduleSaved() {
+  const client = useQueryClient();
+  return (state: ScheduleState) => {
+    client.setQueryData(keys.schedule, state);
+    return Promise.all([
+      client.invalidateQueries({ queryKey: ["agenda"] }),
+      client.invalidateQueries({ queryKey: keys.today }),
+    ]);
+  };
+}
+
+export function useConnectSchedule() {
+  const saved = useScheduleSaved();
+  return useMutation({
+    mutationFn: (body: { mirea_id: number } | { url: string }) =>
+      api<ScheduleState>("/schedule", { method: "PUT", body }),
+    onSuccess: (state) => {
+      haptic("success");
+      return saved(state);
+    },
+  });
+}
+
+export function useUploadSchedule() {
+  const saved = useScheduleSaved();
+  return useMutation({
+    mutationFn: (file: File) =>
+      api<ScheduleState>(`/schedule/file?name=${encodeURIComponent(file.name)}`, { method: "POST", body: file }),
+    onSuccess: (state) => {
+      haptic("success");
+      return saved(state);
+    },
+  });
+}
+
+export function useRefreshSchedule() {
+  const saved = useScheduleSaved();
+  return useMutation({
+    mutationFn: () => api<ScheduleState>("/schedule/refresh", { method: "POST" }),
+    onSuccess: (state) => saved(state),
+  });
+}
+
+export function useScheduleAlerts() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (minutes: AlertMinutes | null) =>
+      api<ScheduleState>("/schedule", { method: "PATCH", body: { lesson_reminder_minutes: minutes } }),
+    onSuccess: (state) => {
+      haptic("select");
+      client.setQueryData(keys.schedule, state);
+    },
+  });
+}
+
+export function useDisconnectSchedule() {
+  const saved = useScheduleSaved();
+  return useMutation({
+    mutationFn: () => api<void>("/schedule", { method: "DELETE" }),
+    onSuccess: () => {
+      haptic("success");
+      return saved({ source: null });
     },
   });
 }

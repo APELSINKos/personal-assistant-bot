@@ -1,4 +1,4 @@
-import type { Habit, Me, Note, Reminder, Today } from "../api/types";
+import type { Habit, Me, Note, Reminder, ScheduleSource, Today } from "../api/types";
 
 export const me: Me = {
   id: 1,
@@ -36,6 +36,9 @@ export const today: Today = {
     date: "2026-09-28", usd: { value: 84.1975, change: -0.3118 }, eur: { value: 96.6671, change: 0.2 },
   },
   best_streak: { name: "Спорт", days: 5 },
+  has_schedule: false,
+  lessons: [],
+  week_label: null,
 };
 
 export const note: Note = {
@@ -45,4 +48,11 @@ export const note: Note = {
 export const reminder: Reminder = {
   id: 3, text: "Созвон", due_at: "2026-09-28T16:30:00Z", due_local: "2026-09-28T19:30", status: "pending",
   repeat: "none", rule: null, description: null,
+};
+
+export const scheduleSource: ScheduleSource = {
+  kind: "mirea", title: "ИКБО-63-24", mirea_id: 4805,
+  url: "https://english.mirea.ru/schedule/api/ical/1/4805",
+  fetched_at: "2026-09-28T12:00:00Z", ok_at: "2026-09-28T12:00:00Z", error: null, stale: false,
+  lesson_reminder_minutes: null, lessons_ahead: 36,
 };

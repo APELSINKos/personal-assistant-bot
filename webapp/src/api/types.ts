@@ -59,6 +59,16 @@ export interface TodayReminder {
   due_at: string;
 }
 
+export interface TodayLesson {
+  time: string;
+  end: string;
+  title: string;
+  kind: string | null;
+  room: string | null;
+  starts_at: string;
+  ends_at: string;
+}
+
 export interface Today {
   date: string;
   part_of_day: "morning" | "day" | "evening" | "night";
@@ -68,6 +78,9 @@ export interface Today {
   notes_count: number;
   rates: Rates | null;
   best_streak: { name: string; days: number } | null;
+  has_schedule: boolean;
+  lessons: TodayLesson[];
+  week_label: string | null;
 }
 
 export interface Note {
@@ -141,6 +154,38 @@ export interface Reminder {
   repeat: RepeatName;
   rule: RepeatRule | null;
   description: string | null;
+}
+
+export type ScheduleKind = "mirea" | "url" | "file";
+
+export type AlertMinutes = 5 | 10 | 15 | 30 | 60;
+
+export interface ScheduleSource {
+  kind: ScheduleKind;
+  title: string | null;
+  mirea_id: number | null;
+  url: string | null;
+  fetched_at: string;
+  ok_at: string | null;
+  error: string | null;
+  stale: boolean;
+  lesson_reminder_minutes: AlertMinutes | null;
+  lessons_ahead: number;
+}
+
+export interface ScheduleState {
+  source: ScheduleSource | null;
+}
+
+export interface Group {
+  id: number;
+  name: string;
+}
+
+export interface GroupSearch {
+  groups: Group[];
+  /** No full crawl of the MIREA directory has finished yet: a group may be missing for now. */
+  building: boolean;
 }
 
 export interface Health {

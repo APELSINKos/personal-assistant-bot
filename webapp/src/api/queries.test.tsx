@@ -5,13 +5,14 @@ import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Toasts } from "../components/Toasts";
 import { LangProvider } from "../i18n";
-import { habit, me, note } from "../test/fixtures";
+import { habit, me, note, scheduleSource } from "../test/fixtures";
 import { installTelegram } from "../test/fakeTelegram";
 import { mockApi } from "../test/mockApi";
-import type { Agenda, Habit, Me, Note } from "./types";
+import { ApiError } from "./client";
+import type { Agenda, Habit, Me, Note, ScheduleState } from "./types";
 import {
-  createQueryClient, keys, useDeleteNote, useDeleteReminder, useHabits, useNotes, useSetCity, useSetMark,
-  useUpdateMe,
+  createQueryClient, errorCode, keys, useDeleteNote, useDeleteReminder, useDisconnectSchedule, useHabits,
+  useNotes, useSetCity, useSetMark, useUpdateMe, useUploadSchedule,
 } from "./queries";
 
 // Every mutation goes through `api()`, which needs a session (`initData()` non-null) before it
@@ -309,5 +310,36 @@ describe("useDeleteReminder", () => {
     await waitFor(() =>
       expect(client.getQueryData<Agenda>(keys.agenda("2026-09-28", "2026-10-04"))?.days[0]?.items ?? []).toEqual([]),
     );
+  });
+});
+
+describe("schedule", () => {
+  it("uploads the picked file as the body and refreshes the calendar", async () => {
+    const { calls } = mockApi({ "POST /schedule/file": { source: { ...scheduleSource, kind: "file" } } });
+    const client = createQueryClient();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    const { result } = renderHook(() => useUploadSchedule(), { wrapper: wrapperFor(client) });
+    const file = new File(["BEGIN:VCALENDAR"], "Английский.ics", { type: "text/calendar" });
+    act(() => result.current.mutate(file));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(calls[0]?.path).toBe(`/schedule/file?name=${encodeURIComponent("Английский.ics")}`);
+    expect(calls[0]?.body).toBe(file);
+    expect(client.getQueryData<ScheduleState>(keys.schedule)?.source?.kind).toBe("file");
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["agenda"] });
+  });
+
+  it("forgets the source on disconnect", async () => {
+    mockApi({ "DELETE /schedule": { status: 204 } });
+    const client = createQueryClient();
+    client.setQueryData(keys.schedule, { source: scheduleSource });
+    const { result } = renderHook(() => useDisconnectSchedule(), { wrapper: wrapperFor(client) });
+    act(() => result.current.mutate());
+    await waitFor(() => expect(client.getQueryData<ScheduleState>(keys.schedule)).toEqual({ source: null }));
+  });
+
+  it("gives connection failures their own texts", () => {
+    for (const reason of ["forbidden_host", "unreachable", "too_large", "not_calendar", "source"]) {
+      expect(errorCode(new ApiError(422, "validation_error", "Invalid input", { reason }))).toBe(reason);
+    }
   });
 });

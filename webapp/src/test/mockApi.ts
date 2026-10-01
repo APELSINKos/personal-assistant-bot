@@ -30,7 +30,8 @@ export function mockApi(routes: Record<string, unknown>) {
   const fetchMock = vi.fn(async (input: string, init: RequestInit = {}) => {
     const url = new URL(input, "http://app.test");
     const method = init.method ?? "GET";
-    const body: unknown = typeof init.body === "string" ? JSON.parse(init.body) : undefined;
+    // JSON bodies are parsed; a file (the calendar upload) is kept as it is.
+    const body: unknown = typeof init.body === "string" ? JSON.parse(init.body) : (init.body ?? undefined);
     const path = url.pathname.replace(/^\/api/, "");
     calls.push({ method, path: path + url.search, body });
     const entry = routes[`${method} ${path}${url.search}`] ?? routes[`${method} ${path}`];

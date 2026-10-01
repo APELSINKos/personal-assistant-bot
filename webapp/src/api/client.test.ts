@@ -53,6 +53,21 @@ describe("api client", () => {
     window.removeEventListener(AUTH_EXPIRED_EVENT, seen);
   });
 
+  it("sends a file as it is, with its type", async () => {
+    installTelegram();
+    const fetchMock = respond(200, { source: null });
+    vi.stubGlobal("fetch", fetchMock);
+    const file = new File(["BEGIN:VCALENDAR"], "t.ics", { type: "text/calendar" });
+    await api("/schedule/file?name=t.ics", { method: "POST", body: file });
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.body).toBe(file);
+    expect((init.headers as Record<string, string>)["Content-Type"]).toBe("text/calendar");
+    // A browser that does not know the .ics type still sends it as a calendar.
+    await api("/schedule/file?name=t.ics", { method: "POST", body: new File(["x"], "t.ics") });
+    const [, second] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+    expect((second.headers as Record<string, string>)["Content-Type"]).toBe("text/calendar");
+  });
+
   it("reports a network failure", async () => {
     installTelegram();
     vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch"); }));
