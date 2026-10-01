@@ -284,11 +284,20 @@ _FIRST_WEEK = ",".join(f"{date(2026, 9, 27) + timedelta(days=n):%Y%m%d}" for n i
             "DTSTART;VALUE=DATE:20260101\r\nDTEND;VALUE=DATE:20270101\r\nRRULE:FREQ=DAILY\r\n",
             id="year-long-rules",
         ),
+        # One-day daily rules, each with an override from its second day on that makes every
+        # later label last five years: ~1 800 of each overlap the first slice.
+        pytest.param(
+            10,
+            "DTSTART;VALUE=DATE:20200101\r\nRRULE:FREQ=DAILY\r\nSUMMARY:1 неделя\r\nEND:VEVENT\r\n"
+            "BEGIN:VEVENT\r\nUID:w{i}\r\nRECURRENCE-ID;RANGE=THISANDFUTURE;VALUE=DATE:20200102\r\n"
+            "DTSTART;VALUE=DATE:20200102\r\nDTEND;VALUE=DATE:20241231\r\n",
+            id="this-and-future",
+        ),
     ],
 )
 def test_a_crowded_week_of_labels_is_refused_before_expanding(count: int, lines: str) -> None:
     events = "".join(
-        f"BEGIN:VEVENT\r\nUID:w{i}\r\n{lines}SUMMARY:1 неделя\r\nEND:VEVENT\r\n"
+        f"BEGIN:VEVENT\r\nUID:w{i}\r\n{lines.format(i=i)}SUMMARY:1 неделя\r\nEND:VEVENT\r\n"
         for i in range(count)
     )
     body = f"BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{events}END:VCALENDAR\r\n".encode()
@@ -300,7 +309,8 @@ def test_a_crowded_week_of_labels_is_refused_before_expanding(count: int, lines:
     finally:
         tracemalloc.stop()
     assert caught.value.params == {"field": "calendar", "reason": "too_large"}
-    # Built as one slice they took ~32 and ~30 MB; refused before expanding, ~7 and ~0.2 MB.
+    # Built as one slice they took ~32, ~30 and ~38 MB; refused before expanding, ~7, ~0.2 and
+    # ~0.1 MB.
     assert peak < 15 * 2**20
 
 
@@ -334,6 +344,30 @@ def test_label_events_dates_and_rule_days_count_against_the_cap(
     monkeypatch.setattr(ical, "MAX_LABEL_EVENTS", 11)
     assert len(ical.parse(body, START, END, "Europe/Moscow").weeks) == 5
     monkeypatch.setattr(ical, "MAX_LABEL_EVENTS", 10)
+    with pytest.raises(InvalidInput) as caught:
+        ical.parse(body, START, END, "Europe/Moscow")
+    assert caught.value.params == {"field": "calendar", "reason": "too_large"}
+
+
+def test_an_override_for_this_and_future_weighs_the_days_it_gives_the_labels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A weekly rule of one-day labels (1); from its second week on, an override makes this and
+    # every later label seven days long (7).
+    body = (
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
+        "BEGIN:VEVENT\r\nUID:t\r\nDTSTART;VALUE=DATE:20260928\r\n"
+        "RRULE:FREQ=WEEKLY;COUNT=3\r\nSUMMARY:5 неделя\r\nEND:VEVENT\r\n"
+        "BEGIN:VEVENT\r\nUID:t\r\nRECURRENCE-ID;RANGE=THISANDFUTURE;VALUE=DATE:20261005\r\n"
+        "DTSTART;VALUE=DATE:20261005\r\nDTEND;VALUE=DATE:20261012\r\nSUMMARY:6 неделя\r\n"
+        "END:VEVENT\r\nEND:VCALENDAR\r\n"
+    ).encode()
+    monkeypatch.setattr(ical, "MAX_LABEL_EVENTS", 8)
+    assert ical.parse(body, START, END, "Europe/Moscow").weeks == [
+        ParsedWeek(date(2026, 9, 28), date(2026, 9, 29), "5 неделя"),
+        ParsedWeek(date(2026, 10, 5), date(2026, 10, 12), "6 неделя"),
+    ]
+    monkeypatch.setattr(ical, "MAX_LABEL_EVENTS", 7)
     with pytest.raises(InvalidInput) as caught:
         ical.parse(body, START, END, "Europe/Moscow")
     assert caught.value.params == {"field": "calendar", "reason": "too_large"}
@@ -470,3 +504,51 @@ def test_a_child_that_breaks_is_logged(
     assert [record.getMessage() for record in caplog.records] == [
         f"calendar parser failed with exit code {code}: MemoryError"
     ]
+
+
+@pytest.mark.usefixtures("isolated")
+def test_a_child_past_its_memory_ceiling_is_a_calendar_too_large(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    commands: list[list[str]] = []
+
+    def run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[bytes]:
+        commands.append(command)
+        return subprocess.CompletedProcess(command, ical.MEMORY_EXIT, b"", b"")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    caplog.set_level(logging.WARNING, logger=ical.__name__)
+    with pytest.raises(InvalidInput) as caught:
+        ical.parse_isolated(read("outlook.ics"), START, END, "Europe/Moscow", memory=12345)
+    assert caught.value.params == {"field": "calendar", "reason": "too_large"}
+    assert not caplog.records  # an expected refusal, not a crash
+    assert commands[0][-1] == "12345"  # the ceiling travels to the child
+
+
+# The child reads its memory from /proc/self/statm: without it (Windows) it has no watchdog.
+linux_only = pytest.mark.skipif(
+    not Path("/proc/self/statm").exists(), reason="no /proc/self/statm: no memory watchdog"
+)
+
+
+@linux_only
+@pytest.mark.usefixtures("isolated")
+def test_the_child_ends_itself_past_its_memory_ceiling(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.WARNING, logger=ical.__name__)
+    mirea = read("mirea_ikbo_63_24.ics")
+    expected = ical.parse(mirea, START, END, "Europe/Moscow")
+    # A timetable needs a fraction of the ceiling (22-25 MiB in the child), even of a lower one.
+    assert ical.parse_isolated(mirea, START, END, "Europe/Moscow") == expected
+    ceiling = 64 * 2**20
+    assert ical.parse_isolated(mirea, START, END, "Europe/Moscow", memory=ceiling) == expected
+    # One daily lesson with 40 000 properties of its own, which every occurrence copies: it
+    # passes every cap, yet needs ~115 MiB in the child for these two weeks.
+    extra = "".join(f"X-P{n}:{n}\r\n" for n in range(40_000))
+    fat = (
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:fat\r\nDTSTART:20260901T090000Z\r\n"
+        f"RRULE:FREQ=DAILY\r\nSUMMARY:Fat\r\n{extra}END:VEVENT\r\nEND:VCALENDAR\r\n"
+    ).encode()
+    with pytest.raises(InvalidInput) as caught:
+        ical.parse_isolated(fat, START, END, "Europe/Moscow", memory=ceiling)
+    assert caught.value.params == {"field": "calendar", "reason": "too_large"}
+    assert not caplog.records  # an expected refusal, not a crash

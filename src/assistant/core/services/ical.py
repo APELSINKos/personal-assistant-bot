@@ -1,14 +1,17 @@
 """An iCalendar file → the lessons and week labels of a date window.
 
-A calendar comes from anyone, so the parser guards itself three ways. Events the expansion
-cannot read or that repeat more than daily are dropped one by one, so a bad event costs only
-itself; more than `MAX_SERIES` recurring events, or week labels past `MAX_LABEL_EVENTS`, are
-refused before anything is expanded. The expansion reads only the window and stops once it
-has built more than `MAX_OCCURRENCES`: the timed occurrences are counted one by one as the
-library yields them, the week labels a week of the window at a time. A slice is built whole
-before it is counted; the label cap is what keeps it small. And `parse_isolated` runs it all
-in a child Python process killed after `PARSE_SECONDS`: dateutil can spend minutes inside one
-call on a rule that never matches, and nothing can stop a thread.
+A calendar comes from anyone, so the parser guards itself in layers. The first ones refuse the
+common hostile shapes cheaply, before anything is expanded: events the expansion cannot read
+or that repeat more than daily are dropped one by one, so a bad event costs only itself, and
+more than `MAX_SERIES` recurring events, or week labels weighing more than `MAX_LABEL_EVENTS`,
+are refused. The expansion then reads only the window and stops once it has built more than
+`MAX_OCCURRENCES`: the timed occurrences are counted one by one as the library yields them,
+the week labels a week of the window at a time. These checks know shapes, not costs, so
+`parse_isolated` bounds everything else: it runs the parse in a child Python process that is
+killed after `PARSE_SECONDS` and, on Linux, ends itself past `CHILD_MEMORY`. A process, as
+dateutil can spend minutes inside one call on a rule that never matches and nothing can stop
+a thread; a memory ceiling, as every occurrence copies all the properties of its event, which
+no count bounds.
 
 Callers use `parse_isolated` through `asyncio.to_thread`; `parse` is the same work in this
 process (a full MIREA semester, ~46 series and 18 week labels, takes about 0.2 s; the child
@@ -22,11 +25,15 @@ from __future__ import annotations
 import json
 import logging
 import math
+import mmap
+import os
 import re
 import subprocess
 import sys
+import threading
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, time, timedelta
+from time import sleep
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -41,18 +48,31 @@ log = logging.getLogger(__name__)
 # More occurrences than any timetable has in the window: the expansion stops there and the
 # calendar is refused as "too_large". Timed occurrences are counted as the library yields
 # them, week labels after each `_SLICE` of the window. A slice is built whole before it is
-# counted, so it is `MAX_LABEL_EVENTS`, checked first, that bounds its size. Slow work inside
-# one rule is beyond the count; the child's time limit stops it.
+# counted: `MAX_LABEL_EVENTS`, checked first, keeps it small for the shapes it weighs. What
+# no count reaches, slow work inside one rule or copies of a huge event, is left to the
+# child's limits.
 MAX_OCCURRENCES = 3000
 # More recurring events than any timetable has: refused as "too_large" before expanding.
 MAX_SERIES = 500
 # A timetable names each week once — a MIREA semester has 18 label events; 400 events and
 # dates is far beyond any real calendar. Counted before the labels are expanded: every label
 # event (overrides too) and RDATE value once, and a label rule once per day its occurrences
-# last, since one starts at most daily and so that many can overlap one slice.
+# last: one starts at most daily, so about those days plus the slice's 7 overlap each slice.
+# An override of this and all later occurrences (RANGE=THISANDFUTURE) gives them its length,
+# so it weighs its days too.
 MAX_LABEL_EVENTS = 400
 # A parse running longer is killed, and the calendar is refused as "too_large".
 PARSE_SECONDS = 15.0
+# A child holding more memory ends itself, and the calendar is refused as "too_large". A full
+# MIREA semester peaks at 24-27 MiB in it on Linux, of which 20-24 MiB is the interpreter.
+CHILD_MEMORY = 256 * 1024 * 1024
+# The child's exit code past `CHILD_MEMORY`, as a shell reports a process killed for memory
+# (128 + SIGKILL). Python itself exits with 1 or 2, and a signal shows as a negative code.
+MEMORY_EXIT = 137
+# How often the child reads how much memory it holds.
+_WATCH_SECONDS = 0.05
+# Linux only: the process's sizes in pages, the second being what it holds in memory.
+_STATM = "/proc/self/statm"
 # Tests turn it off so the suite does not start a Python process per calendar.
 ISOLATED = True
 TITLE_LENGTH = 200
@@ -263,9 +283,11 @@ def _label_load(labels: Any) -> int:
     load = 0
     for event in labels.walk("VEVENT"):
         load += 1
-        if "RRULE" in event:
-            length = recurring_ical_events.EventAdapter(event).duration
-            load += max(0, math.ceil(length / timedelta(days=1)) - 1)
+        adapter = recurring_ical_events.EventAdapter(event)
+        # The library gives every later occurrence of the rule a this-and-future override's
+        # length, so it weighs like a rule.
+        if "RRULE" in event or adapter.this_and_future:
+            load += max(0, math.ceil(adapter.duration / timedelta(days=1)) - 1)
         rdates = event.get("RDATE", [])
         for dates in rdates if isinstance(rdates, list) else [rdates]:
             if isinstance(dates, icalendar.vDDDLists):  # an unreadable one: the series is skipped
@@ -281,8 +303,8 @@ def _take(found: list[Any], event: Any) -> None:
 
 def _occurrences(calendar: Any, start: datetime, end: datetime, tz: str) -> list[Any]:
     """The occurrences of the window, under one budget: the timed ones read lazily, in time
-    order, up to `end`; the week labels, once the label cap has bounded what a slice can hold,
-    a slice at a time. A huge or endless calendar costs only what the window needs."""
+    order, up to `end`; the week labels a slice at a time, once the label cap has refused the
+    known shapes that crowd one. An endless series costs only what the window needs."""
     timed, labels = _streams(calendar)
     if _label_load(labels) > MAX_LABEL_EVENTS:  # before anything is expanded
         raise InvalidInput(field="calendar", reason="too_large")
@@ -408,10 +430,16 @@ def _from_json(output: bytes) -> Timetable | InvalidInput:
 
 
 def parse_isolated(
-    body: bytes, start: datetime, end: datetime, tz: str, *, seconds: float = PARSE_SECONDS
+    body: bytes,
+    start: datetime,
+    end: datetime,
+    tz: str,
+    *,
+    seconds: float = PARSE_SECONDS,
+    memory: int = CHILD_MEMORY,
 ) -> Timetable:
-    """`parse` in a child Python process, killed after `seconds`; only JSON comes back.
-    Blocking: call it through `asyncio.to_thread`."""
+    """`parse` in a child Python process, killed after `seconds` and ending itself past `memory`
+    bytes (on Linux); only JSON comes back. Blocking: call it through `asyncio.to_thread`."""
     if not ISOLATED:
         return parse(body, start, end, tz)
     try:
@@ -423,6 +451,7 @@ def parse_isolated(
                 start.isoformat(),
                 end.isoformat(),
                 tz,
+                str(memory),
             ],
             input=body,
             capture_output=True,
@@ -431,6 +460,8 @@ def parse_isolated(
         )
     except subprocess.TimeoutExpired:  # `run` has killed the child
         raise InvalidInput(field="calendar", reason="too_large") from None
+    if done.returncode == MEMORY_EXIT:  # a refusal like the time limit's, not a failure
+        raise InvalidInput(field="calendar", reason="too_large")
     try:
         answer = _from_json(done.stdout) if done.returncode == 0 else None
     except (ValueError, KeyError, TypeError):
@@ -444,10 +475,29 @@ def parse_isolated(
     return answer
 
 
+def _watch_memory(ceiling: int) -> None:
+    """Ends this process with `MEMORY_EXIT` once it holds more than `ceiling` bytes, looking
+    every `_WATCH_SECONDS`. Without /proc (Windows, development) there is no watchdog. Not
+    setrlimit: the services' seccomp filter kills a process that calls it."""
+    if not os.path.exists(_STATM):
+        return
+
+    def watch() -> None:
+        while True:
+            with open(_STATM, "rb") as statm:
+                held = int(statm.read().split()[1]) * mmap.PAGESIZE
+            if held > ceiling:
+                os._exit(MEMORY_EXIT)  # sys.exit would end only this thread
+            sleep(_WATCH_SECONDS)
+
+    threading.Thread(target=watch, name="memory-watchdog", daemon=True).start()
+
+
 def _main() -> None:
-    """The child of `parse_isolated`: the body on stdin, the window and the zone in argv, one
-    JSON object on stdout."""
-    start, end, tz = sys.argv[1:]
+    """The child of `parse_isolated`: the window, the zone and the memory ceiling in argv, the
+    body on stdin, one JSON object on stdout."""
+    start, end, tz, memory = sys.argv[1:]
+    _watch_memory(int(memory))  # before the body is read: it counts too
     body = sys.stdin.buffer.read()
     answer: dict[str, Any]
     try:
