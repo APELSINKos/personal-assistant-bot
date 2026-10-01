@@ -40,7 +40,9 @@ PACE = 1 / 3  # seconds between request starts: at most three requests a second
 FIRST_UPPER = 6000  # a full crawl tries at least this far, whatever it finds
 BEYOND_LAST = 300  # numbers tried past the highest group found
 QUICK_BEHIND = 50  # a quick crawl also re-reads this many numbers below the highest known one
-PRUNE_MIN_FOUND = 100  # a full crawl that found fewer (MIREA was down) removes nothing
+# A full crawl that found fewer groups (MIREA was down) removes nothing, and a directory that
+# holds fewer is still being built.
+PRUNE_MIN_FOUND = 100
 # A crawl cannot tell a group that is gone from a request that failed (a timeout, a rate limit,
 # a challenge page), so a group goes only when no crawl has seen it for longer than two weekly
 # full crawls. Search hides ended semesters anyway: removing is only garbage collection.
@@ -135,8 +137,12 @@ async def record_run(session: AsyncSession, name: str, finished_at: datetime, in
 
 
 async def building(session: AsyncSession) -> bool:
-    """Whether the directory is still being built: no full crawl has finished yet."""
-    return await last_run(session, FULL_JOB) is None
+    """Whether the directory is still being built: no full crawl has finished yet, or it holds
+    too few groups (the crawls so far met a MIREA outage) — a group missing from it may simply
+    not have been read yet."""
+    if await last_run(session, FULL_JOB) is None:
+        return True
+    return await count(session) < PRUNE_MIN_FOUND
 
 
 async def crawl(
@@ -215,9 +221,13 @@ async def full_crawl(
         healthy = result.found >= PRUNE_MIN_FOUND
         removed = await prune(session, started - PRUNE_AFTER) if healthy else 0
         info = f"checked {result.checked}, found {result.found}, removed {removed}"
+        # Recorded either way: the scheduler times its next attempt from it.
         await record_run(session, FULL_JOB, now(), info)
         await session.commit()
-    log.info("MIREA directory, full crawl: %s", info)
+    if healthy:
+        log.info("MIREA directory, full crawl: %s", info)
+    else:
+        log.warning("MIREA directory, full crawl found too few groups: %s", info)
     return result
 
 

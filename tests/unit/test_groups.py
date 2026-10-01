@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select
@@ -183,7 +184,43 @@ async def test_a_failed_full_crawl_keeps_the_directory(sessionmaker, session, mo
     assert result.found == 0
     session.expire_all()
     assert await groups.count(session) == 3  # the directory survives the outage
+    # The run is recorded (the scheduler times its retry from it), yet the directory is not
+    # ready: a group missing from it may simply not have been read.
     assert await groups.last_run(session, groups.FULL_JOB) == later
+    assert await groups.building(session) is True
+
+
+async def test_the_directory_is_built_once_a_full_crawl_finds_enough(
+    sessionmaker, session, monkeypatch, caplog
+) -> None:
+    monkeypatch.setattr(groups, "FIRST_UPPER", 3)
+    monkeypatch.setattr(groups, "BEYOND_LAST", 0)
+    monkeypatch.setattr(groups, "PRUNE_MIN_FOUND", 2)
+    caplog.set_level(logging.INFO, logger=groups.__name__)
+    calendars = StubCalendars()
+    pace = Pace()
+
+    async def full_crawl() -> groups.CrawlResult:
+        return await groups.full_crawl(
+            sessionmaker, calendars, now=lambda: NOW, sleep=pace.sleep, monotonic=pace.monotonic
+        )
+
+    # The first start, and MIREA cannot be reached: the crawl ends having found nothing.
+    assert await full_crawl() == groups.CrawlResult(checked=3, found=0, highest=0)
+    assert await groups.building(session) is True  # «ещё собирается», not «не нашёл»
+    # MIREA is back.
+    calendars.bodies[groups.calendar_url(1)] = header("ИКБО-01-24")
+    calendars.bodies[groups.calendar_url(2)] = header("ИКБО-02-24")
+    assert (await full_crawl()).found == 2
+    assert await groups.building(session) is False
+    logged = [(r.levelno, r.getMessage()) for r in caplog.records if r.name == groups.__name__]
+    assert logged == [
+        (
+            logging.WARNING,
+            "MIREA directory, full crawl found too few groups: checked 3, found 0, removed 0",
+        ),
+        (logging.INFO, "MIREA directory, full crawl: checked 3, found 2, removed 0"),
+    ]
 
 
 async def test_a_quick_crawl_reads_only_the_newest_numbers(sessionmaker, session, monkeypatch):
@@ -203,7 +240,10 @@ async def test_a_quick_crawl_reads_only_the_newest_numbers(sessionmaker, session
     assert await groups.last_run(session, groups.QUICK_JOB) == NOW
 
 
-async def test_the_directory_is_being_built_until_a_full_crawl_finishes(session) -> None:
+async def test_the_directory_is_being_built_until_a_full_crawl_finishes(
+    session, monkeypatch
+) -> None:
+    monkeypatch.setattr(groups, "PRUNE_MIN_FOUND", 1)  # a directory this small counts as built
     await add(session, 4805, "ИКБО-63-24")  # found by a crawl that is still running
     assert await groups.building(session) is True
     await groups.record_run(session, groups.QUICK_JOB, NOW, "checked 350, found 1")
