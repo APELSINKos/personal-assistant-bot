@@ -203,6 +203,21 @@ def test_lesson_names_without_a_type_or_a_room() -> None:
     assert texts.lesson_alert_text(plain, 15, EN) == "🎓 In 15 min: Physics"
 
 
+def test_real_lessons_keep_their_room() -> None:
+    # MIREA subjects run long and the room comes on top: the fixture's Kotlin lecture is 81
+    # characters, the same subject as a lab in the fixture's lab room 85. Neither is clipped.
+    for kind, room in (("ЛК", "А-18 (В-78)"), ("ЛАБ", "И-212-б (В-78)")):
+        lesson = Lesson(
+            uid="u",
+            starts_at=LESSON.starts_at,
+            ends_at=LESSON.ends_at,
+            title="Проектирование и разработка мобильных приложений на языке Котлин",
+            kind=kind,
+            room=room,
+        )
+        assert texts.lesson_line(lesson, MSK, RU) == f"• 12:40–14:10 {texts.lesson_name(lesson)}"
+
+
 def test_lessons_and_reminders_stay_within_the_telegram_message_limit() -> None:
     long = Lesson(
         uid="u",
@@ -221,4 +236,4 @@ def test_lessons_and_reminders_stay_within_the_telegram_message_limit() -> None:
     for render in (texts.today_text, texts.morning_text):
         assert len(render(data, "Alex", RU)) <= 4096
     line = texts.lesson_line(long, MSK, RU)
-    assert line.endswith("…") and len(line) <= 100
+    assert line.endswith("…") and len(line) <= len("• 12:40–14:10 ") + texts.LESSON_NAME_LIMIT

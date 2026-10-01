@@ -33,8 +33,8 @@ DAY_REMINDERS_SHOWN = 10
 DAY_LESSONS_SHOWN = 10
 # A lesson line keeps its time and as much of the name as fits: titles and rooms come from outside
 # calendars, and ten long ones next to the reminders would push «Мой день» and the morning digest
-# past Telegram's 4096 characters.
-LESSON_NAME_LIMIT = 81
+# past Telegram's 4096 characters. 120 still leaves real MIREA lessons whole, room included.
+LESSON_NAME_LIMIT = 120
 
 
 def temp(value: float | None) -> str:
