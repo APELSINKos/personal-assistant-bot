@@ -6,6 +6,8 @@ the certificate), which closes the window between the check and the connection. 
 followed by hand, up to three, each checked the same way. The body is read raw and asked for
 without any content coding; one gzip or deflate layer a server sends anyway is undone here,
 under the same size limit, and anything else is refused.
+
+Every failure, too_large included, is InvalidInput(field="url", reason=…): the user gave a link.
 """
 
 from __future__ import annotations
@@ -33,6 +35,14 @@ _REDIRECTS = frozenset({301, 302, 303, 307, 308})
 # to; beyond this it is padding the decoder only sits on (gzip header fields, empty blocks,
 # junk after the end).
 _RAW_EXTRA = 64 * 1024
+# IPv6 forms that carry an IPv4 address in their last 32 bits: IPv4-mapped, IPv4-compatible,
+# IPv4-translated and NAT64's well-known prefix. That IPv4 is where the packet ends up (under
+# DNS64 an A record pointing inside comes back as 64:ff9b::10.x), so it is the one judged.
+# :: and ::1 fall in ::/96 too and stay refused: they carry 0.0.0.0 and 0.0.0.1.
+_CARRY_IPV4 = tuple(
+    ipaddress.IPv6Network(network)
+    for network in ("::ffff:0:0/96", "::/96", "::ffff:0:0:0/96", "64:ff9b::/96")
+)
 
 Resolver = Callable[[str, int], Awaitable[list[str]]]
 
@@ -105,8 +115,11 @@ async def resolve_host(host: str, port: int) -> list[str]:
 
 def is_public(address: str) -> bool:
     ip = ipaddress.ip_address(address)
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.is_site_local:
+            return False  # fec0::/10, deprecated, yet is_global still says yes
+        if any(ip in network for network in _CARRY_IPV4):
+            ip = ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
     # is_global is false for private, loopback, link-local (cloud metadata), CGNAT, reserved.
     return ip.is_global
 

@@ -168,6 +168,13 @@ async def test_only_plain_https_links(url: str) -> None:
         ["::1"],
         ["fd00::1"],
         ["::ffff:10.0.0.1"],
+        ["::"],
+        ["::127.0.0.1"],  # IPv4-compatible
+        ["::10.0.0.1"],
+        ["64:ff9b::10.0.0.1"],  # NAT64: what DNS64 makes of an A record pointing inside
+        ["64:ff9b::169.254.169.254"],
+        ["::ffff:0:10.0.0.1"],  # IPv4-translated
+        ["fec0::1"],  # site-local, deprecated
         [PUBLIC, "10.0.0.1"],  # one private address is enough to refuse
         [],
     ],
@@ -177,6 +184,18 @@ async def test_hosts_that_resolve_inside_are_refused(addresses: list[str]) -> No
     handler = lambda request: calls.append(request) or httpx.Response(200, content=ICS)  # noqa: E731
     got = await reason(fetcher(handler, {"uni.example": addresses}).fetch("https://uni.example/a"))
     assert got == "forbidden_host" and calls == []
+
+
+async def test_a_nat64_address_of_a_public_ipv4_is_allowed() -> None:
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, content=ICS)
+
+    table = {"uni.example": ["64:ff9b::93.184.215.14"]}
+    assert await fetcher(handler, table).fetch("https://uni.example/a") == ICS
+    assert seen[0].url.host == "64:ff9b::93.184.215.14"
 
 
 @pytest.mark.parametrize("url", ["https://127.0.0.1/a.ics", "https://[::1]/a.ics"])
