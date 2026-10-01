@@ -30,6 +30,15 @@
 		reverse_proxy 127.0.0.1:8000
 	}
 
+	# A calendar file may be up to 2 MB: the API itself refuses a bigger one with a clear error.
+	handle /api/schedule/file {
+		request_body {
+			max_size 3MB
+		}
+		header Cache-Control "no-store"
+		reverse_proxy 127.0.0.1:8000
+	}
+
 	handle /api/* {
 		request_body {
 			max_size 64KB

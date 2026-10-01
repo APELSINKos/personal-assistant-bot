@@ -41,8 +41,11 @@ def test_units_are_sandboxed(unit: str, module: str) -> None:
         "ProtectSystem=strict",
         "NoNewPrivileges=true",
         "CapabilityBoundingSet=",
+        "IPAddressDeny=169.254.0.0/16 fe80::/10 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 "
+        "100.64.0.0/10 fc00::/7",
     ):
         assert expected in lines
+    assert not [line for line in lines if line.startswith("IPAddressAllow")]
 
 
 def test_caddy_serves_the_app_with_the_spec_headers() -> None:
@@ -65,6 +68,20 @@ def test_caddy_serves_the_app_with_the_spec_headers() -> None:
     ):
         assert expected in text, expected
     assert "X-Frame-Options" not in text
+
+
+def test_caddy_lets_a_calendar_file_through() -> None:
+    text = (DEPLOY / "Caddyfile").read_text(encoding="utf-8")
+    block = re.search(r"\n\thandle /api/schedule/file \{\n(.*?)\n\t\}\n", text, re.DOTALL)
+    assert block is not None
+    # 3 MB lets the API answer a file over its 2 MB limit with its own error, not Caddy's 413.
+    assert block.group(1).splitlines() == [
+        "\t\trequest_body {",
+        "\t\t\tmax_size 3MB",
+        "\t\t}",
+        '\t\theader Cache-Control "no-store"',
+        "\t\treverse_proxy 127.0.0.1:8000",
+    ]
 
 
 def test_caddy_drops_the_server_header_on_errors_too() -> None:
@@ -171,8 +188,11 @@ def test_no_addresses_or_secrets_in_deploy_files() -> None:
     files = [*DEPLOY.iterdir(), ROOT / ".github" / "workflows" / "deploy.yml"]
     for path in files:
         text = path.read_text(encoding="utf-8")
-        # Loopback is fine (the API listens there); a real address or host name is not.
-        assert not [ip for ip in IPV4.findall(text) if not ip.startswith("127.")], path
+        # Loopback is fine (the API listens there), and so are the private ranges the units deny
+        # (that line is pinned by test_units_are_sandboxed); a real address or host name is not.
+        kept = [line for line in text.splitlines() if not line.startswith("IPAddressDeny=")]
+        found = [ip for line in kept for ip in IPV4.findall(line)]
+        assert not [ip for ip in found if not ip.startswith("127.")], path
         assert not WILDCARD_HOST.search(text), path
         assert "BEGIN " + "OPENSSH PRIVATE KEY" not in text
         assert not re.search(r"\d{6,}:[\w-]{30,}", text)
