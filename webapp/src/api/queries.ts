@@ -336,9 +336,10 @@ export function useSetCity() {
       client.setQueryData(keys.me, me);
       haptic("success");
       // Habits' `done_today` is computed against the city's local date, so a city change can
-      // shift which day "today" is for them too.
+      // shift which day "today" is for them too. Lessons and reminders are shown in the city's zone.
       return Promise.all([
         client.invalidateQueries({ queryKey: keys.today }),
+        client.invalidateQueries({ queryKey: ["agenda"] }),
         client.invalidateQueries({ queryKey: keys.reminders }),
         client.invalidateQueries({ queryKey: keys.habits }),
       ]);
@@ -372,10 +373,18 @@ function useScheduleSaved() {
   };
 }
 
+/** The source is gone already (disconnected from the bot or another device): show that at once. */
+function forgetOnGone(saved: ReturnType<typeof useScheduleSaved>) {
+  return (error: Error) =>
+    error instanceof ApiError && error.status === 404 ? saved({ source: null }) : undefined;
+}
+
+// One schedule change at a time: a late answer must never overwrite a newer state.
 export function useConnectSchedule() {
   const saved = useScheduleSaved();
   return useMutation({
-    mutationFn: (body: { mirea_id: number } | { url: string }) =>
+    scope: { id: "schedule" },
+    mutationFn: (body: { mirea_id: number; url?: never } | { url: string; mirea_id?: never }) =>
       api<ScheduleState>("/schedule", { method: "PUT", body }),
     onSuccess: (state) => {
       haptic("success");
@@ -387,42 +396,51 @@ export function useConnectSchedule() {
 export function useUploadSchedule() {
   const saved = useScheduleSaved();
   return useMutation({
+    scope: { id: "schedule" },
     mutationFn: (file: File) =>
       api<ScheduleState>(`/schedule/file?name=${encodeURIComponent(file.name)}`, { method: "POST", body: file }),
     onSuccess: (state) => {
       haptic("success");
       return saved(state);
     },
+    onError: forgetOnGone(saved),
   });
 }
 
 export function useRefreshSchedule() {
   const saved = useScheduleSaved();
   return useMutation({
+    scope: { id: "schedule" },
     mutationFn: () => api<ScheduleState>("/schedule/refresh", { method: "POST" }),
     onSuccess: (state) => saved(state),
+    onError: forgetOnGone(saved),
   });
 }
 
 export function useScheduleAlerts() {
   const client = useQueryClient();
+  const saved = useScheduleSaved();
   return useMutation({
+    scope: { id: "schedule" },
     mutationFn: (minutes: AlertMinutes | null) =>
       api<ScheduleState>("/schedule", { method: "PATCH", body: { lesson_reminder_minutes: minutes } }),
     onSuccess: (state) => {
       haptic("select");
       client.setQueryData(keys.schedule, state);
     },
+    onError: forgetOnGone(saved),
   });
 }
 
 export function useDisconnectSchedule() {
   const saved = useScheduleSaved();
   return useMutation({
+    scope: { id: "schedule" },
     mutationFn: () => api<void>("/schedule", { method: "DELETE" }),
     onSuccess: () => {
       haptic("success");
       return saved({ source: null });
     },
+    onError: forgetOnGone(saved),
   });
 }

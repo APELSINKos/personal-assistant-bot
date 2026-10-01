@@ -12,7 +12,7 @@ import { ApiError } from "./client";
 import type { Agenda, Habit, Me, Note, ScheduleState } from "./types";
 import {
   createQueryClient, errorCode, keys, useDeleteNote, useDeleteReminder, useDisconnectSchedule, useHabits,
-  useNotes, useSetCity, useSetMark, useUpdateMe, useUploadSchedule,
+  useNotes, useRefreshSchedule, useScheduleAlerts, useSetCity, useSetMark, useUpdateMe, useUploadSchedule,
 } from "./queries";
 
 // Every mutation goes through `api()`, which needs a session (`initData()` non-null) before it
@@ -263,6 +263,7 @@ describe("useSetCity", () => {
     expect(invalidatedKeys).toContainEqual(keys.habits);
     expect(invalidatedKeys).toContainEqual(keys.today);
     expect(invalidatedKeys).toContainEqual(keys.reminders);
+    expect(invalidatedKeys).toContainEqual(["agenda"]);
   });
 });
 
@@ -341,5 +342,52 @@ describe("schedule", () => {
     for (const reason of ["forbidden_host", "unreachable", "too_large", "not_calendar", "source"]) {
       expect(errorCode(new ApiError(422, "validation_error", "Invalid input", { reason }))).toBe(reason);
     }
+  });
+
+  it("refreshes and forgets the source on 404 (disconnected from bot)", async () => {
+    mockApi({ "POST /schedule/refresh": { status: 404, body: { status: 404, code: "not_found", title: "Not found" } } });
+    const client = createQueryClient();
+    client.setQueryData(keys.schedule, { source: scheduleSource });
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    const { result } = renderHook(() => useRefreshSchedule(), { wrapper: wrapperFor(client) });
+    act(() => result.current.mutate());
+    await waitFor(() => expect(client.getQueryData<ScheduleState>(keys.schedule)).toEqual({ source: null }));
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["agenda"] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.today });
+  });
+
+  it("alerts and forgets the source on 404 (disconnected from bot)", async () => {
+    mockApi({ "PATCH /schedule": { status: 404, body: { status: 404, code: "not_found", title: "Not found" } } });
+    const client = createQueryClient();
+    client.setQueryData(keys.schedule, { source: scheduleSource });
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    const { result } = renderHook(() => useScheduleAlerts(), { wrapper: wrapperFor(client) });
+    act(() => result.current.mutate(15));
+    await waitFor(() => expect(client.getQueryData<ScheduleState>(keys.schedule)).toEqual({ source: null }));
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["agenda"] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.today });
+  });
+
+  it("disconnects and forgets the source on 404 (disconnected from bot)", async () => {
+    mockApi({ "DELETE /schedule": { status: 404, body: { status: 404, code: "not_found", title: "Not found" } } });
+    const client = createQueryClient();
+    client.setQueryData(keys.schedule, { source: scheduleSource });
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    const { result } = renderHook(() => useDisconnectSchedule(), { wrapper: wrapperFor(client) });
+    act(() => result.current.mutate());
+    await waitFor(() => expect(client.getQueryData<ScheduleState>(keys.schedule)).toEqual({ source: null }));
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["agenda"] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.today });
+  });
+
+  it("upload also invalidates today", async () => {
+    mockApi({ "POST /schedule/file": { source: { ...scheduleSource, kind: "file" } } });
+    const client = createQueryClient();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    const { result } = renderHook(() => useUploadSchedule(), { wrapper: wrapperFor(client) });
+    const file = new File(["BEGIN:VCALENDAR"], "Английский.ics", { type: "text/calendar" });
+    act(() => result.current.mutate(file));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.today });
   });
 });
