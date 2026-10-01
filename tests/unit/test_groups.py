@@ -218,7 +218,8 @@ async def test_a_failed_full_crawl_keeps_the_directory(sessionmaker, session, mo
     for group_id in range(1, 4):
         await add(session, group_id, f"ИКБО-0{group_id}-24")
     pace = Pace()
-    later = NOW + timedelta(days=7)
+    # Past the keeping time: only the guard against a crawl that found too few saves them.
+    later = NOW + groups.PRUNE_AFTER + timedelta(days=1)
     # MIREA is down: every request fails, nothing is found.
     result = await groups.full_crawl(
         sessionmaker,
