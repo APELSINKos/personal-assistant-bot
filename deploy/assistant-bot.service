@@ -43,7 +43,8 @@ CapabilityBoundingSet=
 AmbientCapabilities=
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 # Calendar links are fetched from public addresses only; the whole process is kept out of
-# link-local and private networks as well (loopback stays open: the API listens there).
+# link-local and private networks as well (loopback stays open: DNS goes through the
+# local stub).
 IPAddressDeny=169.254.0.0/16 fe80::/10 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 fc00::/7
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
