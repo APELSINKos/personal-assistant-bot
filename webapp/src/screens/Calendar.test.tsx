@@ -311,6 +311,45 @@ describe("Calendar lessons", () => {
     fireEvent.click(screen.getByRole("button", { name: "Календарь Показать месяц" }));
     expect(await screen.findByRole("button", { name: "Завтра · среда, 30 сентября, 1 пара" })).toBeInTheDocument();
   });
+
+  it("counts in English", async () => {
+    at("2026-09-29T09:00:00Z");
+    installTelegram();
+    mockApi({
+      "GET /me": me,
+      "GET /agenda?from=2026-09-28&to=2026-10-04": week("2026-09-28", {
+        "2026-09-29": [LECTURE, DATABASES, PILLS],
+        "2026-09-30": [DATABASES],
+      }),
+    });
+    renderWithApp(<CalendarScreen />, { path: "/calendar", lang: "en" });
+    expect(await screen.findByText("2 classes · 1 reminder")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Tomorrow · Wednesday, September 30" }));
+    expect(screen.getByText("1 class")).toBeInTheDocument();
+  });
+
+  it("labels the week by the picked day, not by the window's first labelled day", async () => {
+    at("2026-09-29T09:00:00Z");
+    installTelegram();
+    // The timetable's week changes on Thursday, and Wednesday falls outside every label.
+    const labels: Record<string, string | null> = {
+      "2026-09-28": "5 неделя", "2026-09-29": "5 неделя", "2026-09-30": null,
+      "2026-10-01": "6 неделя", "2026-10-02": "6 неделя", "2026-10-03": "6 неделя", "2026-10-04": "6 неделя",
+    };
+    mockApi({
+      "GET /me": me,
+      "GET /agenda?from=2026-09-28&to=2026-10-04": {
+        days: weekOf("2026-09-28").map((date) => ({ date, label: labels[date] ?? null, items: [] })),
+      },
+    });
+    renderWithApp(<CalendarScreen />, { path: "/calendar" });
+    expect(await screen.findByText("5 неделя · 28 сент. – 4 окт.")).toBeInTheDocument(); // Tuesday
+    fireEvent.click(screen.getByRole("button", { name: "Послезавтра · четверг, 1 октября" }));
+    expect(screen.getByText("6 неделя · 28 сент. – 4 окт.")).toBeInTheDocument();
+    // A day without a label of its own falls back to the first label of the window.
+    fireEvent.click(screen.getByRole("button", { name: "Завтра · среда, 30 сентября" }));
+    expect(screen.getByText("5 неделя · 28 сент. – 4 окт.")).toBeInTheDocument();
+  });
 });
 
 describe("Calendar dots", () => {

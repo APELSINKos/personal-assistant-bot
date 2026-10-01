@@ -28,6 +28,12 @@ function itemsOn(days: AgendaDay[] | undefined, iso: string): AgendaItem[] {
   return days?.find((day) => day.date === iso)?.items ?? [];
 }
 
+/** The timetable's week label for a day. It belongs to a date range, so a window can hold two;
+ *  a day outside every range borrows the window's first label. */
+function labelOn(days: AgendaDay[] | undefined, iso: string): string | null {
+  return days?.find((day) => day.date === iso)?.label || days?.find((day) => day.label)?.label || null;
+}
+
 /** The week's days sliced out of an already-loaded month range, when it covers every one of them. */
 function weekDaysFrom(monthDays: AgendaDay[] | undefined, weekIsos: string[]): AgendaDay[] | undefined {
   if (!monthDays) return undefined;
@@ -95,7 +101,7 @@ export function CalendarScreen() {
   // user just picked a day from the open month) stands in at once; the week keeps fetching quietly.
   const days = agenda.data?.days ?? weekDaysFrom(month.data?.days, week);
   const dayItems = itemsOn(days, day);
-  const weekLabel = days?.find((entry) => entry.label)?.label ?? null;
+  const weekLabel = labelOn(days, day);
   const heading = (iso: string) => dayHeading(iso, today, lang, t.calendar.words);
   /** «2 пары · 1 напоминание», or «Ничего не запланировано». */
   const summary = (items: AgendaItem[]) => {

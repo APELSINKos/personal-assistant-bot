@@ -1,5 +1,6 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { keys } from "../api/queries";
 import type { TodayLesson } from "../api/types";
 import { installTelegram } from "../test/fakeTelegram";
 import { habit, today } from "../test/fixtures";
@@ -90,8 +91,6 @@ describe("Today lessons", () => {
     },
   ];
 
-  afterEach(() => vi.useRealTimers());
-
   it("lists the day's lessons, then says they are over", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-09-28T08:00:00Z")); // 11:00 in Moscow, during the first one
@@ -124,5 +123,82 @@ describe("Today lessons", () => {
     mockApi({ "GET /today": { ...today, has_schedule: true, lessons, week_label: null } });
     renderWithApp(<TodayScreen />, { lang: "en" });
     expect(await screen.findByText("Classes")).toBeInTheDocument();
+  });
+
+  it("says the lessons are over in English", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-28T11:10:00Z")); // the last one has just ended
+    installTelegram();
+    mockApi({ "GET /today": { ...today, has_schedule: true, lessons, week_label: null } });
+    renderWithApp(<TodayScreen />, { lang: "en" });
+    expect(await screen.findByText("Classes are over for today")).toBeInTheDocument();
+    expect(screen.queryByText("Математический анализ")).not.toBeInTheDocument();
+  });
+
+  // The tests below fake setTimeout as well as Date: only the card's own timer may re-render it.
+  // shouldAdvanceTime lets the query hand its data over (through setTimeout(0)) in real time.
+  const fakeClock = (iso: string) => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(iso));
+  };
+
+  it("says the lessons are over by itself when the last one ends", async () => {
+    fakeClock("2026-09-28T11:09:00Z"); // a minute before the last lesson ends
+    installTelegram();
+    const { calls } = mockApi({ "GET /today": { ...today, has_schedule: true, lessons, week_label: "5 неделя" } });
+    renderWithApp(<TodayScreen />);
+    expect(await screen.findByText("Разработка баз данных")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(90_000);
+    });
+    expect(screen.getByText("Пары закончились")).toBeInTheDocument();
+    expect(screen.queryByText("Разработка баз данных")).not.toBeInTheDocument();
+    expect(calls.filter((call) => call.path === "/today")).toHaveLength(1); // no refetch behind it
+  });
+
+  it("follows the lessons when they change", async () => {
+    fakeClock("2026-09-28T11:09:00Z");
+    installTelegram();
+    mockApi({ "GET /today": { ...today, has_schedule: true, lessons, week_label: null } });
+    const { client } = renderWithApp(<TodayScreen />);
+    expect(await screen.findByText("Разработка баз данных")).toBeInTheDocument();
+    // The timetable is refreshed and the last lesson now runs an hour longer, to 15:10 (12:10 UTC).
+    const longer = lessons.map((lesson, index) =>
+      index === 1 ? { ...lesson, end: "15:10", ends_at: "2026-09-28T12:10:00Z" } : lesson,
+    );
+    await act(async () => {
+      client.setQueryData(keys.today, { ...today, has_schedule: true, lessons: longer, week_label: null });
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    act(() => {
+      vi.advanceTimersByTime(2 * 60_000); // past the old end
+    });
+    expect(screen.getByText("Разработка баз данных")).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(60 * 60_000); // past the new one
+    });
+    expect(screen.getByText("Пары закончились")).toBeInTheDocument();
+  });
+
+  it("judges lessons that arrive after they ended by the time of their arrival", async () => {
+    fakeClock("2026-09-28T07:00:00Z"); // 10:00 in Moscow: the first day's lessons are still ahead
+    installTelegram();
+    mockApi({ "GET /today": { ...today, has_schedule: true, lessons, week_label: null } });
+    const { client } = renderWithApp(<TodayScreen />);
+    expect(await screen.findByText("Разработка баз данных")).toBeInTheDocument();
+    // The app stays open overnight and is refreshed in the evening of the next day, after that day's classes.
+    vi.setSystemTime(new Date("2026-09-29T15:00:00Z"));
+    const nextDay = lessons.map((lesson) => ({
+      ...lesson,
+      starts_at: lesson.starts_at.replace("09-28", "09-29"),
+      ends_at: lesson.ends_at.replace("09-28", "09-29"),
+    }));
+    await act(async () => {
+      client.setQueryData(keys.today, {
+        ...today, date: "2026-09-29", has_schedule: true, lessons: nextDay, week_label: null,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText("Пары закончились")).toBeInTheDocument();
   });
 });

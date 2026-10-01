@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Link } from "wouter";
 import { useSetMark, useToday } from "../api/queries";
 import type { Rate, TodayLesson, Weather } from "../api/types";
@@ -40,10 +40,23 @@ function lessonsOver(lessons: TodayLesson[], now: number = Date.now()): boolean 
   return lessons.every((lesson) => now >= Date.parse(lesson.ends_at));
 }
 
+// A longer delay makes setTimeout fire at once instead.
+const MAX_TIMEOUT = 2 ** 31 - 1;
+
 function LessonsCard({
   lessons, weekLabel, index,
 }: { lessons: TodayLesson[]; weekLabel: string | null; index: number }) {
   const t = useT();
+  const [tick, setTick] = useState(0);
+  // «Пары закончились» is decided at render time, and while the screen stays open nothing else re-renders
+  // the card when the day's last lesson ends. So one timer, up to that moment, does. It is cleared on
+  // unmount and re-armed when the lessons change (or after it fires early: `tick` re-runs this effect).
+  useEffect(() => {
+    const wait = Math.max(...lessons.map((lesson) => Date.parse(lesson.ends_at))) - Date.now();
+    if (!(wait > 0)) return;
+    const timer = setTimeout(() => setTick((count) => count + 1), Math.min(wait, MAX_TIMEOUT));
+    return () => clearTimeout(timer);
+  }, [lessons, tick]);
   return (
     <Card title={weekLabel ? `${t.today.lessons} · ${weekLabel}` : t.today.lessons} index={index}>
       {lessonsOver(lessons) ? (
