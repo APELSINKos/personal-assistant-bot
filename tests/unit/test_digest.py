@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from pathlib import Path
 
 import pytest
 
 from assistant.core.clients.cbr import Rate, Rates
 from assistant.core.errors import UpstreamUnavailable
-from assistant.core.services import digest, notes
+from assistant.core.services import digest, notes, schedule
 
 NOW = datetime(2026, 9, 28, 5, 0, tzinfo=UTC)  # 08:00 Moscow
+MIREA = (
+    Path(__file__).resolve().parents[1] / "fixtures" / "schedule" / "mirea_ikbo_63_24.ics"
+).read_bytes()
 
 
 class Meteo:
@@ -66,3 +70,19 @@ async def test_today_survives_upstream_failure(session, make_user) -> None:
     user = await make_user()
     data = await digest.today(session, user, Meteo(fail=True), Cbr(), NOW)
     assert data.weather is None and data.rates is not None
+
+
+async def test_today_has_the_lessons_of_the_day(session, make_user) -> None:
+    user = await make_user()
+    data = await digest.today(session, user, Meteo(), Cbr(), NOW)
+    assert (data.has_schedule, data.lessons, data.week_label) == (False, [], None)
+    await schedule.connect_file(session, user, MIREA, "group.ics", NOW)
+    await session.commit()
+    wednesday = datetime(2026, 9, 30, 5, 0, tzinfo=UTC)  # 08:00 Moscow
+    data = await digest.today(session, user, Meteo(), Cbr(), wednesday)
+    assert data.has_schedule and data.week_label == "5 неделя"
+    assert [(lesson.kind, lesson.title) for lesson in data.lessons] == [
+        ("ПР", "Разработка баз данных")
+    ]
+    monday = await digest.today(session, user, Meteo(), Cbr(), NOW)
+    assert monday.has_schedule and monday.lessons == []  # a connected day without lessons
