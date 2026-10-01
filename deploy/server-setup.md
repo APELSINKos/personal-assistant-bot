@@ -384,7 +384,7 @@ same `runuser` line with `alembic upgrade head` instead, and start them again.
 ### Going from 2.2 to 2.3
 
 Version 2.3 changes three files that are installed by hand: both units gain
-`IPAddressDeny=` (no connections to link-local or private networks) and the
+`IPAddressDeny=` (no connections to link-local, private or CGNAT networks) and the
 Caddyfile lets calendar files of up to 2 MB through to the API. Install them
 once 2.3 is on `main`, before or after its deploy — the order does not matter,
 both files work with 2.2 and 2.3 alike:
@@ -442,10 +442,10 @@ the lesson alert settings are gone, reminders, notes and habits stay. That is
 why `assistant-backup.service` runs first: the deploy's own snapshot is taken
 after the downgrade, when those tables are already gone. The copy is written to
 `/var/backups/assistant/assistant-<UTC date>.db` and replaces today's nightly
-copy if it is already there (the script names the file by the UTC date and
-overwrites it, and so does the nightly run at 03:30 UTC, so before that time
-copy the file under another name). If the copy fails, the script stops before
-the downgrade. The new units and Caddyfile can stay as they are.
+copy if it is already there (`assistant-backup` names the file by the UTC
+date and overwrites it, and so does the nightly run at 03:30 UTC, so before that
+time copy the file under another name). If the copy fails, the commands above
+stop before the downgrade. The new units and Caddyfile can stay as they are.
 
 ## 8. Restore from a backup
 
