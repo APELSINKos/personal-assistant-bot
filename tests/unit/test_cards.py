@@ -117,6 +117,7 @@ def test_a_name_loses_only_what_its_font_cannot_draw() -> None:
     # A name from before 2.4 may hold an emoji or another script: drawn, they would be boxes.
     assert cards.render(replace(CARD, name="💪 Спорт 读书"), RU) == cards.render(CARD, RU)
     assert cards.render(replace(CARD, name="💪"), RU)[:2] == b"\xff\xd8"  # nothing left: no name
+    assert cards._drawable("Мои\u0306 день") == "Мой день"  # a decomposed «й» keeps its breve
 
 
 def test_every_emoji_and_colour_of_the_set_can_be_drawn() -> None:

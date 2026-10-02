@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import unicodedata
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -209,7 +210,8 @@ def _glyph(char: str) -> bytes:
 def _drawable(text: str) -> str:
     """`text` without the characters the name font lacks: an emoji or another script would come
     out as boxes, and the habit's own emoji stands beside the name anyway."""
-    kept = "".join(char for char in text if char.isspace() or _glyph(char) != _glyph(MISSING))
+    composed = unicodedata.normalize("NFC", text)  # a decomposed «й» would lose its breve
+    kept = "".join(char for char in composed if char.isspace() or _glyph(char) != _glyph(MISSING))
     return " ".join(kept.split())
 
 
