@@ -98,7 +98,12 @@ def caption(card: Card, t: Translator) -> str:
 
 @lru_cache(maxsize=128)
 def _font(name: str, size: int, weight: int) -> ImageFont.FreeTypeFont:
-    font = ImageFont.truetype(str(ASSETS / "fonts" / f"{name}.ttf"), size)
+    # BASIC everywhere: RAQM (Linux, with libfribidi) lays text out differently.
+    font = ImageFont.truetype(
+        str(ASSETS / "fonts" / f"{name}.ttf"),
+        size,
+        layout_engine=ImageFont.Layout.BASIC,
+    )
     font.set_variation_by_axes([weight])
     return font
 

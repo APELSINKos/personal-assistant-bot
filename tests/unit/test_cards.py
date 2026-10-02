@@ -72,6 +72,18 @@ def test_the_same_habit_gives_the_same_picture() -> None:
     assert cards.render(CARD, RU) == cards.render(CARD, RU)
 
 
+def test_the_card_is_the_same_bytes_on_every_machine() -> None:
+    # Windows and Linux alike; a new Pillow or font changes these — then redraw the README cards.
+    assert (
+        hashlib.sha256(cards.render(CARD, RU)).hexdigest()
+        == "62d5f39d447eaf1f81f74ec9eee2adfe2bb8eae467a68b7540ce27885a42ccf5"
+    )
+    assert (
+        hashlib.sha256(cards.render(CARD, EN)).hexdigest()
+        == "b9a1214613327e3de1d344aeb151dd6322d75baffaf93ceb869f0083e7f7e3e7"
+    )
+
+
 def test_the_map_paints_done_days_in_the_habit_colour() -> None:
     mint = (124, 245, 196)
     all_done = picture(cards.render(CARD, RU))
