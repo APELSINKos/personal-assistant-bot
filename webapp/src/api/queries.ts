@@ -3,6 +3,7 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "../components/toastStore";
 import { withMark } from "../lib/habits";
+import { stateOn } from "../lib/habits";
 import { canShareMessages, haptic, shareMessage } from "../telegram";
 import { api, ApiError } from "./client";
 import type {
@@ -294,6 +295,8 @@ const MARK_MUTATION_KEY = ["mark"];
  * serialises the actual requests (one at a time, in call order) while `onMutate` still runs
  * immediately for both, so the cache reflects the latest tap right away; the mutation key lets
  * `onSettled` refresh only once — when it is the last mark mutation still in flight.
+ * A refused tap puts back only its own habit's earlier mark, and only where its own mark is still
+ * the one shown: taps queued behind it are already on screen, and a whole-cache snapshot would wipe them.
  */
 export function useSetMark() {
   const client = useQueryClient();
@@ -311,18 +314,28 @@ export function useSetMark() {
         client.cancelQueries({ queryKey: keys.habits }),
         client.cancelQueries({ queryKey: keys.today }),
       ]);
-      const previous = {
-        habits: client.getQueryData<Habit[]>(keys.habits),
-        today: client.getQueryData<Today>(keys.today),
-      };
+      // The habit as the list shows it, else as Today does. In neither: nothing changes below.
+      const inList = client.getQueryData<Habit[]>(keys.habits)?.find((habit) => habit.id === id);
+      const inToday = client.getQueryData<Today>(keys.today)?.habits.items.find((habit) => habit.id === id);
+      const tapped = inList ?? inToday;
       client.setQueryData<Habit[]>(keys.habits, (items) => items?.map(patch(id, done)));
       client.setQueryData<Today>(keys.today, (data) =>
         data && { ...data, habits: { ...data.habits, items: data.habits.items.map(patch(id, done)) } });
-      return previous;
+      return tapped && { before: tapped.done_today, done };
     },
-    onError: (_error, _vars, previous) => {
-      client.setQueryData(keys.habits, previous?.habits);
-      client.setQueryData(keys.today, previous?.today);
+    onError: (_error, { id }, tap) => {
+      if (!tap) return;
+      // A cache is touched only where this tap's mark is still shown; otherwise a later tap owns it.
+      const shows = (habit: Habit) => habit.id === id && habit.done_today === tap.done;
+      const undo = (habit: Habit) => (shows(habit) ? { ...habit, done_today: tap.before } : habit);
+      const list = client.getQueryData<Habit[]>(keys.habits);
+      if (list?.some(shows)) client.setQueryData<Habit[]>(keys.habits, list.map(undo));
+      const today = client.getQueryData<Today>(keys.today);
+      if (today?.habits.items.some(shows)) {
+        client.setQueryData<Today>(keys.today, {
+          ...today, habits: { ...today.habits, items: today.habits.items.map(undo) },
+        });
+      }
     },
     onSettled: () => {
       if (client.isMutating({ mutationKey: MARK_MUTATION_KEY }) === 1) return refresh(keys.habits);
@@ -330,9 +343,16 @@ export function useSetMark() {
   });
 }
 
+/** A day's mark in an open habit as the API takes it: true done, false missed, null no mark. */
+function markOn(habit: HabitDetail, day: string): boolean | null {
+  const state = stateOn(habit.year_from, habit.year, day);
+  return state === "done" ? true : state === "missed" ? false : null;
+}
+
 /**
- * A mark on any day of an open habit (its month editor): the day changes on screen at once and
- * comes back if the server refuses. It shares useSetMark's scope and key, so marks go to the
+ * A mark on any day of an open habit (its month editor): the day changes on screen at once. A
+ * refusal puts back only that day, and only while the tap's mark is still the one shown (a later
+ * tap on the day owns it by then). It shares useSetMark's scope and key, so marks go to the
  * server one at a time and the list refreshes once, after the last.
  */
 export function useMarkDay() {
@@ -346,12 +366,20 @@ export function useMarkDay() {
     onMutate: async ({ id, day, done }) => {
       haptic("tap");
       await client.cancelQueries({ queryKey: keys.habit(id) });
-      const previous = client.getQueryData<HabitDetail>(keys.habit(id));
+      const cached = client.getQueryData<HabitDetail>(keys.habit(id));
       client.setQueryData<HabitDetail>(keys.habit(id), (habit) =>
         habit && { ...habit, year: withMark(habit.year_from, habit.year, day, done) });
-      return previous;
+      // A habit that is not cached: nothing changed above, so there is nothing to undo.
+      return cached && { before: markOn(cached, day), done };
     },
-    onError: (_error, { id }, previous) => client.setQueryData(keys.habit(id), previous),
+    onError: (_error, { id, day }, tap) => {
+      const habit = client.getQueryData<HabitDetail>(keys.habit(id));
+      if (tap && habit && markOn(habit, day) === tap.done) {
+        client.setQueryData<HabitDetail>(keys.habit(id), {
+          ...habit, year: withMark(habit.year_from, habit.year, day, tap.before),
+        });
+      }
+    },
     onSettled: () => {
       if (client.isMutating({ mutationKey: MARK_MUTATION_KEY }) === 1) return refresh(keys.habits);
     },

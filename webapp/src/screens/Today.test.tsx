@@ -50,6 +50,15 @@ describe("Today", () => {
     expect(await screen.findByText("🔥 Best streak: “Run” — 1 week")).toBeInTheDocument();
   });
 
+  it("counts each habit's streak in its own unit", async () => {
+    installTelegram();
+    const weekly = { ...habit, id: 8, name: "Бег", weekly_goal: 3, streak: 3, streak_unit: "weeks" };
+    mockApi({ "GET /today": { ...today, habits: { ...today.habits, items: [habit, weekly] } } });
+    renderWithApp(<TodayScreen />);
+    expect(await screen.findByText("🔥 3 недели")).toBeInTheDocument();
+    expect(screen.getByText("🔥 5 дней")).toBeInTheDocument();
+  });
+
   it("marks a habit with one tap", async () => {
     const app = installTelegram();
     let done: boolean | null = null;

@@ -158,7 +158,7 @@ export function TodayScreen() {
             <div key={habit.id} className="habit">
               <div>
                 <div className="habit__name">{habit.name}</div>
-                {habit.streak > 0 && <div className="accent">🔥 {t.habits.streak(habit.streak)}</div>}
+                {habit.streak > 0 && <div className="accent">🔥 {t.habits.streakIn(habit.streak, habit.streak_unit)}</div>}
               </div>
               <HabitToggle
                 habit={habit}
