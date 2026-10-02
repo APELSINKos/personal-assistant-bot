@@ -408,3 +408,11 @@ async def test_calendars_are_parsed_one_at_a_time(make_user, monkeypatch) -> Non
     user = await make_user()
     await asyncio.gather(*(schedule._timetable(b"", user, NOW) for _ in range(4)))
     assert most == 1
+
+
+async def test_precheck_refuses_a_bad_link_and_an_unknown_group(session) -> None:
+    with pytest.raises(InvalidInput):
+        await schedule.precheck(session, url="not a link")
+    with pytest.raises(NotFound):
+        await schedule.precheck(session, mirea_id=99_999)
+    await schedule.precheck(session, url="webcal://uni.example/a.ics")  # a link it would try

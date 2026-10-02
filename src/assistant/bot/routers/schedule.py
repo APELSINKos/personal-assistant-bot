@@ -371,6 +371,12 @@ async def on_group(query: CallbackQuery, callback_data: ScheduleCb, ctx: Ctx, bo
         await replies.answer_quietly(query, ctx.t("stale-button"))
         return
     group_id = int(callback_data.value)
+    try:
+        await schedule.precheck(ctx.session, mirea_id=group_id)
+    except NotFound:  # gone from the directory since the list was shown: no attempt counted
+        await replies.answer_quietly(query)
+        await replies.send(bot, query, ctx.t("schedule-error-group"))
+        return
     refusal = _over_budget(ctx)
     if refusal is not None:
         await replies.answer_quietly(query, refusal)  # the group buttons stay for a later try
@@ -386,6 +392,11 @@ async def on_group(query: CallbackQuery, callback_data: ScheduleCb, ctx: Ctx, bo
 
 async def got_link(message: Message, ctx: Ctx) -> None:
     link = (message.text or "").strip()
+    try:
+        await schedule.precheck(ctx.session, url=link)
+    except InvalidInput as error:  # not a link at all: no attempt counted
+        await message.answer(texts.schedule_error_text(str(error.params.get("reason", "")), ctx.t))
+        return
     refusal = _over_budget(ctx)
     if refusal is not None:
         await message.answer(refusal)

@@ -382,3 +382,27 @@ async def test_old_data_is_marked(feed, fake, session, mirea, monkeypatch) -> No
     monkeypatch.setattr(schedule_router, "clock", lambda: later)
     await feed(message_update("🎓 Расписание"))
     assert fake.sent_texts()[-1].endswith("⚠️ Данные от 28 сентября — источник пока недоступен.")
+
+
+async def test_a_malformed_link_spends_no_attempt(feed, fake, calendars) -> None:
+    calendars.bodies["https://uni.example/t.ics"] = (FIXTURES / "foreign.ics").read_bytes()
+    await feed(press("link"))
+    for _ in range(4):
+        await feed(message_update("not a link"))
+        assert fake.sent_texts()[-1].startswith("⚠️ Эта ссылка не подходит")
+    assert calendars.requests == []
+    await feed(message_update("webcal://uni.example/t.ics"))  # the budget is untouched
+    assert fake.sent_texts()[-2].startswith("✅ Расписание подключено: Physics 101.")
+
+
+async def test_a_group_gone_from_the_directory_spends_no_attempt(
+    feed, fake, session, mirea
+) -> None:
+    await directory(session, (4805, "ИКБО-63-24"), (4804, "ИКБО-62-24"))
+    await feed(press("find"))
+    await feed(message_update("ИКБО"))
+    for _ in range(4):
+        await feed(press("group", "4000"))
+        assert fake.sent_texts()[-1] == "⚠️ Этой группы уже нет в справочнике — найди её заново."
+    await feed(press("group", "4805"))
+    assert fake.sent_texts()[-2] == CONNECTED

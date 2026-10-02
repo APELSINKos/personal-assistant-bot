@@ -66,6 +66,7 @@ async def search_groups(
 async def connect(body: ScheduleIn, user: CurrentUser, db: Session, state: State) -> ScheduleState:
     if (body.mirea_id is None) == (body.url is None):
         raise InvalidInput(field="schedule", reason="source")  # exactly one of the two
+    await schedule.precheck(db, mirea_id=body.mirea_id, url=body.url)
     _attempt(state, user)
     async with state.schedule_lock(user.id):
         now = state.clock()
