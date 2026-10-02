@@ -102,8 +102,6 @@ export const ru = {
     since: (date: string) => `с ${date}`,
     record: "Рекорд",
     year: "За год",
-    thisWeek: "Неделя",
-    weekValue: (done: number, goal: number) => `${done} из ${goal}`,
     inARow: "подряд",
     yearMap: "Последние 12 месяцев",
     dayToggle: (date: string, state: string) => `${date}: ${state}. Нажми, чтобы изменить`,

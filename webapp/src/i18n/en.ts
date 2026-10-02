@@ -98,8 +98,6 @@ export const en: Dict = {
     since: (date: string) => `since ${date}`,
     record: "Record",
     year: "Past year",
-    thisWeek: "This week",
-    weekValue: (done: number, goal: number) => `${done} of ${goal}`,
     inARow: "in a row",
     yearMap: "Last 12 months",
     dayToggle: (date: string, state: string) => `${date}: ${state}. Tap to change`,
