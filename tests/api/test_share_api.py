@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from aiogram.exceptions import TelegramNetworkError
+from aiogram.exceptions import ClientDecodeError, TelegramNetworkError
 from aiogram.methods import GetMe, SavePreparedInlineMessage, SendPhoto
 from sqlalchemy import func, select
 
@@ -93,6 +93,25 @@ async def test_an_unreachable_telegram_is_a_503_and_keeps_no_card(
         refused = await client.post(f"/api/habits/{habit_id}/{path}", headers=auth())
         assert refused.status_code == 503 and refused.json()["code"] == "upstream_unavailable"
     assert await _cards(session) == 0
+
+
+async def test_an_unreadable_telegram_answer_is_a_503_and_keeps_no_card(
+    client, auth, telegram, session
+) -> None:
+    habit_id = await _habit(client, auth)
+    # An outage often answers with an HTML 502 page, which aiogram cannot decode.
+    html = ValueError("Expecting value")
+    telegram.errors.append(ClientDecodeError("Failed to decode object", html, "<html>"))
+    refused = await client.post(f"/api/habits/{habit_id}/share", headers=auth())
+    assert refused.status_code == 503 and refused.json()["code"] == "upstream_unavailable"
+    assert await _cards(session) == 0
+    # After a successful share (which caches the bot's name), pin the prepared-message path.
+    assert (await client.post(f"/api/habits/{habit_id}/share", headers=auth())).status_code == 200
+    assert await _cards(session) == 1
+    telegram.errors.append(ClientDecodeError("Failed to decode object", html, "<html>"))
+    refused = await client.post(f"/api/habits/{habit_id}/share", headers=auth())
+    assert refused.status_code == 503 and refused.json()["code"] == "upstream_unavailable"
+    assert await _cards(session) == 1  # the card of the failed message is forgotten
 
 
 async def test_without_the_site_or_the_bot_sharing_is_off(app, client, auth) -> None:

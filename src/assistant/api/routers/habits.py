@@ -7,7 +7,7 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramAPIError
+from aiogram.exceptions import ClientDecodeError, TelegramAPIError
 from aiogram.types import BufferedInputFile, InlineQueryResultPhoto
 from fastapi import APIRouter, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -111,7 +111,7 @@ async def _draw(
         raise RateLimited(wait)
     try:
         me = await bot.me()  # asked once, then kept by the Bot
-    except TelegramAPIError as error:
+    except (TelegramAPIError, ClientDecodeError) as error:
         log.warning("asking Telegram for the bot's name failed: %s", error)
         raise UpstreamUnavailable(service="telegram") from error
     t = user_translator(user)
@@ -141,7 +141,7 @@ async def share_habit(habit_id: ItemId, user: CurrentUser, db: Session, state: S
             allow_group_chats=True,
             allow_channel_chats=True,
         )
-    except TelegramAPIError as error:
+    except (TelegramAPIError, ClientDecodeError) as error:
         log.warning("preparing a shared card for user %s failed: %s", user.id, error)
         await sharing.forget(db, token)
         await db.commit()
@@ -163,7 +163,7 @@ async def send_card(habit_id: ItemId, user: CurrentUser, db: Session, state: Sta
             photo=BufferedInputFile(image, filename="habit.jpg"),
             caption=cards.caption(card, t),
         )
-    except TelegramAPIError as error:
+    except (TelegramAPIError, ClientDecodeError) as error:
         log.warning("sending a card to user %s failed: %s", user.id, error)
         raise UpstreamUnavailable(service="telegram") from error
     return Response(status_code=204)
