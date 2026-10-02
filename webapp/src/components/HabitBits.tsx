@@ -1,7 +1,10 @@
 import { Check, Circle, X } from "lucide-react";
+import { Link } from "wouter";
+import { ApiError } from "../api/client";
 import type { Habit } from "../api/types";
 import { useT } from "../i18n";
 import { dayState } from "../lib/habits";
+import { ErrorState } from "./States";
 
 export function nextMark(done: boolean | null): boolean | null {
   if (done === null) return true;
@@ -48,4 +51,18 @@ export function HabitToggle(
       <Icon size={20} aria-hidden />
     </button>
   );
+}
+
+/** A habit that could not be loaded: gone (404) with the way back to the list, or a retryable error. */
+export function HabitLoadError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  const t = useT();
+  if (error instanceof ApiError && error.status === 404) {
+    return (
+      <div className="empty">
+        <p>{t.habits.gone}</p>
+        <Link href="/habits" className="button">{t.habits.toHabits}</Link>
+      </div>
+    );
+  }
+  return <ErrorState onRetry={onRetry} />;
 }

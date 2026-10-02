@@ -1,12 +1,12 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { type CSSProperties, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
-import { ApiError } from "../api/client";
 import { useDeleteHabit, useHabit, useMarkDay, useMe, useShareHabit } from "../api/queries";
 import type { HabitDetail } from "../api/types";
 import { Card } from "../components/Card";
+import { HabitLoadError } from "../components/HabitBits";
 import { MonthMarks } from "../components/MonthMarks";
-import { ErrorState, Loader } from "../components/States";
+import { Loader } from "../components/States";
 import { toast } from "../components/toastStore";
 import { YearMap } from "../components/YearMap";
 import { useLang, useT } from "../i18n";
@@ -40,17 +40,7 @@ export function HabitScreen() {
   const remove = useDeleteHabit();
   const [month, setMonth] = useState<string | null>(null);
 
-  if (habit.isError) {
-    if (habit.error instanceof ApiError && habit.error.status === 404) {
-      return (
-        <div className="empty">
-          <p>{t.habits.gone}</p>
-          <Link href="/habits" className="button">{t.habits.toHabits}</Link>
-        </div>
-      );
-    }
-    return <ErrorState onRetry={() => void habit.refetch()} />;
-  }
+  if (habit.isError) return <HabitLoadError error={habit.error} onRetry={() => void habit.refetch()} />;
   if (habit.isPending || zone === undefined) return <Loader />;
 
   const data = habit.data;

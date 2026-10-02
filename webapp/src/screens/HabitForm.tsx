@@ -1,10 +1,10 @@
 import { type CSSProperties, useState } from "react";
-import { Link, useLocation, useRoute } from "wouter";
-import { ApiError } from "../api/client";
+import { useLocation, useRoute } from "wouter";
 import { useCreateHabit, useHabit, useUpdateHabit } from "../api/queries";
 import type { HabitColor } from "../api/types";
+import { HabitLoadError } from "../components/HabitBits";
 import { MainAction } from "../components/MainAction";
-import { ErrorState, Loader } from "../components/States";
+import { Loader } from "../components/States";
 import { useT } from "../i18n";
 import { COLORS, DAILY, EMOJI } from "../lib/habits";
 import { confirmAction, useBackButton, useClosingConfirmation } from "../telegram";
@@ -51,17 +51,7 @@ export function HabitForm() {
     })();
   });
 
-  if (id !== null && habit.isError) {
-    if (habit.error instanceof ApiError && habit.error.status === 404) {
-      return (
-        <div className="empty">
-          <p>{t.habits.gone}</p>
-          <Link href="/habits" className="button">{t.habits.toHabits}</Link>
-        </div>
-      );
-    }
-    return <ErrorState onRetry={() => void habit.refetch()} />;
-  }
+  if (id !== null && habit.isError) return <HabitLoadError error={habit.error} onRetry={() => void habit.refetch()} />;
   if (id !== null && habit.isPending) return <Loader />;
 
   const save = () => {
