@@ -22,11 +22,11 @@ from assistant.core.models import Base, HabitMark, User
 from assistant.core.services import cards, habits
 from assistant.core.services.habits import HabitDetail
 
-NOW = datetime(2026, 10, 2, 9, 0, tzinfo=UTC)  # a Friday morning in Moscow
+NOW = datetime(2026, 10, 2, 9, 0, tzinfo=UTC)  # a Friday, noon in Moscow
 BEGAN = datetime(2025, 6, 2, 9, 0, tzinfo=UTC)
 STREAK = 42  # the last 42 days, today included
 RECORD = (date(2026, 3, 2), date(2026, 4, 28))  # 58 days in a row
-NAMES = {"ru": "Спорт", "en": "Workout"}
+NAMES = {"ru": "Тренировка", "en": "Workout"}
 BOT = "ikbo63_24_bot"
 ONE_DAY = timedelta(days=1)
 

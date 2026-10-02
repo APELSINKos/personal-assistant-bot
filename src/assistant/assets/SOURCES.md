@@ -9,4 +9,8 @@ unchanged from their upstream repositories at the commits below; `SHA256SUMS` li
 | `fonts/Unbounded.ttf` | `google/fonts` @ `9710da1e`, `ofl/unbounded/Unbounded[wght].ttf` | SIL Open Font License 1.1, `fonts/Unbounded-OFL.txt` |
 | `emoji/emoji_u*.png` (32) | `googlefonts/noto-emoji` @ `e20cbc2b`, `2D/png/128/` | SIL Open Font License 1.1 (the repository's `LICENSE`), `emoji/LICENSE.txt` |
 
+The emoji images follow the repository's `LICENSE`, which upstream changed from Apache 2.0 to the
+OFL in `254596e5` (2024-07-29); the License section of its README still names Apache 2.0 for most
+images.
+
 Check them with `sha256sum -c SHA256SUMS` from this folder.

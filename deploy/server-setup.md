@@ -474,7 +474,10 @@ ssh <server> 'sudo DEPLOY_ALLOW_OLDER=1 /usr/local/sbin/assistant-deploy <v2.3.0
 The downgrade drops the cards kept for sharing and the habits' emoji, colour
 and weekly goal: every habit counts as a daily one again, while the habits
 and their marks stay. The backup runs first for the same reason as in
-2.3 → 2.2: the deploy's own snapshot is taken after the downgrade.
+2.3 → 2.2: the deploy's own snapshot is taken after the downgrade. That copy is
+the only one left with the goals, emoji and colours, and as there it is
+`assistant-<UTC date>.db`, overwritten by the nightly run at 03:30 UTC: copy it
+under another name before then.
 
 ## 8. Restore from a backup
 

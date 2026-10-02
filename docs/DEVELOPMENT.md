@@ -62,7 +62,7 @@ CI запускает Python-проверки на 3.12 и 3.13, проверк�
 
 ## Карточка привычки
 
-Карточку рисует Pillow только из файлов `src/assistant/assets`: шрифты Manrope и Unbounded из `google/fonts` (SIL Open Font License 1.1) и картинки Noto Emoji 128×128 из `googlefonts/noto-emoji` (под лицензией этого репозитория — тоже SIL OFL 1.1); тексты лицензий лежат рядом с файлами. Откуда и с какого коммита взят каждый файл, написано в `assets/SOURCES.md`; проверить, что файлы не менялись: `cd src/assistant/assets && sha256sum -c SHA256SUMS`. Новое эмодзи для привычек добавляется в `core/habit_style.py` вместе с его картинкой `emoji_u<код>.png` и строкой в `SHA256SUMS`.
+Карточку рисует Pillow только из файлов `src/assistant/assets`: шрифты Manrope и Unbounded из `google/fonts` (SIL Open Font License 1.1) и картинки Noto Emoji 128×128 из `googlefonts/noto-emoji` (файл `LICENSE` этого репозитория с 2024 года — тоже SIL OFL 1.1, хотя его README по-прежнему называет Apache 2.0); тексты лицензий лежат рядом с файлами. Откуда и с какого коммита взят каждый файл, написано в `assets/SOURCES.md`; проверить, что файлы не менялись: `cd src/assistant/assets && sha256sum -c SHA256SUMS`. Новое эмодзи для привычек добавляется в оба списка — `core/habit_style.py` и `webapp/src/lib/habits.ts` (тесты обоих проверяют, что эмодзи 32, — поправьте и их) — вместе с его картинкой `emoji_u<код>.png` и строкой в `SHA256SUMS`.
 
 Картинки в README нарисованы тем же кодом из выдуманной привычки:
 
@@ -70,6 +70,8 @@ CI запускает Python-проверки на 3.12 и 3.13, проверк�
 uv run python scripts/habit_card.py --lang ru --out docs/images/habit-card.jpg
 uv run python scripts/habit_card.py --lang en --out docs/images/habit-card.en.jpg
 ```
+
+`tests/unit/test_sample_card.py` сверяет эти файлы с тем, что рисует скрипт, а `tests/unit/test_cards.py` — суммы двух карточек, одинаковые на Windows и Linux. Если после обновления Pillow или шрифта, правки карточки или правил привычек тесты разошлись с картинками, перерисуйте их командами выше и обновите суммы в `test_cards.py`.
 
 ## Миграции
 
