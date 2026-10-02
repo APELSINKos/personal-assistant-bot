@@ -85,7 +85,6 @@ export const ru = {
   },
   habits: {
     empty: "Привычек пока нет. Нажми «+», чтобы начать.",
-    streak: (days: number) => `${days} ${plural(days, "день", "дня", "дней")}`,
     progress: (done: number, total: number) =>
       `${done} из ${total} ${plural(total, "дня", "дней", "дней")}`,
     newTitle: "Новая привычка",
@@ -93,7 +92,6 @@ export const ru = {
     confirmDelete: (name: string) => `Удалить привычку «${name}» вместе со всей статистикой?`,
     toggle: (name: string, state: string) => `${name}: ${state}. Нажми, чтобы изменить`,
     state: { done: "выполнено", skipped: "пропущено", none: "без отметки" },
-    delete: (name: string) => `Удалить привычку «${name}»`,
     add: "Добавить привычку",
     streakIn,
     week: (done: number, goal: number) => `${done} из ${goal} на этой неделе`,
@@ -102,11 +100,8 @@ export const ru = {
     since: (date: string) => `с ${date}`,
     record: "Рекорд",
     year: "За год",
-    inARow: "подряд",
     yearMap: "Последние 12 месяцев",
     dayToggle: (date: string, state: string) => `${date}: ${state}. Нажми, чтобы изменить`,
-    dayLabel: (date: string, state: string) => `${date}: ${state}`,
-    open: (name: string) => `Открыть привычку «${name}»`,
     share: "Поделиться",
     cardSent: "Карточка в чате с ботом — перешли её, куда захочешь",
     edit: "Изменить",

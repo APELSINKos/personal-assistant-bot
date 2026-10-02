@@ -33,7 +33,7 @@ describe("i18n", () => {
   });
 
   it("pluralises Russian days and notes", () => {
-    expect([1, 2, 5, 11, 21].map((n) => ru.habits.streak(n))).toEqual([
+    expect([1, 2, 5, 11, 21].map((n) => ru.habits.streakIn(n, "days"))).toEqual([
       "1 день", "2 дня", "5 дней", "11 дней", "21 день",
     ]);
     expect(ru.today.notes(3)).toBe("3 заметки");

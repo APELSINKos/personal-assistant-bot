@@ -3,8 +3,7 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "../components/toastStore";
 import { useT } from "../i18n";
-import { withMark } from "../lib/habits";
-import { stateOn } from "../lib/habits";
+import { stateOn, withMark } from "../lib/habits";
 import { canShareMessages, haptic, shareMessage } from "../telegram";
 import { api, ApiError } from "./client";
 import type {
