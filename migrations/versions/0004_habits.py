@@ -44,7 +44,6 @@ def _keep_habits_sequence() -> Iterator[None]:
 
 def upgrade() -> None:
     # Adding columns is a plain ALTER TABLE ADD COLUMN in SQLite: no rebuild of `habits`.
-    # weekly_goal gets its own CHECK via op.execute, which SQLite also handles without rebuild.
     with op.batch_alter_table("habits", schema=None, **HABITS) as batch_op:
         batch_op.add_column(
             sa.Column("emoji", sa.String(length=16), nullable=False, server_default="🎯")
@@ -89,12 +88,11 @@ def downgrade() -> None:
         batch_op.drop_index("ix_share_cards_user")
         batch_op.drop_index("ix_share_cards_expires")
     op.drop_table("share_cards")
-    # Drop the CHECK constraint before batch_alter_table rebuilds the table.
-    op.execute("ALTER TABLE habits DROP CONSTRAINT ck_habits_weekly_goal_range")
     with (
         _keep_habits_sequence(),
         op.batch_alter_table("habits", schema=None, **HABITS) as batch_op,
     ):
+        batch_op.drop_constraint(op.f("ck_habits_weekly_goal_range"), type_="check")
         batch_op.drop_column("weekly_goal")
         batch_op.drop_column("color")
         batch_op.drop_column("emoji")
