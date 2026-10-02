@@ -19,7 +19,7 @@ from sqlalchemy import select
 from assistant.bot import scheduler as scheduler_module
 from assistant.bot.keyboards import FireCb
 from assistant.bot.scheduler import Scheduler
-from assistant.core.models import FsmState, Reminder, ReminderStatus, Repeat
+from assistant.core.models import FsmState, Habit, Reminder, ReminderStatus, Repeat, ShareCard
 from assistant.core.services import reminders
 from assistant.core.services.recurrence import Rule
 
@@ -301,6 +301,34 @@ async def test_cleanup_removes_only_old_dialogs(scheduler, session) -> None:
     await session.commit()
     assert await scheduler.cleanup(NOW) == 1
     assert [row.chat_id for row in (await session.scalars(select(FsmState))).all()] == [2]
+
+
+async def test_cleanup_drops_expired_share_cards(scheduler, session, make_user) -> None:
+    user = await make_user()
+    habit = Habit(user_id=user.id, name="Спорт", created_on=date(2026, 9, 28))
+    session.add(habit)
+    await session.flush()
+    session.add_all(
+        [
+            ShareCard(
+                token="a" * 43,
+                user_id=user.id,
+                habit_id=habit.id,
+                image=b"old",
+                expires_at=NOW - timedelta(seconds=1),
+            ),
+            ShareCard(
+                token="b" * 43,
+                user_id=user.id,
+                habit_id=habit.id,
+                image=b"new",
+                expires_at=NOW + timedelta(hours=1),
+            ),
+        ]
+    )
+    await session.commit()
+    assert await scheduler.cleanup(NOW) == 1
+    assert [card.token for card in (await session.scalars(select(ShareCard))).all()] == ["b" * 43]
 
 
 async def test_english_reminder(scheduler, session, make_user, fake) -> None:
