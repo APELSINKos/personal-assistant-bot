@@ -3,10 +3,11 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from assistant.core.models import (
+    Habit,
     JobRun,
     Lesson,
     LessonAlert,
@@ -16,6 +17,7 @@ from assistant.core.models import (
     Repeat,
     ScheduleKind,
     ScheduleSource,
+    ShareCard,
     User,
     WeekLabel,
 )
@@ -172,3 +174,25 @@ async def test_deleting_a_user_deletes_their_schedule(session, make_user) -> Non
     await session.commit()
     for model in (ScheduleSource, Lesson, WeekLabel):
         assert (await session.scalars(select(model))).all() == []
+
+
+async def test_a_new_habit_gets_the_default_look_and_goal(session, make_user) -> None:
+    user = await make_user()
+    habit = Habit(user_id=user.id, name="Спорт", created_on=date(2026, 10, 1))
+    session.add(habit)
+    await session.commit()
+    assert (habit.emoji, habit.color, habit.weekly_goal) == ("🎯", "mint", 7)
+
+
+async def test_share_cards_go_with_their_habit(session, make_user) -> None:
+    user = await make_user()
+    habit = Habit(user_id=user.id, name="Спорт", created_on=date(2026, 10, 1))
+    session.add(habit)
+    await session.flush()
+    session.add(
+        ShareCard(token="t" * 43, user_id=user.id, habit_id=habit.id, image=b"jpeg", expires_at=T0)
+    )
+    await session.commit()
+    await session.execute(delete(Habit).where(Habit.id == habit.id))
+    await session.commit()
+    assert (await session.scalars(select(ShareCard))).all() == []

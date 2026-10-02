@@ -34,7 +34,7 @@ from __future__ import annotations
 from alembic import op
 
 revision = "test_extra"
-down_revision = "0003"
+down_revision = "0004"
 branch_labels = None
 depends_on = None
 
@@ -104,6 +104,7 @@ def test_upgrade_creates_schema_and_matches_models(tmp_path: Path) -> None:
         "week_labels",
         "lesson_alerts",
         "job_runs",
+        "share_cards",
     } <= set(schema)
     # AUTOINCREMENT: ids of deleted rows are never reused. `alembic check` does not compare it
     # and a batch rebuild drops it unless given table_kwargs={"sqlite_autoincrement": True}.
@@ -263,3 +264,38 @@ def test_0003_keeps_existing_data_and_downgrades(tmp_path: Path) -> None:
     with closing(sqlite3.connect(db)) as conn:
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
     assert not tables & {"schedule_sources", "lessons", "mirea_groups", "job_runs"}
+
+
+def test_0004_gives_habits_the_default_look_and_downgrades_without_reusing_ids(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "old.db"
+    cfg = _config(db)
+    command.upgrade(cfg, "0001")
+    _fill(db)
+    command.upgrade(cfg, "0003")
+    with closing(sqlite3.connect(db)) as conn:
+        conn.execute(
+            "INSERT INTO habits (user_id, name, created_on, created_at) "
+            f"VALUES (1, 'gone', '2026-09-28', '{STAMP}')"
+        )
+        conn.execute("DELETE FROM habits WHERE name = 'gone'")  # sqlite_sequence 2, max(id) 1
+        conn.commit()
+    command.upgrade(cfg, "head")
+    with closing(sqlite3.connect(db)) as conn:
+        looks = conn.execute("SELECT emoji, color, weekly_goal FROM habits").fetchall()
+        conn.execute(
+            "INSERT INTO share_cards (token, user_id, habit_id, image, created_at, expires_at) "
+            f"VALUES ('{'t' * 43}', 1, 1, x'ffd8', '{STAMP}', '{STAMP}')"
+        )
+        conn.commit()
+    assert looks == [("🎯", "mint", 7)]
+    command.downgrade(cfg, "0003")
+    assert _counts(db) == {t: 1 for t in CHILDREN}
+    with closing(sqlite3.connect(db)) as conn:
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(habits)")}
+        seq = conn.execute("SELECT seq FROM sqlite_sequence WHERE name = 'habits'").fetchone()[0]
+    assert "share_cards" not in tables
+    assert not columns & {"emoji", "color", "weekly_goal"}
+    assert seq == 2  # the deleted habit's id is not handed out again
