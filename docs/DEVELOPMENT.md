@@ -60,6 +60,17 @@ CI запускает Python-проверки на 3.12 и 3.13, проверк�
 
 Тесты не ходят в сеть: календари лежат в `tests/fixtures/schedule` (вырезка настоящего календаря группы МИРЭА без имён, календарь другого вуза и календарь Outlook), загрузчик проверяется на подменённом транспорте httpx и подменённом разрешении имён.
 
+## Карточка привычки
+
+Карточку рисует Pillow только из файлов `src/assistant/assets`: шрифты Manrope и Unbounded из `google/fonts` (SIL Open Font License 1.1) и картинки Noto Emoji 128×128 из `googlefonts/noto-emoji` (под лицензией этого репозитория — тоже SIL OFL 1.1); тексты лицензий лежат рядом с файлами. Откуда и с какого коммита взят каждый файл, написано в `assets/SOURCES.md`; проверить, что файлы не менялись: `cd src/assistant/assets && sha256sum -c SHA256SUMS`. Новое эмодзи для привычек добавляется в `core/habit_style.py` вместе с его картинкой `emoji_u<код>.png` и строкой в `SHA256SUMS`.
+
+Картинки в README нарисованы тем же кодом из выдуманной привычки:
+
+```bash
+uv run python scripts/habit_card.py --lang ru --out docs/images/habit-card.jpg
+uv run python scripts/habit_card.py --lang en --out docs/images/habit-card.en.jpg
+```
+
 ## Миграции
 
 ```bash

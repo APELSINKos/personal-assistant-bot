@@ -447,6 +447,35 @@ date and overwrites it, and so does the nightly run at 03:30 UTC, so before that
 time copy the file under another name). If the copy fails, the commands above
 stop before the downgrade. The new units and Caddyfile can stay as they are.
 
+### Going from 2.3 to 2.4
+
+Nothing is installed by hand: the deploy runs migration `0004` (the habits' emoji,
+colour and weekly goal, with defaults for the habits that exist, and the
+`share_cards` table) and installs Pillow with the other dependencies. A card
+shared from the app is downloaded by Telegram from the site in `WEBAPP_URL`,
+which both services already read from `/etc/assistant/assistant.env`.
+
+### Going back from 2.4 to 2.3
+
+As with 2.3 → 2.2, undo migration `0004` with the 2.4 code that is still
+deployed, then deploy the 2.3 commit on purpose:
+
+```bash
+ssh <server> 'sudo bash -s' <<'EOF'
+set -euo pipefail
+systemctl stop assistant-bot assistant-api
+systemctl start assistant-backup.service
+cd /opt/assistant/app
+runuser -u assistant -- bash -c 'set -a; . /etc/assistant/assistant.env; set +a; exec .venv/bin/alembic downgrade 0003'
+EOF
+ssh <server> 'sudo DEPLOY_ALLOW_OLDER=1 /usr/local/sbin/assistant-deploy <v2.3.0 commit sha>'
+```
+
+The downgrade drops the cards kept for sharing and the habits' emoji, colour
+and weekly goal: every habit counts as a daily one again, while the habits
+and their marks stay. The backup runs first for the same reason as in
+2.3 → 2.2: the deploy's own snapshot is taken after the downgrade.
+
 ## 8. Restore from a backup
 
 Nightly backups live in `/var/backups/assistant`

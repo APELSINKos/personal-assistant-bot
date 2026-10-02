@@ -7,6 +7,6 @@ unchanged from their upstream repositories at the commits below; `SHA256SUMS` li
 |---|---|---|
 | `fonts/Manrope.ttf` | `google/fonts` @ `9710da1e`, `ofl/manrope/Manrope[wght].ttf` | SIL Open Font License 1.1, `fonts/Manrope-OFL.txt` |
 | `fonts/Unbounded.ttf` | `google/fonts` @ `9710da1e`, `ofl/unbounded/Unbounded[wght].ttf` | SIL Open Font License 1.1, `fonts/Unbounded-OFL.txt` |
-| `emoji/emoji_u*.png` (32) | `googlefonts/noto-emoji` @ `e20cbc2b`, `2D/png/128/` | the repository's license, `emoji/LICENSE.txt` |
+| `emoji/emoji_u*.png` (32) | `googlefonts/noto-emoji` @ `e20cbc2b`, `2D/png/128/` | SIL Open Font License 1.1 (the repository's `LICENSE`), `emoji/LICENSE.txt` |
 
 Check them with `sha256sum -c SHA256SUMS` from this folder.
