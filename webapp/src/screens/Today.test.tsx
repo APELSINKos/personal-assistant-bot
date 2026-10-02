@@ -29,7 +29,7 @@ describe("Today", () => {
 
   it("names the best streak in English, and only when there is one", async () => {
     installTelegram();
-    mockApi({ "GET /today": { ...today, best_streak: { name: "Sport", days: 1 } } });
+    mockApi({ "GET /today": { ...today, best_streak: { name: "Sport", count: 1, unit: "days" } } });
     const { unmount } = renderWithApp(<TodayScreen />, { lang: "en" });
     expect(await screen.findByText("🔥 Best streak: “Sport” — 1 day")).toBeInTheDocument();
     unmount();
@@ -37,6 +37,17 @@ describe("Today", () => {
     renderWithApp(<TodayScreen />);
     expect(await screen.findByText("Привычки · 0 из 1")).toBeInTheDocument();
     expect(screen.queryByText(/Лучшая серия/)).not.toBeInTheDocument();
+  });
+
+  it("counts a weekly habit's best streak in weeks", async () => {
+    installTelegram();
+    mockApi({ "GET /today": { ...today, best_streak: { name: "Бег", count: 3, unit: "weeks" } } });
+    const { unmount } = renderWithApp(<TodayScreen />);
+    expect(await screen.findByText("🔥 Лучшая серия: «Бег» — 3 недели")).toBeInTheDocument();
+    unmount();
+    mockApi({ "GET /today": { ...today, best_streak: { name: "Run", count: 1, unit: "weeks" } } });
+    renderWithApp(<TodayScreen />, { lang: "en" });
+    expect(await screen.findByText("🔥 Best streak: “Run” — 1 week")).toBeInTheDocument();
   });
 
   it("marks a habit with one tap", async () => {

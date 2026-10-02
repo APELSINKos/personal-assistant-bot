@@ -1,9 +1,16 @@
+import type { HabitColor, StreakUnit } from "../api/types";
+
 const rules = new Intl.PluralRules("ru");
 
 function plural(n: number, one: string, few: string, many: string): string {
   const form = rules.select(n);
   if (form === "one") return one;
   return form === "few" ? few : many;
+}
+
+/** «12 дней» or «5 недель». */
+function streakIn(count: number, unit: StreakUnit): string {
+  return `${count} ${unit === "days" ? plural(count, "день", "дня", "дней") : plural(count, "неделя", "недели", "недель")}`;
 }
 
 export const ru = {
@@ -30,8 +37,8 @@ export const ru = {
     freeDay: "Свободный день",
     habits: (done: number, total: number) => `Привычки · ${done} из ${total}`,
     noHabits: "Привычек пока нет — добавь первую во вкладке «Привычки»",
-    bestStreak: (name: string, days: number) =>
-      `🔥 Лучшая серия: «${name}» — ${days} ${plural(days, "день", "дня", "дней")}`,
+    bestStreak: (name: string, count: number, unit: StreakUnit) =>
+      `🔥 Лучшая серия: «${name}» — ${streakIn(count, unit)}`,
     notes: (count: number) => `${count} ${plural(count, "заметка", "заметки", "заметок")}`,
     pull: "Потяни, чтобы обновить",
     refreshing: "Обновляю…",
@@ -88,6 +95,40 @@ export const ru = {
     state: { done: "выполнено", skipped: "пропущено", none: "без отметки" },
     delete: (name: string) => `Удалить привычку «${name}»`,
     add: "Добавить привычку",
+    streakIn,
+    week: (done: number, goal: number) => `${done} из ${goal} на этой неделе`,
+    goalDaily: "Каждый день",
+    goalWeekly: (count: number) => `${count} ${plural(count, "раз", "раза", "раз")} в неделю`,
+    since: (date: string) => `с ${date}`,
+    record: "Рекорд",
+    year: "За год",
+    thisWeek: "Неделя",
+    weekValue: (done: number, goal: number) => `${done} из ${goal}`,
+    inARow: "подряд",
+    yearMap: "Последние 12 месяцев",
+    dayToggle: (date: string, state: string) => `${date}: ${state}. Нажми, чтобы изменить`,
+    dayLabel: (date: string, state: string) => `${date}: ${state}`,
+    open: (name: string) => `Открыть привычку «${name}»`,
+    share: "Поделиться",
+    cardSent: "Карточка в чате с ботом — перешли её, куда захочешь",
+    edit: "Изменить",
+    editTitle: "Привычка",
+    emoji: "Эмодзи",
+    color: "Цвет",
+    colors: {
+      mint: "мятный",
+      sky: "голубой",
+      violet: "фиолетовый",
+      rose: "розовый",
+      coral: "коралловый",
+      amber: "янтарный",
+      sand: "песочный",
+      slate: "серый",
+    } satisfies Record<HabitColor, string>,
+    goal: "Цель",
+    goalHint: "Серия и проценты пересчитаются по новой цели.",
+    prevMonth: "Предыдущий месяц",
+    nextMonth: "Следующий месяц",
   },
   notes: {
     empty: "Заметок пока нет. Нажми «+», чтобы создать первую.",

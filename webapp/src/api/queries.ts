@@ -2,11 +2,12 @@ import {
   MutationCache, QueryClient, useMutation, useQuery, useQueryClient,
 } from "@tanstack/react-query";
 import { toast } from "../components/toastStore";
-import { haptic } from "../telegram";
+import { withMark } from "../lib/habits";
+import { canShareMessages, haptic, shareMessage } from "../telegram";
 import { api, ApiError } from "./client";
 import type {
-  Agenda, AlertMinutes, City, GroupSearch, Habit, Health, Me, Note, ParsedPhrase, Reminder, ReminderInput,
-  ScheduleState, Today,
+  Agenda, AlertMinutes, City, GroupSearch, Habit, HabitDetail, HabitInput, HabitPatch, Health, Me, Note,
+  ParsedPhrase, Reminder, ReminderInput, ScheduleState, SharedCard, Today,
 } from "./types";
 
 export const keys = {
@@ -15,6 +16,8 @@ export const keys = {
   notes: ["notes"],
   reminders: ["reminders"],
   habits: ["habits"],
+  // Under `habits`: whatever refreshes the list refreshes an open habit too.
+  habit: (id: number) => ["habits", id] as const,
   health: ["health"],
   cities: (query: string) => ["cities", query] as const,
   agenda: (from: string, to: string) => ["agenda", from, to] as const,
@@ -231,12 +234,53 @@ export function useAllowWrite() {
   });
 }
 
+export const useHabit = (id: number) =>
+  useQuery({ queryKey: keys.habit(id), queryFn: () => api<HabitDetail>(`/habits/${id}`) });
+
 export function useCreateHabit() {
   const refresh = useRefresh();
   return useMutation({
-    mutationFn: (name: string) => api<Habit>("/habits", { method: "POST", body: { name } }),
+    mutationFn: (input: HabitInput) => api<Habit>("/habits", { method: "POST", body: input }),
     onSuccess: () => haptic("success"),
     onSettled: () => refresh(keys.habits),
+  });
+}
+
+export function useUpdateHabit() {
+  const refresh = useRefresh();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: number; patch: HabitPatch }) =>
+      api<Habit>(`/habits/${id}`, { method: "PATCH", body: patch }),
+    onSuccess: () => haptic("success"),
+    onSettled: () => refresh(keys.habits),
+  });
+}
+
+export type ShareResult = "shared" | "cancelled" | "sent";
+
+/**
+ * Shares a habit's card: in Telegram 8.0+ through a message the bot prepared (the user picks the
+ * chat); where the client or the server cannot, the bot sends the card to the user's chat with
+ * it instead, to forward from there.
+ */
+export function useShareHabit() {
+  return useMutation({
+    mutationFn: async (id: number): Promise<ShareResult> => {
+      if (canShareMessages()) {
+        try {
+          const card = await api<SharedCard>(`/habits/${id}/share`, { method: "POST" });
+          return (await shareMessage(card.prepared_id)) ? "shared" : "cancelled";
+        } catch (error) {
+          // 503: the server cannot prepare shared messages; anything else is the user's to see.
+          if (!(error instanceof ApiError && error.status === 503)) throw error;
+        }
+      }
+      await api<void>(`/habits/${id}/card`, { method: "POST" });
+      return "sent";
+    },
+    onSuccess: (result) => {
+      if (result !== "cancelled") haptic("success");
+    },
   });
 }
 
@@ -280,6 +324,34 @@ export function useSetMark() {
       client.setQueryData(keys.habits, previous?.habits);
       client.setQueryData(keys.today, previous?.today);
     },
+    onSettled: () => {
+      if (client.isMutating({ mutationKey: MARK_MUTATION_KEY }) === 1) return refresh(keys.habits);
+    },
+  });
+}
+
+/**
+ * A mark on any day of an open habit (its month editor): the day changes on screen at once and
+ * comes back if the server refuses. It shares useSetMark's scope and key, so marks go to the
+ * server one at a time and the list refreshes once, after the last.
+ */
+export function useMarkDay() {
+  const client = useQueryClient();
+  const refresh = useRefresh();
+  return useMutation({
+    mutationKey: MARK_MUTATION_KEY,
+    scope: { id: "habit-mark" },
+    mutationFn: ({ id, day, done }: { id: number; day: string; done: boolean | null }) =>
+      api<Habit>(`/habits/${id}/marks/${day}`, { method: "PUT", body: { done } }),
+    onMutate: async ({ id, day, done }) => {
+      haptic("tap");
+      await client.cancelQueries({ queryKey: keys.habit(id) });
+      const previous = client.getQueryData<HabitDetail>(keys.habit(id));
+      client.setQueryData<HabitDetail>(keys.habit(id), (habit) =>
+        habit && { ...habit, year: withMark(habit.year_from, habit.year, day, done) });
+      return previous;
+    },
+    onError: (_error, { id }, previous) => client.setQueryData(keys.habit(id), previous),
     onSettled: () => {
       if (client.isMutating({ mutationKey: MARK_MUTATION_KEY }) === 1) return refresh(keys.habits);
     },

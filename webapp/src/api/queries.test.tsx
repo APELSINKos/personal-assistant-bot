@@ -9,10 +9,11 @@ import { habit, me, note, scheduleSource } from "../test/fixtures";
 import { installTelegram } from "../test/fakeTelegram";
 import { mockApi } from "../test/mockApi";
 import { ApiError } from "./client";
-import type { Agenda, Habit, Me, Note, ScheduleState } from "./types";
+import type { Agenda, Habit, HabitDetail, Me, Note, ScheduleState } from "./types";
 import {
-  createQueryClient, errorCode, keys, useDeleteNote, useDeleteReminder, useDisconnectSchedule, useHabits,
-  useNotes, useRefreshSchedule, useScheduleAlerts, useSetCity, useSetMark, useUpdateMe, useUploadSchedule,
+  createQueryClient, errorCode, keys, useCreateHabit, useDeleteNote, useDeleteReminder, useDisconnectSchedule,
+  useHabit, useHabits, useMarkDay, useNotes, useRefreshSchedule, useScheduleAlerts, useSetCity, useSetMark,
+  useShareHabit, useUpdateHabit, useUpdateMe, useUploadSchedule,
 } from "./queries";
 
 // Every mutation goes through `api()`, which needs a session (`initData()` non-null) before it
@@ -415,5 +416,106 @@ describe("schedule", () => {
     act(() => result.current.mutate(file));
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.today });
+  });
+});
+
+const DETAIL: HabitDetail = {
+  ...habit,
+  year_from: "2025-09-29",
+  // the last week, from Monday 28 September: done, no mark, then Wednesday to Sunday ahead
+  year: "1".repeat(364) + "1-" + ".".repeat(5),
+};
+
+describe("habits", () => {
+  it("fetches one habit with its year", async () => {
+    const { calls } = mockApi({ "GET /habits/7": DETAIL });
+    const { result } = renderHook(() => useHabit(7), { wrapper: wrapperFor(createQueryClient()) });
+    await waitFor(() => expect(result.current.data?.year).toBe(DETAIL.year));
+    expect(calls[0]?.path).toBe("/habits/7");
+  });
+
+  it("creates a habit with its look and goal", async () => {
+    const { calls } = mockApi({ "POST /habits": { status: 201, body: habit } });
+    const { result } = renderHook(() => useCreateHabit(), { wrapper: wrapperFor(createQueryClient()) });
+    act(() => result.current.mutate({ name: "Бег", emoji: "🏃", color: "sky", weekly_goal: 3 }));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(calls[0]?.body).toEqual({ name: "Бег", emoji: "🏃", color: "sky", weekly_goal: 3 });
+  });
+
+  it("changes a habit and refreshes the list, the open habit and today", async () => {
+    const { calls } = mockApi({ "PATCH /habits/7": habit });
+    const client = createQueryClient();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    const { result } = renderHook(() => useUpdateHabit(), { wrapper: wrapperFor(client) });
+    act(() => result.current.mutate({ id: 7, patch: { weekly_goal: 3 } }));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(calls[0]).toMatchObject({ method: "PATCH", path: "/habits/7", body: { weekly_goal: 3 } });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["habits"] }); // the list and every open habit
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["today"] });
+  });
+
+  it("shows a day's new mark at once and takes it back if the server refuses", async () => {
+    const { pending, resolveAt } = controllableFetch();
+    const client = createQueryClient();
+    client.setQueryData(keys.habit(7), DETAIL);
+    const { result } = renderHook(() => useMarkDay(), { wrapper: wrapperFor(client) });
+    act(() => result.current.mutate({ id: 7, day: "2026-09-29", done: true }));
+    await waitFor(() => expect(client.getQueryData<HabitDetail>(keys.habit(7))?.year.slice(364, 366)).toBe("11"));
+    await waitFor(() => expect(pending).toHaveLength(1));
+    expect(pending[0]).toMatchObject({ method: "PUT", path: "/habits/7/marks/2026-09-29", body: { done: true } });
+    act(() => resolveAt(0, 500, { status: 500, code: "internal_error" }));
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(client.getQueryData<HabitDetail>(keys.habit(7))?.year).toBe(DETAIL.year);
+  });
+});
+
+describe("useShareHabit", () => {
+  it("shares through a prepared message in Telegram 8.0", async () => {
+    const telegram = installTelegram();
+    const { calls } = mockApi({ "POST /habits/7/share": { prepared_id: "prepared-1" } });
+    const { result } = renderHook(() => useShareHabit(), { wrapper: wrapperFor(createQueryClient()) });
+    act(() => result.current.mutate(7));
+    await waitFor(() => expect(result.current.data).toBe("shared"));
+    expect(telegram.shareMessage).toHaveBeenCalledWith("prepared-1", expect.any(Function));
+    expect(calls.map((call) => call.path)).toEqual(["/habits/7/share"]);
+  });
+
+  it("says when the user closed the chat picker", async () => {
+    installTelegram({ shareMessage: vi.fn((_id: string, callback?: (sent: boolean) => void) => callback?.(false)) });
+    mockApi({ "POST /habits/7/share": { prepared_id: "prepared-1" } });
+    const { result } = renderHook(() => useShareHabit(), { wrapper: wrapperFor(createQueryClient()) });
+    act(() => result.current.mutate(7));
+    await waitFor(() => expect(result.current.data).toBe("cancelled"));
+  });
+
+  it("has the bot send the card on an older Telegram", async () => {
+    const telegram = installTelegram({}, "7.10");
+    const { calls } = mockApi({ "POST /habits/7/card": { status: 204 } });
+    const { result } = renderHook(() => useShareHabit(), { wrapper: wrapperFor(createQueryClient()) });
+    act(() => result.current.mutate(7));
+    await waitFor(() => expect(result.current.data).toBe("sent"));
+    expect(telegram.shareMessage).not.toHaveBeenCalled();
+    expect(calls.map((call) => call.path)).toEqual(["/habits/7/card"]);
+  });
+
+  it("has the bot send the card when the server cannot prepare messages", async () => {
+    const { calls } = mockApi({
+      "POST /habits/7/share": { status: 503, body: { status: 503, code: "upstream_unavailable" } },
+      "POST /habits/7/card": { status: 204 },
+    });
+    const { result } = renderHook(() => useShareHabit(), { wrapper: wrapperFor(createQueryClient()) });
+    act(() => result.current.mutate(7));
+    await waitFor(() => expect(result.current.data).toBe("sent"));
+    expect(calls.map((call) => call.path)).toEqual(["/habits/7/share", "/habits/7/card"]);
+  });
+
+  it("does not fall back past a refusal meant for the user", async () => {
+    const { calls } = mockApi({
+      "POST /habits/7/share": { status: 429, body: { status: 429, code: "rate_limited" } },
+    });
+    const { result } = renderHook(() => useShareHabit(), { wrapper: wrapperFor(createQueryClient()) });
+    act(() => result.current.mutate(7));
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(calls.map((call) => call.path)).toEqual(["/habits/7/share"]);
   });
 });

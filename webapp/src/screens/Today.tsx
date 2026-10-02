@@ -171,7 +171,7 @@ export function TodayScreen() {
           ))
         )}
         {data.best_streak && (
-          <p className="tip accent">{t.today.bestStreak(data.best_streak.name, data.best_streak.days)}</p>
+          <p className="tip accent">{t.today.bestStreak(data.best_streak.name, data.best_streak.count, data.best_streak.unit)}</p>
         )}
       </Card>
 

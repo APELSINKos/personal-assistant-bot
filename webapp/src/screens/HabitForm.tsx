@@ -23,7 +23,7 @@ export function HabitForm() {
 
   const save = () => {
     if (!valid || create.isPending) return;
-    create.mutate(trimmed, { onSuccess: () => navigate("/habits") });
+    create.mutate({ name: trimmed }, { onSuccess: () => navigate("/habits") });
   };
 
   return (
