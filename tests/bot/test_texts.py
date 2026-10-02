@@ -119,9 +119,7 @@ def test_today_text_english_plurals() -> None:
     text = texts.today_text(day_data(best_streak=Streak("Run", 1, "days")), "Alex", EN)
     assert "📅 Today, Monday, September 28" in text
     assert "📌 1 reminder for today:" in text
-    # Use curly quotes (U+201C and U+201D) as Fluent uses them
-    expected = "🔥 Best streak: " + chr(0x201C) + "Run" + chr(0x201D) + " — 1 day"
-    assert expected in text
+    assert "🔥 Best streak: “Run” — 1 day" in text
 
 
 @pytest.mark.parametrize(
@@ -134,9 +132,7 @@ def test_the_best_streak_of_a_weekly_habit_is_counted_in_weeks(
     data = day_data(best_streak=Streak("Бег", count, "weeks"))
     for render in (texts.today_text, texts.morning_text):
         assert f"🔥 Лучшая серия: «Бег» — {russian}\n" in render(data, "Alex", RU)
-        # Build expected string with curly quotes (U+201C and U+201D)
-        text = "🔥 Best streak: " + chr(0x201C) + "Бег" + chr(0x201D) + f" — {english}\n"
-        assert text in render(data, "Alex", EN)
+        assert f"🔥 Best streak: “Бег” — {english}\n" in render(data, "Alex", EN)
 
 
 def test_morning_text() -> None:
