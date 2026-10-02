@@ -1,6 +1,7 @@
 import { Check, Circle, X } from "lucide-react";
 import type { Habit } from "../api/types";
 import { useT } from "../i18n";
+import { dayState } from "../lib/habits";
 
 export function nextMark(done: boolean | null): boolean | null {
   if (done === null) return true;
@@ -12,6 +13,19 @@ export function HabitDots({ days }: { days: (boolean | null)[] }) {
     <div className="dots" aria-hidden>
       {days.map((day, index) => (
         <i key={index} className={day === true ? "dot dot--done" : day === false ? "dot dot--skipped" : "dot"} />
+      ))}
+    </div>
+  );
+}
+
+const WEEK_DOT = { done: "dot dot--done", missed: "dot dot--skipped", none: "dot", outside: "dot dot--ahead" };
+
+/** This week, Monday to Sunday; days ahead (and before the habit began) are hollow. */
+export function WeekDots({ week }: { week: string }) {
+  return (
+    <div className="dots" aria-hidden>
+      {Array.from(week).map((char, index) => (
+        <i key={index} className={WEEK_DOT[dayState(char)]} />
       ))}
     </div>
   );

@@ -23,7 +23,8 @@ describe("Habits", () => {
     expect(await screen.findByText("Спорт")).toBeInTheDocument();
     expect(screen.getByText(/12 из 17 дней/)).toBeInTheDocument();
     expect(screen.getByText(/🔥 5 дней/)).toBeInTheDocument();
-    expect(container.querySelectorAll(".dot")).toHaveLength(9);
+    expect(screen.getByRole("link", { name: /Спорт/ })).toHaveAttribute("href", "/habits/7");
+    expect(container.querySelectorAll(".dot")).toHaveLength(7); // this week, Monday to Sunday
     await waitFor(() => expect(client.getQueryData(["me"])).toBeDefined()); // the city's zone
     fireEvent.click(screen.getByRole("button", { name: /Спорт: без отметки/ }));
     await waitFor(() =>
@@ -47,15 +48,21 @@ describe("Habits", () => {
     expect(calls.filter((call) => call.method === "PUT")).toEqual([]);
   });
 
-  it("deletes a habit after confirming with its name", async () => {
-    const app = installTelegram();
-    const { calls } = mockApi({ "GET /me": me, "GET /habits": [habit], "DELETE /habits/7": { status: 204 } });
-    renderWithApp(<HabitsScreen />);
-    fireEvent.click(await screen.findByRole("button", { name: "Удалить привычку «Спорт»" }));
-    await waitFor(() => expect(calls).toContainEqual({ method: "DELETE", path: "/habits/7", body: undefined }));
-    expect(app.showConfirm).toHaveBeenCalledWith(
-      "Удалить привычку «Спорт» вместе со всей статистикой?", expect.any(Function),
-    );
+  it("shows a weekly habit's week and a streak of weeks", async () => {
+    installTelegram();
+    const weekly = {
+      ...habit, emoji: "🏃", color: "sky" as const, weekly_goal: 3, streak: 2, streak_unit: "weeks" as const,
+      week_done: 2, week_goal: 3, week: "10-1...",
+    };
+    mockApi({ "GET /me": me, "GET /habits": [weekly] });
+    const { container } = renderWithApp(<HabitsScreen />);
+    expect(await screen.findByText("🔥 2 недели · 2 из 3 на этой неделе")).toBeInTheDocument();
+    expect(screen.getByText("🏃")).toBeInTheDocument();
+    const dots = Array.from(container.querySelectorAll(".dot"), (dot) => dot.className);
+    expect(dots).toEqual([
+      "dot dot--done", "dot dot--skipped", "dot", "dot dot--done", "dot dot--ahead", "dot dot--ahead", "dot dot--ahead",
+    ]);
+    expect(screen.queryByRole("button", { name: /^Удалить/ })).not.toBeInTheDocument(); // on the habit's screen now
   });
 
   it("adds a habit and reports a duplicate", async () => {
