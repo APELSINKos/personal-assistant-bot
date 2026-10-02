@@ -88,8 +88,9 @@ describe("Habits", () => {
     fireEvent.change(screen.getByLabelText("Название"), { target: { value: "Чтение" } });
     pressMainButton(app);
     await waitFor(() => expect(history.at(-1)).toBe("/habits"));
+    const look = { emoji: "🎯", color: "mint", weekly_goal: 7 };
     expect(calls.filter((c) => c.method === "POST").map((c) => c.body)).toEqual([
-      { name: "Спорт" }, { name: "Чтение" },
+      { name: "Спорт", ...look }, { name: "Чтение", ...look },
     ]);
   });
 
@@ -105,5 +106,51 @@ describe("Habits", () => {
     fireEvent.change(screen.getByLabelText("Название"), { target: { value: "" } });
     await act(async () => back()?.());
     expect(history.at(-1)).toBe("/habits");
+  });
+});
+
+describe("Habit form", () => {
+  it("creates a habit with a picked emoji, colour and goal", async () => {
+    const app = installTelegram();
+    const { calls } = mockApi({ "GET /me": me, "POST /habits": { status: 201, body: habit } });
+    const { history } = renderWithApp(<HabitForm />, { path: "/habits/new" });
+    fireEvent.change(await screen.findByLabelText("Название"), { target: { value: "Бег" } });
+    fireEvent.click(screen.getByRole("button", { name: "🏃" }));
+    fireEvent.click(screen.getByRole("button", { name: "голубой" }));
+    fireEvent.click(screen.getByRole("button", { name: "3 раза в неделю" }));
+    expect(screen.getByRole("button", { name: "🏃" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "🎯" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByText(/пересчитаются/)).not.toBeInTheDocument(); // a new habit has no history
+    pressMainButton(app);
+    await waitFor(() => expect(history.at(-1)).toBe("/habits"));
+    expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+      name: "Бег", emoji: "🏃", color: "sky", weekly_goal: 3,
+    });
+  });
+
+  it("edits a habit: shows what it has, warns about a new goal, goes back to the habit", async () => {
+    const app = installTelegram();
+    const detail = { ...habit, year_from: "2025-09-29", year: ".".repeat(371) };
+    const { calls } = mockApi({ "GET /me": me, "GET /habits/7": detail, "PATCH /habits/7": habit });
+    const { history } = renderWithApp(<HabitForm />, { path: "/habits/7/edit" });
+    expect(await screen.findByRole("heading", { name: "Привычка" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Название")).toHaveValue("Спорт");
+    expect(screen.getByRole("button", { name: "💪" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "мятный" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Каждый день" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "1 раз в неделю" }));
+    expect(screen.getByText("Серия и проценты пересчитаются по новой цели.")).toBeInTheDocument();
+    pressMainButton(app);
+    await waitFor(() => expect(history.at(-1)).toBe("/habits/7"));
+    expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({
+      name: "Спорт", emoji: "💪", color: "mint", weekly_goal: 1,
+    });
+  });
+
+  it("says the habit is gone when it was deleted elsewhere", async () => {
+    installTelegram();
+    mockApi({ "GET /me": me, "GET /habits/7": { status: 404, body: { status: 404, code: "not_found" } } });
+    renderWithApp(<HabitForm />, { path: "/habits/7/edit" });
+    expect(await screen.findByText("Этой привычки уже нет.")).toBeInTheDocument();
   });
 });

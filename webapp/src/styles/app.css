@@ -1222,3 +1222,56 @@ a.button {
   gap: 8px;
   margin: 10px 0 24px;
 }
+
+/* The habit form: 32 emoji in rows of 8, 8 colours, the weekly goal. */
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.emoji-grid__item {
+  min-height: 44px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  background: none;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.emoji-grid__item[aria-pressed="true"] {
+  border-color: var(--accent-text);
+  background: var(--glass);
+}
+
+.color-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.color-dot {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 3px solid transparent;
+  border-radius: 50%;
+  background: var(--habit) content-box;
+  cursor: pointer;
+}
+
+.color-dot[aria-pressed="true"] {
+  border-color: var(--text);
+}
+
+.emoji-grid__item:focus-visible,
+.color-dot:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+.field__note {
+  margin: 6px 4px 0;
+  font-size: 13px;
+}

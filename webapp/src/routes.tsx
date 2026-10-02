@@ -40,6 +40,7 @@ export const ROUTES: AppRoute[] = [
   { path: "/habits", component: HabitsScreen },
   { path: "/habits/new", component: HabitForm, hideNav: true },
   { path: "/habits/:id", component: HabitScreen, parent: "/habits" },
+  { path: "/habits/:id/edit", component: HabitForm, hideNav: true },
   { path: "/notes", component: NotesScreen },
   { path: "/notes/new", component: NoteEditor, hideNav: true },
   { path: "/notes/:id", component: NoteEditor, hideNav: true },

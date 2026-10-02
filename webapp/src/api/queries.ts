@@ -235,8 +235,8 @@ export function useAllowWrite() {
   });
 }
 
-export const useHabit = (id: number) =>
-  useQuery({ queryKey: keys.habit(id), queryFn: () => api<HabitDetail>(`/habits/${id}`) });
+export const useHabit = (id: number, enabled = true) =>
+  useQuery({ queryKey: keys.habit(id), queryFn: () => api<HabitDetail>(`/habits/${id}`), enabled });
 
 export function useCreateHabit() {
   const refresh = useRefresh();
