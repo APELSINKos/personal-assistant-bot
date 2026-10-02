@@ -8,10 +8,12 @@ import {
   useRefreshSchedule,
   useSchedule,
   useScheduleAlerts,
+  useScheduleRefreshing,
   useUploadSchedule,
 } from "../api/queries";
 import type { AlertMinutes, ScheduleSource } from "../api/types";
 import { Card } from "../components/Card";
+import { SearchStatus } from "../components/SearchStatus";
 import { ErrorState, Loader } from "../components/States";
 import { toast } from "../components/toastStore";
 import { WriteRefusedCard } from "../components/WriteRefusedCard";
@@ -49,6 +51,7 @@ function ConnectForm({ onDone, onCancel }: { onDone: () => void; onCancel?: () =
   // Both the live query and the debounced one must be long enough, so the suggestions vanish at
   // once when the field is cleared instead of lingering for the debounce delay.
   const searching = query.trim().length >= 2 && search.trim().length >= 2;
+  const found = searching && groups.data ? groups.data.groups.length : 0;
 
   const submitLink = (event: FormEvent) => {
     event.preventDefault();
@@ -79,9 +82,6 @@ function ConnectForm({ onDone, onCancel }: { onDone: () => void; onCancel?: () =
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
-        {searching && groups.isError && !groups.data && (
-          <p className="muted">{errorText(t, errorCode(groups.error))}</p>
-        )}
         {searching && groups.data && groups.data.groups.length > 0 && (
           <div className="results">
             {groups.data.groups.map((group) => (
@@ -97,10 +97,15 @@ function ConnectForm({ onDone, onCancel }: { onDone: () => void; onCancel?: () =
             ))}
           </div>
         )}
-        {searching && groups.data?.building && <p className="muted">{t.schedule.building}</p>}
-        {searching && groups.data && !groups.data.building && groups.data.groups.length === 0 && (
-          <p className="muted">{t.schedule.noGroups}</p>
-        )}
+        <SearchStatus count={found > 0 ? t.schedule.groupsFound(found) : null}>
+          {searching && groups.isError && !groups.data && (
+            <p className="muted">{errorText(t, errorCode(groups.error))}</p>
+          )}
+          {searching && groups.data?.building && <p className="muted">{t.schedule.building}</p>}
+          {searching && groups.data && !groups.data.building && groups.data.groups.length === 0 && (
+            <p className="muted">{t.schedule.noGroups}</p>
+          )}
+        </SearchStatus>
       </Card>
 
       <Card title={t.schedule.link} index={1}>
@@ -157,17 +162,10 @@ function SourceCard({ source, zone, onChange }: { source: ScheduleSource; zone: 
   const t = useT();
   const lang = useLang();
   const refresh = useRefreshSchedule();
+  const refreshing = useScheduleRefreshing();
   const disconnect = useDisconnectSchedule();
   const when = shortMoment(source.ok_at ?? source.fetched_at, zone, lang);
 
-  const update = () =>
-    refresh.mutate(undefined, {
-      onSuccess: (state) => {
-        const error = state.source?.error;
-        if (error) toast({ kind: "error", code: error });
-        else toast({ kind: "success", text: t.schedule.refreshed });
-      },
-    });
   const turnOff = async () => {
     if (await confirmAction(t.schedule.confirmDisconnect)) disconnect.mutate();
   };
@@ -185,7 +183,7 @@ function SourceCard({ source, zone, onChange }: { source: ScheduleSource; zone: 
       {source.kind === "file" && <p className="muted">{t.schedule.fileHint}</p>}
       <div className="schedule__actions">
         {source.kind !== "file" && (
-          <button type="button" className="button" disabled={refresh.isPending} onClick={update}>
+          <button type="button" className="button" disabled={refreshing} onClick={() => refresh.mutate()}>
             {t.schedule.refresh}
           </button>
         )}

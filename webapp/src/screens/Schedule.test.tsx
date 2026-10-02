@@ -119,6 +119,29 @@ describe("Schedule", () => {
     expect(await screen.findByText("Такой группы нет в справочнике")).toBeInTheDocument();
   });
 
+  it("reads out what each group search found, in a region that was there before it", async () => {
+    installTelegram();
+    mockApi({
+      "GET /me": me,
+      "GET /schedule": { source: null },
+      "GET /schedule/groups?q=ikbo": {
+        groups: [{ id: 4804, name: "ИКБО-62-24" }, { id: 4805, name: "ИКБО-63-24" }],
+        building: false,
+      },
+      "GET /schedule/groups?q=xyz": { groups: [], building: false },
+    });
+    show();
+    const field = await screen.findByLabelText("Группа МИРЭА");
+    // A screen reader reads out changes only in a region it already listens to.
+    const regions = screen.getAllByRole("status");
+    fireEvent.change(field, { target: { value: "ikbo" } });
+    const region = (await screen.findByText("Найдено групп: 2")).closest('[role="status"]');
+    expect(regions).toContain(region);
+    fireEvent.change(field, { target: { value: "xyz" } });
+    await waitFor(() => expect(region).toHaveTextContent("Такой группы нет в справочнике"));
+    expect(region).not.toHaveTextContent("Найдено групп");
+  });
+
   it("warns that the directory is still being built", async () => {
     installTelegram();
     mockApi({
@@ -132,11 +155,12 @@ describe("Schedule", () => {
     show();
     fireEvent.change(await screen.findByLabelText("Группа МИРЭА"), { target: { value: "ИКБО" } });
     expect(await screen.findByRole("button", { name: "ИКБО-62-24" })).toBeInTheDocument();
+    // Read out together with the count, like every notice of the search.
     expect(
       screen.getByText(
         "Справочник групп ещё не готов — если твоей группы нет, попробуй позже или подключи расписание по ссылке.",
-      ),
-    ).toBeInTheDocument();
+      ).closest('[role="status"]'),
+    ).toHaveTextContent("Найдено групп: 1");
     expect(screen.queryByText("Такой группы нет в справочнике")).not.toBeInTheDocument();
   });
 
@@ -284,6 +308,27 @@ describe("Schedule", () => {
     fireEvent.click(screen.getByRole("button", { name: "Обновить" }));
     expect(await screen.findByText(/Не получилось скачать календарь/)).toBeInTheDocument();
     expect(screen.getByText("Последнее обновление не удалось")).toBeInTheDocument();
+  });
+
+  it("keeps «Обновить» off and still reports the result when the card is drawn anew mid-refresh", async () => {
+    installTelegram();
+    const refresh = held();
+    const { calls } = mockApi({
+      "GET /me": me,
+      "GET /schedule": { source: scheduleSource },
+      "POST /schedule/refresh": refresh.handler,
+    });
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Обновить" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Обновить" })).toBeDisabled());
+    // «Сменить источник» → «Отмена» while the refresh runs: a new card, not the one that started it.
+    fireEvent.click(screen.getByRole("button", { name: "Сменить источник" }));
+    fireEvent.click(screen.getByRole("button", { name: "Отмена" }));
+    expect(screen.getByRole("button", { name: "Обновить" })).toBeDisabled();
+    refresh.answer({ body: { source: scheduleSource } });
+    expect(await screen.findByText("Расписание обновлено")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Обновить" })).toBeEnabled());
+    expect(calls.filter((call) => call.path === "/schedule/refresh")).toHaveLength(1);
   });
 
   it("marks old data when the source has been down for days", async () => {

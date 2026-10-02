@@ -1,7 +1,8 @@
 import {
-  MutationCache, QueryClient, useMutation, useQuery, useQueryClient,
+  MutationCache, QueryClient, useIsMutating, useMutation, useQuery, useQueryClient,
 } from "@tanstack/react-query";
 import { toast } from "../components/toastStore";
+import { useT } from "../i18n";
 import { withMark } from "../lib/habits";
 import { stateOn } from "../lib/habits";
 import { canShareMessages, haptic, shareMessage } from "../telegram";
@@ -513,15 +514,32 @@ export function useUploadSchedule() {
   });
 }
 
+const REFRESH_SCHEDULE_KEY = ["schedule-refresh"];
+
+/**
+ * The result is told by the mutation itself, not by the card that started it: «Сменить источник»
+ * → «Отмена» during a refresh draws a new source card, and callbacks the old one gave `mutate()`
+ * would never run.
+ */
 export function useRefreshSchedule() {
+  const t = useT();
   const saved = useScheduleSaved();
   return useMutation({
+    mutationKey: REFRESH_SCHEDULE_KEY,
     scope: { id: "schedule" },
     mutationFn: () => api<ScheduleState>("/schedule/refresh", { method: "POST" }),
-    onSuccess: (state) => saved(state),
+    onSuccess: async (state) => {
+      await saved(state);
+      const error = state.source?.error;
+      if (error) toast({ kind: "error", code: error });
+      else toast({ kind: "success", text: t.schedule.refreshed });
+    },
     onError: forgetOnGone(saved),
   });
 }
+
+/** Whether a refresh is running — started from this source card or from one it replaced. */
+export const useScheduleRefreshing = () => useIsMutating({ mutationKey: REFRESH_SCHEDULE_KEY }) > 0;
 
 export function useScheduleAlerts() {
   const client = useQueryClient();
