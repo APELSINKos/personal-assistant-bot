@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { HabitDetail } from "../api/types";
 import { Toasts } from "../components/Toasts";
@@ -111,9 +111,25 @@ describe("Habit screen", () => {
 
   it("deletes the habit after a confirmation and goes back to the list", async () => {
     const view = show();
-    mockApi({ "GET /me": me, "GET /habits/7": DETAIL, "DELETE /habits/7": { status: 204 } });
+    const { calls } = mockApi({ "GET /me": me, "GET /habits/7": DETAIL, "DELETE /habits/7": { status: 204 } });
     fireEvent.click(await screen.findByRole("button", { name: "Удалить привычку" }));
     await waitFor(() => expect(view.history.at(-1)).toBe("/habits"));
+    await waitFor(() => expect(calls).toContainEqual({ method: "DELETE", path: "/habits/7", body: undefined }));
+  });
+
+  it("keeps the habit when the deletion is not confirmed", async () => {
+    const app = installTelegram({
+      showConfirm: vi.fn((_m: string, callback: (ok: boolean) => void) => callback(false)),
+    });
+    const view = show();
+    const { calls } = mockApi({ "GET /me": me, "GET /habits/7": DETAIL, "DELETE /habits/7": { status: 204 } });
+    fireEvent.click(await screen.findByRole("button", { name: "Удалить привычку" }));
+    await waitFor(() => expect(app.showConfirm).toHaveBeenCalled());
+    // Time enough for a DELETE that should not be sent to go out and come back.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(calls.some((call) => call.method === "DELETE")).toBe(false);
+    expect(view.history.at(-1)).toBe("/habits/7");
+    expect(screen.getByRole("heading", { level: 1, name: "Спорт" })).toBeInTheDocument();
   });
 
   it("links to its editor", async () => {
