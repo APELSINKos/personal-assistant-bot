@@ -118,6 +118,10 @@ today-streak = 🔥 Best streak: “{ $name }” — { $count } { $count ->
         [one] day
        *[other] days
     }
+today-streak-weeks = 🔥 Best streak: “{ $name }” — { $count } { $count ->
+        [one] week
+       *[other] weeks
+    }
 today-notes = 📝 Notes: { $count }
 today-rates = 💵 { $usd } ₽ · 💶 { $eur } ₽
 morning-title = ☀️ Good morning, { $name }!
@@ -198,13 +202,18 @@ fired-done = ✓ Done
 ## Habits
 habits-empty = 🎯 No habits yet. Tap “➕ Add” to start.
 habits-title = 🎯 Your habits ({ $count }/{ $limit }):
-habit-line = { $number }. { $name } — { $done } of { $total } { $total ->
+habit-line = { $number }. { $emoji } { $name } — { $done } of { $total } { $total ->
         [one] day
        *[other] days
     }{ $fire }
+habit-line-weekly = { $number }. { $emoji } { $name } — this week { $done } of { $goal }{ $fire }
 habit-days = { $strip }  streak: { $count } { $count ->
         [one] day
        *[other] days
+    }
+habit-weeks = { $strip }  streak: { $count } { $count ->
+        [one] week
+       *[other] weeks
     }
 habits-legend = 🟩 done · 🟥 skipped · ⬜ no mark — the last 9 days
 button-mark-today = ✅ Mark today

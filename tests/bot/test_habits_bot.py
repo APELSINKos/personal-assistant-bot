@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, timedelta
 
 from aiogram.methods import AnswerCallbackQuery, EditMessageText
@@ -19,7 +20,7 @@ RU, EN = translator("ru"), translator("en")
 
 def _stats(**changes: object) -> HabitStats:
     values: dict[str, object] = {
-        "habit": Habit(id=7, name="Спорт", weekly_goal=7),
+        "habit": Habit(id=7, name="Спорт", weekly_goal=7, emoji="🎯"),
         "done_today": None,
         "streak": 5,
         "done_days": 12,
@@ -40,7 +41,7 @@ def test_habits_view_text() -> None:
     assert text == (
         "🎯 Твои привычки (1/10):\n"
         "\n"
-        "1. Спорт — 12 из 17 дней 🔥\n"
+        "1. 🎯 Спорт — 12 из 17 дней 🔥\n"
         "    ⬜🟩🟩🟥🟩🟩🟩🟩⬜  серия: 5 дней\n"
         "\n"
         "🟩 выполнено · 🟥 пропущено · ⬜ без отметки — последние 9 дней"
@@ -53,9 +54,23 @@ def test_habits_view_text() -> None:
 
 def test_habits_view_plurals_and_no_fire() -> None:
     text, _ = habits_view([_stats(streak=1, done_days=1, total_days=1)], RU)
-    assert "1. Спорт — 1 из 1 дня\n" in text and "серия: 1 день" in text
+    assert "1. 🎯 Спорт — 1 из 1 дня\n" in text and "серия: 1 день" in text
     text, _ = habits_view([_stats(streak=2, total_days=21)], EN)
-    assert "1. Спорт — 12 of 21 days\n" in text and "streak: 2 days" in text
+    assert "1. 🎯 Спорт — 12 of 21 days\n" in text and "streak: 2 days" in text
+
+
+def test_a_weekly_habit_shows_this_week_and_a_streak_of_weeks() -> None:
+    weekly = _stats(
+        habit=Habit(id=8, name="Бег", weekly_goal=3, emoji="🏃"),
+        streak=5,
+        week_done=2,
+        week_goal=3,
+    )
+    text, _ = habits_view([weekly], RU)
+    assert "1. 🏃 Бег — на этой неделе 2 из 3 🔥\n" in text
+    assert "серия: 5 недель" in text
+    text, _ = habits_view([replace(weekly, streak=1)], EN)
+    assert "1. 🏃 Бег — this week 2 of 3\n" in text and "streak: 1 week" in text
 
 
 def test_mark_view() -> None:

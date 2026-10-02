@@ -22,7 +22,7 @@ from assistant.core.timeutil import local_today
 STRIP = {True: "🟩", False: "🟥", None: "⬜"}
 MARK = {True: "✅", False: "❌", None: "⬜"}
 NEXT_MARK: dict[bool | None, bool | None] = {None: True, True: False, False: None}
-FIRE_FROM = 3  # a streak of this many days earns a 🔥
+FIRE_FROM = 3  # a streak of this many days (or weeks) earns a 🔥
 
 
 def _button(text: str, data: HabitCb) -> InlineKeyboardButton:
@@ -35,20 +35,32 @@ def habits_view(items: list[HabitStats], t: Translator) -> tuple[str, InlineKeyb
         return t("habits-empty"), InlineKeyboardMarkup(inline_keyboard=[[add]])
     lines = [t("habits-title", count=len(items), limit=LIMITS.habits)]
     for number, stats in enumerate(items, start=1):
+        habit = stats.habit
         fire = " 🔥" if stats.streak >= FIRE_FROM else ""
         strip = "".join(STRIP[day] for day in stats.last_days)
-        lines += [
-            "",
-            t(
+        if stats.unit == "days":
+            line = t(
                 "habit-line",
                 number=number,
-                name=stats.habit.name,
+                emoji=habit.emoji,
+                name=habit.name,
                 done=stats.done_days,
                 total=stats.total_days,
                 fire=fire,
-            ),
-            "    " + t("habit-days", strip=strip, count=stats.streak),
-        ]
+            )
+            streak = t("habit-days", strip=strip, count=stats.streak)
+        else:  # a weekly goal: this week's progress and a streak of weeks
+            line = t(
+                "habit-line-weekly",
+                number=number,
+                emoji=habit.emoji,
+                name=habit.name,
+                done=stats.week_done,
+                goal=stats.week_goal,
+                fire=fire,
+            )
+            streak = t("habit-weeks", strip=strip, count=stats.streak)
+        lines += ["", line, "    " + streak]
     rows = [
         [_button(t("button-mark-today"), HabitCb(action="mark"))],
         [add, _button(t("button-delete"), HabitCb(action="delete"))],

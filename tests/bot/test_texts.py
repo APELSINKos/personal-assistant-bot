@@ -14,7 +14,7 @@ from assistant.core.clients.cbr import Rate, Rates
 from assistant.core.i18n import format_day, translator
 from assistant.core.models import Habit, Lesson, Note, Reminder, Repeat, User
 from assistant.core.services.digest import TodayData
-from assistant.core.services.habits import HabitStats
+from assistant.core.services.habits import HabitStats, Streak
 from assistant.core.services.weather import Tip, WeatherNow
 
 RU, EN = translator("ru"), translator("en")
@@ -51,7 +51,7 @@ def day_data(**changes: object) -> TodayData:
         "habits_total": 3,
         "notes_count": 4,
         "rates": RATES,
-        "best_streak": ("Спорт", 5),
+        "best_streak": Streak("Спорт", 5, "days"),
     }
     values.update(changes)
     return TodayData(**values)
@@ -116,7 +116,7 @@ def test_today_text_when_everything_is_missing() -> None:
 
 
 def test_today_text_english_plurals() -> None:
-    text = texts.today_text(day_data(best_streak=("Run", 1)), "Alex", EN)
+    text = texts.today_text(day_data(best_streak=Streak("Run", 1, "days")), "Alex", EN)
     assert "📅 Today, Monday, September 28" in text
     assert "📌 1 reminder for today:" in text
     assert "🔥 Best streak: “Run” — 1 day" in text
@@ -302,7 +302,7 @@ def fullest_day() -> TodayData:
         reminders=[Reminder(text="🎉" * 200, due_at=due) for _ in range(20)],
         habits_total=10,
         habits_done=10,
-        best_streak=("П" * 50, 3650),
+        best_streak=Streak("П" * 50, 3650, "days"),
         notes_count=50,
         has_schedule=True,
         lessons=[long] * 12,
@@ -360,7 +360,7 @@ def test_every_list_fits_telegram_at_its_maxima(t) -> None:
     ]
     stats = [
         HabitStats(
-            habit=Habit(id=n, name="🎉" * 50, weekly_goal=7),
+            habit=Habit(id=n, name="🎉" * 50, weekly_goal=7, emoji="🎯"),
             done_today=None,
             streak=3650,
             done_days=3650,

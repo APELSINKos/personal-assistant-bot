@@ -19,6 +19,7 @@ from assistant.core.i18n import (
 from assistant.core.models import Lesson, Reminder, ScheduleSource
 from assistant.core.services import reminders
 from assistant.core.services.digest import TodayData
+from assistant.core.services.habits import Streak
 from assistant.core.services.phrases import Parsed
 from assistant.core.services.recurrence import describe, local_days
 from assistant.core.services.weather import Tip, WeatherNow
@@ -145,6 +146,12 @@ def _within_limit(data: TodayData, render: Callable[[int, int], str]) -> str:
     return text
 
 
+def streak_line(streak: Streak, t: Translator) -> str:
+    """«🔥 Лучшая серия: «Спорт» — 5 дней» or «— 3 недели» for a weekly goal."""
+    key = "today-streak" if streak.unit == "days" else "today-streak-weeks"
+    return t(key, name=streak.name, count=streak.length)
+
+
 def _rates_line(rates: Rates, t: Translator) -> str:
     return t(
         "today-rates",
@@ -177,7 +184,7 @@ def _today(data: TodayData, name: str, t: Translator, shown: int, lessons: int) 
     else:
         lines.append(t("today-habits-none"))
     if data.best_streak is not None:
-        lines.append(t("today-streak", name=data.best_streak[0], count=data.best_streak[1]))
+        lines.append(streak_line(data.best_streak, t))
     lines.append(t("today-notes", count=data.notes_count))
     if data.rates is not None:
         lines.append(_rates_line(data.rates, t))
@@ -213,7 +220,7 @@ def _morning(data: TodayData, name: str, t: Translator, shown: int, lessons: int
     if data.habits_total:
         extra.append(t("morning-habits", count=data.habits_total))
     if data.best_streak is not None:
-        extra.append(t("today-streak", name=data.best_streak[0], count=data.best_streak[1]))
+        extra.append(streak_line(data.best_streak, t))
     if data.rates is not None:
         extra.append(_rates_line(data.rates, t))
     if extra:

@@ -129,6 +129,11 @@ today-streak = 🔥 Лучшая серия: «{ $name }» — { $count } { $cou
         [few] дня
        *[many] дней
     }
+today-streak-weeks = 🔥 Лучшая серия: «{ $name }» — { $count } { $count ->
+        [one] неделя
+        [few] недели
+       *[many] недель
+    }
 today-notes = 📝 Заметок: { $count }
 today-rates = 💵 { $usd } ₽ · 💶 { $eur } ₽
 morning-title = ☀️ Доброе утро, { $name }!
@@ -209,14 +214,20 @@ fired-done = ✓ Готово
 ## Habits
 habits-empty = 🎯 Привычек пока нет. Нажми «➕ Добавить», чтобы начать.
 habits-title = 🎯 Твои привычки ({ $count }/{ $limit }):
-habit-line = { $number }. { $name } — { $done } из { $total } { $total ->
+habit-line = { $number }. { $emoji } { $name } — { $done } из { $total } { $total ->
         [one] дня
        *[other] дней
     }{ $fire }
+habit-line-weekly = { $number }. { $emoji } { $name } — на этой неделе { $done } из { $goal }{ $fire }
 habit-days = { $strip }  серия: { $count } { $count ->
         [one] день
         [few] дня
        *[many] дней
+    }
+habit-weeks = { $strip }  серия: { $count } { $count ->
+        [one] неделя
+        [few] недели
+       *[many] недель
     }
 habits-legend = 🟩 выполнено · 🟥 пропущено · ⬜ без отметки — последние 9 дней
 button-mark-today = ✅ Отметить сегодня
