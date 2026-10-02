@@ -375,3 +375,39 @@ card-unmarked = без отметки
 card-tagline = личный помощник в Telegram
 card-months = янв фев мар апр май июн июл авг сен окт ноя дек
 card-caption = { $emoji } { $name } — { $count } { $unit } подряд
+habit-card-streak-days = 🔥 Серия: { $count } { $count ->
+        [one] день
+        [few] дня
+       *[many] дней
+    }
+habit-card-streak-weeks = 🔥 Серия: { $count } { $count ->
+        [one] неделя
+        [few] недели
+       *[many] недель
+    }
+habit-card-record-days = 🏆 Рекорд: { $count } { $count ->
+        [one] день
+        [few] дня
+       *[many] дней
+    }
+habit-card-record-weeks = 🏆 Рекорд: { $count } { $count ->
+        [one] неделя
+        [few] недели
+       *[many] недель
+    }
+habit-card-year = 📊 За год: { $percent }%
+habit-card-week = 📅 Эта неделя: { $done } из { $goal }
+button-habit-map = 📊 Карта года
+button-habit-days = 📅 Прошлые дни
+button-habit-goal = 🎯 Цель
+button-habit-style = 🎨 Эмодзи и цвет
+button-habit-rename = ✏️ Название
+button-to-habits = ↩️ К привычкам
+habit-days-title = 📅 { $emoji } { $name }: последние дни
+habit-days-help = Нажимай на день: ✅ выполнено → ❌ пропущено → ⬜ без отметки
+habit-goal-ask = 🎯 Сколько раз в неделю — «{ $name }»? Серия и проценты пересчитаются по новой цели.
+habit-emoji-ask = 🎨 Выбери эмодзи для «{ $name }»:
+habit-color-ask = 🎨 И цвет — для карточки и приложения:
+habit-rename-ask = ✍️ Новое название для «{ $name }» (до { $limit } символов):
+habit-renamed = ✅ Готово: «{ $name }».
+habit-cards-wait = ⏳ Слишком много карточек подряд — попробуй через { $seconds } с.

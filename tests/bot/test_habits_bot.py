@@ -48,6 +48,7 @@ def test_habits_view_text() -> None:
         "🟩 выполнено · 🟥 пропущено · ⬜ без отметки — последние 9 дней"
     )
     assert [[b.text for b in row] for row in markup.inline_keyboard] == [
+        ["🎯 Спорт"],
         ["✅ Отметить сегодня"],
         ["➕ Добавить", "🗑 Удалить"],
     ]
@@ -103,7 +104,9 @@ async def test_add_habit_dialog(feed, fake) -> None:
     await feed(message_update("x" * 51))
     assert fake.sent_texts()[-1] == "Название — это текст от 1 до 50 символов. Попробуй ещё раз:"
     await feed(message_update("Спорт"))
-    assert fake.sent_texts()[-1] == "✅ Привычка «Спорт» добавлена."
+    assert fake.sent_texts()[-2] == "✅ Привычка «Спорт» добавлена."
+    # then the goal: daily until the user picks fewer days a week
+    assert fake.sent_texts()[-1].startswith("🎯 Сколько раз в неделю — «Спорт»?")
     await feed(callback_update(HabitCb(action="add").pack()))
     await feed(message_update("СПОРТ"))
     assert fake.sent_texts()[-1] == "Такая привычка уже есть. Придумай другое название:"

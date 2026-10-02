@@ -71,6 +71,7 @@ class UserContext(BaseMiddleware):
             cbr=data["cbr"],
             calendars=data["calendars"],
             attempts=data["attempts"],
+            cards=data["cards"],
             settings=data["settings"],
         )
         return await handler(event, data)
