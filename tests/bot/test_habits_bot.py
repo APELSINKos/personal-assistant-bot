@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import date, timedelta
 
+import pytest
 from aiogram.methods import AnswerCallbackQuery, EditMessageText
 from sqlalchemy import select
 
@@ -184,3 +185,24 @@ async def test_toggle_outside_the_habit_days_answers_like_a_stale_button(
     assert fake.of(EditMessageText)[-1].text.startswith("📅 Отметь привычки за ")
     assert not any(text.startswith("⚠️") for text in fake.sent_texts())
     assert (await session.scalars(select(HabitMark))).all() == []
+
+
+@pytest.mark.parametrize(
+    ("streak", "russian", "english"),
+    [
+        (1, "серия: 1 неделя", "streak: 1 week"),
+        (2, "серия: 2 недели", "streak: 2 weeks"),
+        (5, "серия: 5 недель", "streak: 5 weeks"),
+    ],
+)
+def test_a_weekly_streak_has_its_russian_and_english_forms(
+    streak: int, russian: str, english: str
+) -> None:
+    weekly = _stats(
+        habit=Habit(id=8, name="Бег", weekly_goal=3, emoji="🏃"),
+        streak=streak,
+        week_done=2,
+        week_goal=3,
+    )
+    assert russian in habits_view([weekly], RU)[0]
+    assert english in habits_view([weekly], EN)[0]
