@@ -9,16 +9,19 @@ from __future__ import annotations
 
 import asyncio
 import io
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, timedelta
 from functools import lru_cache
 from pathlib import Path
+from time import monotonic
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from assistant.core.habit_style import COLORS, DAILY, emoji_file
 from assistant.core.i18n import Translator, format_day
+from assistant.core.ratelimit import RateLimiter
 from assistant.core.services.habits import DONE, MISSED, OUTSIDE, YEAR_WEEKS, HabitDetail
 
 ASSETS = Path(__file__).resolve().parents[2] / "assets"
@@ -37,8 +40,15 @@ GLASS_LINE = (255, 255, 255, 30)
 CELL, GAP = 13, 3
 MISSING = "\ue000"  # a private-use character: no font has it, so it shows the «missing» glyph
 QUALITY = 90
+CARDS_PER_MINUTE = 6
 
 _DRAWER = ThreadPoolExecutor(max_workers=1, thread_name_prefix="card")
+
+
+def card_limiter(clock: Callable[[], float] = monotonic) -> RateLimiter:
+    """The budget of CARDS_PER_MINUTE cards a user may have drawn per minute. A process keeps
+    one and checks it before drawing: each card is a tenth of a second of CPU."""
+    return RateLimiter(CARDS_PER_MINUTE, 60.0, clock)
 
 
 @dataclass(frozen=True)

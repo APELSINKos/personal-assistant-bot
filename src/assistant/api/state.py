@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from weakref import WeakValueDictionary
 
+from aiogram import Bot
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from assistant.core.clients.calendars import Calendars
@@ -26,6 +27,9 @@ class AppState:
     calendars: Calendars
     limiter: RateLimiter
     attempts: RateLimiter  # schedule.attempt_limiter: the downloads and parses users start
+    cards: RateLimiter  # cards.card_limiter: the share cards users have drawn
+    bot: Bot | None  # sends cards and prepares shared messages; None: sharing is off
+    site: str | None  # «https://host» of the Mini App: share links point there; None: off
     clock: Callable[[], datetime]
     commit: str | None
     # A lock is kept only while a request holds or awaits it.

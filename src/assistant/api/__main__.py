@@ -7,6 +7,7 @@ from pathlib import Path
 
 import httpx
 import uvicorn
+from aiogram import Bot
 
 from assistant.api.app import create_app
 from assistant.api.routers.health import read_commit
@@ -30,6 +31,8 @@ async def main() -> None:
     setup_logging(settings.log_level, [settings.bot_token.get_secret_value()])
     check_translations()
     engine = create_engine(settings.database_url)
+    # Its own Bot for the share cards: sending a card to the user, preparing a shared message.
+    bot = Bot(settings.bot_token.get_secret_value())
     try:
         async with (
             httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as http,
@@ -42,6 +45,7 @@ async def main() -> None:
                 cbr=CbrClient(http),
                 calendars=CalendarFetcher(calendar_http),
                 commit=read_commit(REPO_ROOT),
+                bot=bot,
             )
             config = uvicorn.Config(
                 app,
@@ -55,6 +59,7 @@ async def main() -> None:
             )
             await uvicorn.Server(config).serve()
     finally:
+        await bot.session.close()
         await engine.dispose()
 
 

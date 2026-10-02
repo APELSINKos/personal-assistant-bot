@@ -7,6 +7,7 @@ from datetime import datetime
 from assistant.api.schemas import (
     BestStreak,
     CityOut,
+    HabitDetailOut,
     HabitOut,
     MeOut,
     MorningOut,
@@ -27,7 +28,7 @@ from assistant.core.i18n import Translator, resolve_language, translator
 from assistant.core.models import Note, Reminder, ScheduleSource, User
 from assistant.core.services import reminders, schedule
 from assistant.core.services.digest import TodayData
-from assistant.core.services.habits import HabitStats
+from assistant.core.services.habits import HabitDetail, HabitStats
 from assistant.core.services.recurrence import Rule, describe
 from assistant.core.services.weather import WeatherNow
 from assistant.core.services.weather import describe as describe_weather
@@ -78,16 +79,36 @@ def rates_out(rates: Rates) -> RatesOut:
     )
 
 
+def _habit_fields(stats: HabitStats) -> dict[str, object]:
+    habit = stats.habit
+    return {
+        "id": habit.id,
+        "name": habit.name,
+        "emoji": habit.emoji,
+        "color": habit.color,
+        "weekly_goal": habit.weekly_goal,
+        "created_on": habit.created_on,
+        "done_today": stats.done_today,
+        "streak": stats.streak,
+        "streak_unit": stats.unit,
+        "record": stats.record,
+        "percent": stats.percent,
+        "week_done": stats.week_done,
+        "week_goal": stats.week_goal,
+        "week": stats.week,
+        "done_days": stats.done_days,
+        "total_days": stats.total_days,
+        "last_days": list(stats.last_days),
+    }
+
+
 def habit_out(stats: HabitStats) -> HabitOut:
-    return HabitOut(
-        id=stats.habit.id,
-        name=stats.habit.name,
-        created_on=stats.habit.created_on,
-        done_today=stats.done_today,
-        streak=stats.streak,
-        done_days=stats.done_days,
-        total_days=stats.total_days,
-        last_days=list(stats.last_days),
+    return HabitOut.model_validate(_habit_fields(stats))
+
+
+def habit_detail_out(detail: HabitDetail) -> HabitDetailOut:
+    return HabitDetailOut.model_validate(
+        {**_habit_fields(detail.stats), "year_from": detail.year_start, "year": detail.year}
     )
 
 
@@ -147,7 +168,11 @@ def today_out(data: TodayData, t: Translator) -> TodayOut:
         ),
         notes_count=data.notes_count,
         rates=rates_out(data.rates) if data.rates is not None else None,
-        best_streak=BestStreak(name=data.best_streak[0], days=data.best_streak[1])
+        best_streak=BestStreak(
+            name=data.best_streak.name,
+            count=data.best_streak.length,
+            unit=data.best_streak.unit,
+        )
         if data.best_streak is not None
         else None,
         has_schedule=data.has_schedule,
