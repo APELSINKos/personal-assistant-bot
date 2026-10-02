@@ -323,3 +323,29 @@ button-alerts-minutes = { $minutes } min before
 schedule-disconnect-ask = Disconnect the timetable? Classes will disappear from the calendar and “My day”.
 button-disconnect-yes = Yes, disconnect
 schedule-disconnected = Timetable disconnected.
+card-goal-daily = Every day
+card-goal-weekly = { $count ->
+        [one] Once a week
+       *[other] { $count } times a week
+    }
+card-since = since { $date }
+card-unit-days = { $count ->
+        [one] day
+       *[other] days
+    }
+card-unit-weeks = { $count ->
+        [one] week
+       *[other] weeks
+    }
+card-in-a-row = in a row
+card-record = Record
+card-year = Past year
+card-week = This week
+card-week-value = { $done } of { $goal }
+card-map = Last 12 months
+card-done = done
+card-missed = skipped
+card-unmarked = no mark
+card-tagline = personal assistant in Telegram
+card-months = Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
+card-caption = { $emoji } { $name } — { $count } { $unit } in a row

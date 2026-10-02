@@ -49,8 +49,13 @@ def labels(key: str) -> frozenset[str]:
     return frozenset(translator(lang)(key) for lang in SUPPORTED)
 
 
-def format_day(day: date, lang: str) -> str:
-    return str(format_date(day, "d MMMM" if lang == "ru" else "MMMM d", locale=lang))
+def format_day(day: date, lang: str, *, year: bool = False) -> str:
+    """«27 сентября» / «September 27»; with the year — «27 сентября 2026» / «September 27, 2026»."""
+    if lang == "ru":
+        pattern = "d MMMM y" if year else "d MMMM"
+    else:
+        pattern = "MMMM d, y" if year else "MMMM d"
+    return str(format_date(day, pattern, locale=lang))
 
 
 def format_weekday(day: date, lang: str) -> str:

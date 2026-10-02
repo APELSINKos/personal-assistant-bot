@@ -335,3 +335,32 @@ button-alerts-minutes = За { $minutes } мин
 schedule-disconnect-ask = Отключить расписание? Пары пропадут из календаря и «Моего дня».
 button-disconnect-yes = Да, отключить
 schedule-disconnected = Расписание отключено.
+card-goal-daily = Каждый день
+card-goal-weekly = { $count } { $count ->
+        [one] раз
+        [few] раза
+       *[many] раз
+    } в неделю
+card-since = с { $date }
+card-unit-days = { $count ->
+        [one] день
+        [few] дня
+       *[many] дней
+    }
+card-unit-weeks = { $count ->
+        [one] неделя
+        [few] недели
+       *[many] недель
+    }
+card-in-a-row = подряд
+card-record = Рекорд
+card-year = За год
+card-week = Неделя
+card-week-value = { $done } из { $goal }
+card-map = Последние 12 месяцев
+card-done = выполнено
+card-missed = пропущено
+card-unmarked = без отметки
+card-tagline = личный помощник в Telegram
+card-months = янв фев мар апр май июн июл авг сен окт ноя дек
+card-caption = { $emoji } { $name } — { $count } { $unit } подряд

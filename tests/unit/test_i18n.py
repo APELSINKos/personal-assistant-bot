@@ -70,6 +70,8 @@ def test_dates() -> None:
     day = date(2026, 9, 27)
     assert i18n.format_day(day, "ru") == "27 сентября"
     assert i18n.format_day(day, "en") == "September 27"
+    assert i18n.format_day(day, "ru", year=True) == "27 сентября 2026"
+    assert i18n.format_day(day, "en", year=True) == "September 27, 2026"
     assert i18n.format_weekday(day, "ru") == "воскресенье"
     assert i18n.format_weekday(day, "en") == "Sunday"
 
