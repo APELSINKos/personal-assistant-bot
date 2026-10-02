@@ -31,7 +31,7 @@
 | 📅 **My day** | Everything important for today in one message |
 | ⏰ **Reminders** | Write like to a person: “tomorrow at 9 buy milk”, “in 20 minutes tea”, “on weekdays at 7:30 workout”. Repeats on weekdays, every other week or monthly — in your city's time zone; a delivered reminder has “+10 min”, “+1 h”, “Tomorrow”, “✓ Done” buttons |
 | 🎓 **Class schedule** | A MIREA group by name, a link to any calendar (`webcal://`, `https://`) or an `.ics` file: classes and week numbers in the app's calendar, “My day” and the morning digest, refreshed every 6 hours, an optional alert 5–60 minutes before a class |
-| 🎯 **Habits** | One-tap marks, streaks and a strip of the last 9 days |
+| 🎯 **Habits** | One-tap marks, a goal of every day or a few times a week, a streak and a record, the past year's percentage, a year map, your own emoji and color; a stats card to share in any chat |
 | 📝 **Notes** | Short notes with a delete button next to each |
 | 💱 **Bank of Russia rates** | USD and EUR with the daily change, a converter both ways |
 | 🌐 **Two languages** | Russian and English: taken from Telegram, switchable in the settings |
@@ -56,6 +56,22 @@
 ```
 
 ```text
+🎯 Your habits (2/10):
+
+1. 💪 Sport — 12 of 17 days 🔥
+    🟩🟩🟥🟩🟩🟩🟩🟩⬜  streak: 5 days
+
+2. 📚 Reading — this week 2 of 3 🔥
+    ⬜🟩⬜🟩⬜⬜🟩🟩⬜  streak: 4 weeks
+
+🟩 done · 🟥 skipped · ⬜ no mark — the last 9 days
+```
+
+<p align="center">
+  <img src="docs/images/habit-card.en.jpg" width="360" alt="The card of a “Workout” habit: 42 days in a row, a record of 58 days, 85% over the past year, 5 of 7 this week and a map of the last 12 months">
+</p>
+
+```text
 You: on weekdays at 7:30 workout
 Bot: ↻ on weekdays at 07:30 — workout
      First time: Tomorrow, 07:30
@@ -70,7 +86,7 @@ The Open button next to the message field opens the app right inside Telegram �
 |---|---|
 | **Today** | A big date, weather with tips, today's classes and plans, one-tap habit marks, rates and the best streak. Pull down to refresh |
 | **Calendar** | A week strip with dots and the week number, a day heading “Today · Tuesday, 29 September”, the month on a tap; classes, reminders and repeats per day, editing and deleting, a new reminder from a phrase or the fields |
-| **Habits** | Streak, progress and a 9-day strip; marks cycle ⬜ → ✅ → ❌ as in the bot |
+| **Habits** | A list with the week's progress and marks that cycle ⬜ → ✅ → ❌ as in the bot. Each habit has its own screen: the streak, the record, the past year's percentage, a year map (a week opens its month), marks for past days, the goal, emoji and color; Share sends the card to any chat |
 | **Notes** | A list and an editor with a character counter; leaving with unsaved text asks first |
 | **More** | City search, the class schedule (a group, a link or a file, class alerts), the morning digest, language, version |
 
@@ -97,8 +113,9 @@ flowchart LR
 
 - **Phrases without AI.** “tomorrow at 9”, “in 20 minutes”, “every other wednesday” are parsed by Russian and English rules with over a hundred table tests; nothing is created until you confirm the card.
 - **The core knows nothing about Telegram.** Limits, habit streaks, time parsing and weather tips live in `assistant.core` and are covered by tests. The bot only parses input and formats replies, and the app's API calls the same services — so the chat and the app follow the same rules.
-- **The app is trusted only by signature.** The API accepts a request only when its initData is signed by Telegram with the bot token and is less than a day old; the user comes from the signature, and someone else's id gets 404. Errors are problem+json, at most 120 requests a minute.
+- **The app is trusted only by signature.** The API lets a request reach any data only when its initData is signed by Telegram with the bot token and is less than a day old; the user comes from the signature, and someone else's id gets 404. The one exception is the card picture, which Telegram fetches itself by a token link (below). Errors are problem+json, at most 120 requests a minute.
 - **A timetable from any calendar.** A MIREA group is found by name in a directory the server builds itself from the groups' calendars; a link or an `.ics` file goes through the same parser. Classes are expanded four months ahead and shown in your city's time zone; when the source is down, the last timetable stays, marked “data from …”.
+- **The card is drawn on the server.** Pillow draws a 1080×1350 JPEG from fonts and emoji kept in the repository, so the bot and the app show the same picture. Telegram fetches it by a link with a random 256-bit token; a card is kept while Telegram may ask for it, but no longer than 7 days, at most 10 cards per user and at most 6 new ones a minute.
 - **Links never lead inside the server.** A calendar link is downloaded from public addresses only: the server resolves the name itself, checks every address and every redirect and connects to the checked IP — up to 2 MB and 10 seconds, at most three calendar downloads or parses a minute per user (in the bot and in the app separately). On top of that, the systemd services cannot reach private, link-local or CGNAT (`100.64.0.0/10`) networks (loopback stays open).
 - **Time without surprises.** Every moment is stored in UTC, "today" is computed in the city's time zone, DST transitions are handled.
 - **Delivery with retries.** On 429 the bot waits exactly as long as Telegram asks; on network failures it retries after 30 s, 1 min, 5 min, 15 min, 1 h and 3 h; users who blocked the bot are left alone.
@@ -109,7 +126,7 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (Russian).
 
 ## Stack
 
-Python 3.12 · aiogram 3 · FastAPI · SQLAlchemy 2 (async) · Alembic · SQLite · httpx · icalendar · Fluent + Babel · React 19 · TypeScript · Vite · TanStack Query · pytest · Vitest · ruff · ESLint · mypy · uv · Caddy · GitHub Actions · systemd
+Python 3.12 · aiogram 3 · FastAPI · SQLAlchemy 2 (async) · Alembic · SQLite · httpx · icalendar · Pillow · Fluent + Babel · React 19 · TypeScript · Vite · TanStack Query · pytest · Vitest · ruff · ESLint · mypy · uv · Caddy · GitHub Actions · systemd
 
 ## Development
 
@@ -130,7 +147,7 @@ Settings come from environment variables or a `.env` file, see [.env.example](.e
 - [x] **v2.1** — Mini App: today, reminders, habits, notes and settings inside Telegram
 - [x] **v2.2** — smart reminders: repeats, “+10 minutes”, phrase input, a calendar in the app
 - [x] **v2.3** — class schedule: a MIREA group, a calendar link or file
-- [ ] **v2.4** — habits: yearly heat map, goals, a shareable stats card
+- [x] **v2.4** — habits: a year map, goals, a shareable stats card
 - [ ] **v2.5** — finances: expenses, budget, exchange rate charts
 - [ ] **v2.6** — 7-day forecast, several cities, search and checklists in notes
 - [ ] **v2.7** — showcase: screenshots, a demo and a project cover

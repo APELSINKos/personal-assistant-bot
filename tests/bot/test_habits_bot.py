@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, timedelta
 
+import pytest
 from aiogram.methods import AnswerCallbackQuery, EditMessageText
 from sqlalchemy import select
 
@@ -19,12 +21,17 @@ RU, EN = translator("ru"), translator("en")
 
 def _stats(**changes: object) -> HabitStats:
     values: dict[str, object] = {
-        "habit": Habit(id=7, name="Спорт"),
+        "habit": Habit(id=7, name="Спорт", weekly_goal=7, emoji="🎯"),
         "done_today": None,
         "streak": 5,
         "done_days": 12,
         "total_days": 17,
         "last_days": (None, True, True, False, True, True, True, True, None),
+        "record": 5,
+        "percent": 71,
+        "week_done": 1,
+        "week_goal": 7,
+        "week": "1......",
     }
     values.update(changes)
     return HabitStats(**values)
@@ -35,12 +42,13 @@ def test_habits_view_text() -> None:
     assert text == (
         "🎯 Твои привычки (1/10):\n"
         "\n"
-        "1. Спорт — 12 из 17 дней 🔥\n"
+        "1. 🎯 Спорт — 12 из 17 дней 🔥\n"
         "    ⬜🟩🟩🟥🟩🟩🟩🟩⬜  серия: 5 дней\n"
         "\n"
         "🟩 выполнено · 🟥 пропущено · ⬜ без отметки — последние 9 дней"
     )
     assert [[b.text for b in row] for row in markup.inline_keyboard] == [
+        ["🎯 Спорт"],
         ["✅ Отметить сегодня"],
         ["➕ Добавить", "🗑 Удалить"],
     ]
@@ -48,16 +56,30 @@ def test_habits_view_text() -> None:
 
 def test_habits_view_plurals_and_no_fire() -> None:
     text, _ = habits_view([_stats(streak=1, done_days=1, total_days=1)], RU)
-    assert "1. Спорт — 1 из 1 дня\n" in text and "серия: 1 день" in text
+    assert "1. 🎯 Спорт — 1 из 1 дня\n" in text and "серия: 1 день" in text
     text, _ = habits_view([_stats(streak=2, total_days=21)], EN)
-    assert "1. Спорт — 12 of 21 days\n" in text and "streak: 2 days" in text
+    assert "1. 🎯 Спорт — 12 of 21 days\n" in text and "streak: 2 days" in text
+
+
+def test_a_weekly_habit_shows_this_week_and_a_streak_of_weeks() -> None:
+    weekly = _stats(
+        habit=Habit(id=8, name="Бег", weekly_goal=3, emoji="🏃"),
+        streak=5,
+        week_done=2,
+        week_goal=3,
+    )
+    text, _ = habits_view([weekly], RU)
+    assert "1. 🏃 Бег — на этой неделе 2 из 3 🔥\n" in text
+    assert "серия: 5 недель" in text
+    text, _ = habits_view([replace(weekly, streak=1)], EN)
+    assert "1. 🏃 Бег — this week 2 of 3\n" in text and "streak: 1 week" in text
 
 
 def test_mark_view() -> None:
     items = [
         _stats(),
-        _stats(habit=Habit(id=8, name="Чтение"), done_today=True),
-        _stats(habit=Habit(id=9, name="Сон"), done_today=False),
+        _stats(habit=Habit(id=8, name="Чтение", weekly_goal=7), done_today=True),
+        _stats(habit=Habit(id=9, name="Сон", weekly_goal=7), done_today=False),
     ]
     text, markup = mark_view(items, date(2026, 9, 28), RU)
     assert text == (
@@ -82,7 +104,9 @@ async def test_add_habit_dialog(feed, fake) -> None:
     await feed(message_update("x" * 51))
     assert fake.sent_texts()[-1] == "Название — это текст от 1 до 50 символов. Попробуй ещё раз:"
     await feed(message_update("Спорт"))
-    assert fake.sent_texts()[-1] == "✅ Привычка «Спорт» добавлена."
+    assert fake.sent_texts()[-2] == "✅ Привычка «Спорт» добавлена."
+    # then the goal: daily until the user picks fewer days a week
+    assert fake.sent_texts()[-1].startswith("🎯 Сколько раз в неделю — «Спорт»?")
     await feed(callback_update(HabitCb(action="add").pack()))
     await feed(message_update("СПОРТ"))
     assert fake.sent_texts()[-1] == "Такая привычка уже есть. Придумай другое название:"
@@ -164,3 +188,24 @@ async def test_toggle_outside_the_habit_days_answers_like_a_stale_button(
     assert fake.of(EditMessageText)[-1].text.startswith("📅 Отметь привычки за ")
     assert not any(text.startswith("⚠️") for text in fake.sent_texts())
     assert (await session.scalars(select(HabitMark))).all() == []
+
+
+@pytest.mark.parametrize(
+    ("streak", "russian", "english"),
+    [
+        (1, "серия: 1 неделя", "streak: 1 week"),
+        (2, "серия: 2 недели", "streak: 2 weeks"),
+        (5, "серия: 5 недель", "streak: 5 weeks"),
+    ],
+)
+def test_a_weekly_streak_has_its_russian_and_english_forms(
+    streak: int, russian: str, english: str
+) -> None:
+    weekly = _stats(
+        habit=Habit(id=8, name="Бег", weekly_goal=3, emoji="🏃"),
+        streak=streak,
+        week_done=2,
+        week_goal=3,
+    )
+    assert russian in habits_view([weekly], RU)[0]
+    assert english in habits_view([weekly], EN)[0]

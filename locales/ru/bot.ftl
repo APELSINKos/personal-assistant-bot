@@ -129,6 +129,11 @@ today-streak = 🔥 Лучшая серия: «{ $name }» — { $count } { $cou
         [few] дня
        *[many] дней
     }
+today-streak-weeks = 🔥 Лучшая серия: «{ $name }» — { $count } { $count ->
+        [one] неделя
+        [few] недели
+       *[many] недель
+    }
 today-notes = 📝 Заметок: { $count }
 today-rates = 💵 { $usd } ₽ · 💶 { $eur } ₽
 morning-title = ☀️ Доброе утро, { $name }!
@@ -209,14 +214,20 @@ fired-done = ✓ Готово
 ## Habits
 habits-empty = 🎯 Привычек пока нет. Нажми «➕ Добавить», чтобы начать.
 habits-title = 🎯 Твои привычки ({ $count }/{ $limit }):
-habit-line = { $number }. { $name } — { $done } из { $total } { $total ->
+habit-line = { $number }. { $emoji } { $name } — { $done } из { $total } { $total ->
         [one] дня
        *[other] дней
     }{ $fire }
+habit-line-weekly = { $number }. { $emoji } { $name } — на этой неделе { $done } из { $goal }{ $fire }
 habit-days = { $strip }  серия: { $count } { $count ->
         [one] день
         [few] дня
        *[many] дней
+    }
+habit-weeks = { $strip }  серия: { $count } { $count ->
+        [one] неделя
+        [few] недели
+       *[many] недель
     }
 habits-legend = 🟩 выполнено · 🟥 пропущено · ⬜ без отметки — последние 9 дней
 button-mark-today = ✅ Отметить сегодня
@@ -335,3 +346,68 @@ button-alerts-minutes = За { $minutes } мин
 schedule-disconnect-ask = Отключить расписание? Пары пропадут из календаря и «Моего дня».
 button-disconnect-yes = Да, отключить
 schedule-disconnected = Расписание отключено.
+card-goal-daily = Каждый день
+card-goal-weekly = { $count } { $count ->
+        [one] раз
+        [few] раза
+       *[many] раз
+    } в неделю
+card-since = с { $date }
+card-unit-days = { $count ->
+        [one] день
+        [few] дня
+       *[many] дней
+    }
+card-unit-weeks = { $count ->
+        [one] неделя
+        [few] недели
+       *[many] недель
+    }
+card-in-a-row = подряд
+card-record = Рекорд
+card-year = За год
+card-week = Неделя
+card-week-value = { $done } из { $goal }
+card-map = Последние 12 месяцев
+card-done = выполнено
+card-missed = пропущено
+card-unmarked = без отметки
+card-tagline = личный помощник в Telegram
+card-months = янв фев мар апр май июн июл авг сен окт ноя дек
+card-caption = { $emoji } { $name } — { $count } { $unit } подряд
+habit-card-streak-days = 🔥 Серия: { $count } { $count ->
+        [one] день
+        [few] дня
+       *[many] дней
+    }
+habit-card-streak-weeks = 🔥 Серия: { $count } { $count ->
+        [one] неделя
+        [few] недели
+       *[many] недель
+    }
+habit-card-record-days = 🏆 Рекорд: { $count } { $count ->
+        [one] день
+        [few] дня
+       *[many] дней
+    }
+habit-card-record-weeks = 🏆 Рекорд: { $count } { $count ->
+        [one] неделя
+        [few] недели
+       *[many] недель
+    }
+habit-card-year = 📊 За год: { $percent }%
+habit-card-week = 📅 Эта неделя: { $done } из { $goal }
+button-habit-map = 📊 Карта года
+button-habit-days = 📅 Прошлые дни
+button-habit-goal = 🎯 Цель
+button-habit-style = 🎨 Эмодзи и цвет
+button-habit-rename = ✏️ Название
+button-to-habits = ↩️ К привычкам
+habit-days-title = 📅 { $emoji } { $name }: последние дни
+habit-days-help = Нажимай на день: ✅ выполнено → ❌ пропущено → ⬜ без отметки
+habit-goal-ask = 🎯 Сколько раз в неделю — «{ $name }»? Серия и проценты пересчитаются по новой цели.
+habit-emoji-ask = 🎨 Выбери эмодзи для «{ $name }»:
+habit-color-ask = 🎨 И цвет — для карточки и приложения:
+habit-rename-ask = ✍️ Новое название для «{ $name }» (до { $limit } символов):
+habit-renamed = ✅ Готово: «{ $name }».
+habit-cards-wait = ⏳ Слишком много карточек подряд — попробуй через { $seconds } с.

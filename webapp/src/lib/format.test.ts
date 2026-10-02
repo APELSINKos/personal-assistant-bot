@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  addDaysIso, bigDate, dayHeading, daysBetween, formatNumber, formatTemp, lessonMeta, localTimeHm,
-  localTodayIso, monthGrid, monthTitle, rangeLabel, shortMoment, weekOf, weekdayShort,
+  addDaysIso, bigDate, dayHeading, dayMonth, daysBetween, formatNumber, formatTemp, lessonMeta,
+  localTimeHm, localTodayIso, monthGrid, monthTitle, rangeLabel, shortMoment, weekOf, weekdayShort,
 } from "./format";
 
 describe("format", () => {
@@ -28,6 +28,13 @@ describe("format", () => {
     expect(localTodayIso("Europe/Moscow", late)).toBe("2026-09-29");
     expect(localTodayIso("UTC", late)).toBe("2026-09-28");
     expect(localTimeHm("Europe/Moscow", late)).toBe("01:30");
+  });
+
+  it("names a day with its month, and with its year when asked", () => {
+    expect(dayMonth("2026-09-28", "ru")).toBe("28 сентября");
+    expect(dayMonth("2026-09-28", "en")).toBe("September 28");
+    expect(dayMonth("2025-06-02", "ru", true)).toBe("2 июня 2025");
+    expect(dayMonth("2025-06-02", "en", true)).toBe("June 2, 2025");
   });
 });
 

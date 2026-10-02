@@ -86,6 +86,25 @@ describe("More", () => {
     expect(await screen.findByText("Сервис временно недоступен")).toBeInTheDocument();
   });
 
+  it("reads out what each city search found, in a region that was there before it", async () => {
+    installTelegram();
+    mockApi({
+      "GET /me": me,
+      "GET /health": HEALTH,
+      "GET /cities?q=%D0%9A%D0%B0%D0%B7": [KAZAN],
+      "GET /cities?q=qqq": [],
+    });
+    renderWithApp(<MoreScreen />, { path: "/more" });
+    const field = await screen.findByLabelText("Найти город");
+    // A screen reader reads out changes only in a region it already listens to.
+    const regions = screen.getAllByRole("status");
+    fireEvent.change(field, { target: { value: "Каз" } });
+    const region = (await screen.findByText("Найдено городов: 1")).closest('[role="status"]');
+    expect(regions).toContain(region);
+    fireEvent.change(field, { target: { value: "qqq" } });
+    await waitFor(() => expect(region).toHaveTextContent("Ничего не нашлось"));
+  });
+
   it("flips the digest switch at once and puts it back when saving fails", async () => {
     installTelegram();
     const patch = heldPatches();

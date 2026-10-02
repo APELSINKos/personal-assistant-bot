@@ -1,18 +1,19 @@
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Toasts } from "../components/Toasts";
 import { LangProvider } from "../i18n";
-import { habit, me, note, scheduleSource } from "../test/fixtures";
+import { habit, me, note, scheduleSource, today } from "../test/fixtures";
 import { installTelegram } from "../test/fakeTelegram";
 import { mockApi } from "../test/mockApi";
 import { ApiError } from "./client";
-import type { Agenda, Habit, Me, Note, ScheduleState } from "./types";
+import type { Agenda, Habit, HabitDetail, Me, Note, ScheduleState, Today } from "./types";
 import {
-  createQueryClient, errorCode, keys, useDeleteNote, useDeleteReminder, useDisconnectSchedule, useHabits,
-  useNotes, useRefreshSchedule, useScheduleAlerts, useSetCity, useSetMark, useUpdateMe, useUploadSchedule,
+  createQueryClient, errorCode, keys, useCreateHabit, useDeleteNote, useDeleteReminder, useDisconnectSchedule,
+  useHabit, useHabits, useMarkDay, useNotes, useRefreshSchedule, useScheduleAlerts, useSetCity, useSetMark,
+  useShareHabit, useUpdateHabit, useUpdateMe, useUploadSchedule,
 } from "./queries";
 
 // Every mutation goes through `api()`, which needs a session (`initData()` non-null) before it
@@ -57,6 +58,15 @@ function controllableFetch() {
     }));
   }
   return { pending, resolveAt };
+}
+
+/**
+ * Where each of the client's mutations stands, oldest first: "pending", "success" or "error". A
+ * mutation turns "error" only after its own onError and onSettled have run, so this is how a test
+ * waits for a rollback to be done without looking at the cache it is about to check.
+ */
+function statuses(client: QueryClient) {
+  return client.getMutationCache().getAll().map((mutation) => mutation.state.status);
 }
 
 describe("optimistic mutation rollback", () => {
@@ -415,5 +425,280 @@ describe("schedule", () => {
     act(() => result.current.mutate(file));
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.today });
+  });
+});
+
+const DETAIL: HabitDetail = {
+  ...habit,
+  year_from: "2025-09-29",
+  // the last week, from Monday 28 September: done, no mark, then Wednesday to Sunday ahead
+  year: "1".repeat(364) + "1-" + ".".repeat(5),
+};
+
+describe("habits", () => {
+  it("fetches one habit with its year", async () => {
+    const { calls } = mockApi({ "GET /habits/7": DETAIL });
+    const { result } = renderHook(() => useHabit(7), { wrapper: wrapperFor(createQueryClient()) });
+    await waitFor(() => expect(result.current.data?.year).toBe(DETAIL.year));
+    expect(calls[0]?.path).toBe("/habits/7");
+  });
+
+  it("creates a habit with its look and goal", async () => {
+    const { calls } = mockApi({ "POST /habits": { status: 201, body: habit } });
+    const { result } = renderHook(() => useCreateHabit(), { wrapper: wrapperFor(createQueryClient()) });
+    act(() => result.current.mutate({ name: "Бег", emoji: "🏃", color: "sky", weekly_goal: 3 }));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(calls[0]?.body).toEqual({ name: "Бег", emoji: "🏃", color: "sky", weekly_goal: 3 });
+  });
+
+  it("changes a habit and refreshes the list, the open habit and today", async () => {
+    const { calls } = mockApi({ "PATCH /habits/7": habit });
+    const client = createQueryClient();
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    const { result } = renderHook(() => useUpdateHabit(), { wrapper: wrapperFor(client) });
+    act(() => result.current.mutate({ id: 7, patch: { weekly_goal: 3 } }));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(calls[0]).toMatchObject({ method: "PATCH", path: "/habits/7", body: { weekly_goal: 3 } });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["habits"] }); // the list and every open habit
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["today"] });
+  });
+
+  it("shows a day's new mark at once and takes it back if the server refuses", async () => {
+    const { pending, resolveAt } = controllableFetch();
+    const client = createQueryClient();
+    client.setQueryData(keys.habit(7), DETAIL);
+    const { result } = renderHook(() => useMarkDay(), { wrapper: wrapperFor(client) });
+    act(() => result.current.mutate({ id: 7, day: "2026-09-29", done: true }));
+    await waitFor(() => expect(client.getQueryData<HabitDetail>(keys.habit(7))?.year.slice(364, 366)).toBe("11"));
+    await waitFor(() => expect(pending).toHaveLength(1));
+    expect(pending[0]).toMatchObject({ method: "PUT", path: "/habits/7/marks/2026-09-29", body: { done: true } });
+    act(() => resolveAt(0, 500, { status: 500, code: "internal_error" }));
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(client.getQueryData<HabitDetail>(keys.habit(7))?.year).toBe(DETAIL.year);
+  });
+});
+
+// Marks share one serial scope: onMutate runs for every tap at once, while the requests go one by one.
+// So when a request is refused, the taps made after it are already on screen and must stay there.
+describe("a refused mark with later taps queued behind it", () => {
+  const refused = { status: 422, code: "validation_error", title: "Invalid input" };
+  const MONDAY = "2026-09-28";
+  const TUESDAY = "2026-09-29";
+
+  describe("in an open habit", () => {
+    // DETAIL's last week; the tests read the two characters for Monday and Tuesday.
+    // "-" is no mark, "1" done, "0" missed.
+    const yearOf = (monday: string, tuesday: string) =>
+      "1".repeat(364) + monday + tuesday + ".".repeat(5);
+    const days = (client: QueryClient) =>
+      client.getQueryData<HabitDetail>(keys.habit(7))?.year.slice(364, 366);
+
+    function open(monday = "-", tuesday = "-") {
+      const server = controllableFetch();
+      const client = createQueryClient();
+      client.setQueryData(keys.habit(7), { ...DETAIL, year: yearOf(monday, tuesday) });
+      const { result } = renderHook(() => useMarkDay(), { wrapper: wrapperFor(client) });
+      const tap = (day: string, done: boolean | null) =>
+        act(() => result.current.mutate({ id: 7, day, done }));
+      return { ...server, client, tap };
+    }
+
+    it("takes back only the refused day, and a later tap on another day stays", async () => {
+      const { client, pending, resolveAt, tap } = open();
+      tap(MONDAY, true);
+      await waitFor(() => expect(days(client)).toBe("1-"));
+      tap(TUESDAY, true);
+      await waitFor(() => expect(days(client)).toBe("11"));
+
+      act(() => resolveAt(0, 422, refused)); // Monday's request is refused
+      await waitFor(() => expect(statuses(client)).toEqual(["error", "pending"]));
+      expect(days(client)).toBe("-1"); // Monday is unmarked again, Tuesday still shows its tap
+
+      await waitFor(() => expect(pending).toHaveLength(2));
+      act(() => resolveAt(1, 200, habit)); // Tuesday's is accepted
+      await waitFor(() => expect(statuses(client)).toEqual(["error", "success"]));
+      expect(days(client)).toBe("-1");
+    });
+
+    it("brings no refused mark back when the later tap is refused too", async () => {
+      const { client, pending, resolveAt, tap } = open();
+      tap(MONDAY, true);
+      await waitFor(() => expect(days(client)).toBe("1-"));
+      tap(TUESDAY, true);
+      await waitFor(() => expect(days(client)).toBe("11"));
+
+      act(() => resolveAt(0, 422, refused));
+      await waitFor(() => expect(pending).toHaveLength(2)); // Tuesday's request goes out next
+      act(() => resolveAt(1, 422, refused));
+      await waitFor(() => expect(statuses(client)).toEqual(["error", "error"]));
+      expect(days(client)).toBe("--");
+    });
+
+    it.each([
+      { name: "done", was: "1", next: false, onScreen: "0" },
+      { name: "missed", was: "0", next: true, onScreen: "1" },
+    ])("puts back a $name day when its tap is refused", async ({ was, next, onScreen }) => {
+      const { client, resolveAt, tap } = open(was);
+      tap(MONDAY, next);
+      await waitFor(() => expect(days(client)).toBe(onScreen + "-"));
+      act(() => resolveAt(0, 422, refused));
+      await waitFor(() => expect(statuses(client)).toEqual(["error"]));
+      expect(days(client)).toBe(was + "-");
+    });
+
+    it("leaves a day to the later tap on it when the earlier one is refused", async () => {
+      const { client, pending, resolveAt, tap } = open();
+      tap(MONDAY, true);
+      await waitFor(() => expect(days(client)).toBe("1-"));
+      tap(MONDAY, false);
+      await waitFor(() => expect(days(client)).toBe("0-"));
+
+      act(() => resolveAt(0, 422, refused));
+      await waitFor(() => expect(statuses(client)).toEqual(["error", "pending"]));
+      expect(days(client)).toBe("0-"); // the second tap owns the day now: it is not undone with the first
+
+      await waitFor(() => expect(pending).toHaveLength(2));
+      act(() => resolveAt(1, 200, habit));
+      await waitFor(() => expect(statuses(client)).toEqual(["error", "success"]));
+      expect(days(client)).toBe("0-");
+    });
+
+    it("still sends a mark for a habit that is not cached, and caches nothing", async () => {
+      const { pending, resolveAt } = controllableFetch();
+      const client = createQueryClient();
+      const { result } = renderHook(() => useMarkDay(), { wrapper: wrapperFor(client) });
+      act(() => result.current.mutate({ id: 7, day: MONDAY, done: true }));
+      await waitFor(() => expect(pending).toHaveLength(1));
+      act(() => resolveAt(0, 422, refused));
+      await waitFor(() => expect(statuses(client)).toEqual(["error"]));
+      expect(client.getQueryData(keys.habit(7))).toBeUndefined();
+    });
+  });
+
+  describe("on the habits list and Today", () => {
+    const sport: Habit = { ...habit, done_today: false };
+    const reading: Habit = { ...habit, id: 8, name: "Reading", done_today: null };
+    // What each cache shows for the two habits, in order; undefined where a cache is not there.
+    const shown = (client: QueryClient) => ({
+      list: client.getQueryData<Habit[]>(keys.habits)?.map((item) => item.done_today),
+      today: client.getQueryData<Today>(keys.today)?.habits.items.map((item) => item.done_today),
+    });
+
+    function cached(where: { list: boolean; today: boolean }) {
+      const server = controllableFetch();
+      const client = createQueryClient();
+      if (where.list) client.setQueryData(keys.habits, [sport, reading]);
+      if (where.today) {
+        client.setQueryData(keys.today, { ...today, habits: { done: 0, total: 2, items: [sport, reading] } });
+      }
+      const { result } = renderHook(() => useSetMark(), { wrapper: wrapperFor(client) });
+      const tap = (id: number, done: boolean | null) =>
+        act(() => result.current.mutate({ id, day: today.date, done }));
+      return { ...server, client, tap };
+    }
+
+    it("takes back only the refused habit's mark, in the list and in Today", async () => {
+      const { client, pending, resolveAt, tap } = cached({ list: true, today: true });
+      tap(7, true);
+      await waitFor(() => expect(shown(client)).toEqual({ list: [true, null], today: [true, null] }));
+      tap(8, true);
+      await waitFor(() => expect(shown(client)).toEqual({ list: [true, true], today: [true, true] }));
+
+      act(() => resolveAt(0, 422, refused)); // the first habit's request is refused
+      await waitFor(() => expect(statuses(client)).toEqual(["error", "pending"]));
+      // The first habit is back to its earlier mark, the second still shows its tap.
+      expect(shown(client)).toEqual({ list: [false, true], today: [false, true] });
+
+      await waitFor(() => expect(pending).toHaveLength(2));
+      act(() => resolveAt(1, 200, { ...reading, done_today: true }));
+      await waitFor(() => expect(statuses(client)).toEqual(["error", "success"]));
+      expect(shown(client)).toEqual({ list: [false, true], today: [false, true] });
+    });
+
+    it("reads the earlier mark from Today when the habits list was never opened", async () => {
+      const { client, pending, resolveAt, tap } = cached({ list: false, today: true });
+      tap(7, true);
+      await waitFor(() => expect(shown(client).today).toEqual([true, null]));
+      tap(8, true);
+      await waitFor(() => expect(shown(client).today).toEqual([true, true]));
+
+      act(() => resolveAt(0, 422, refused));
+      await waitFor(() => expect(statuses(client)).toEqual(["error", "pending"]));
+      expect(shown(client)).toEqual({ list: undefined, today: [false, true] }); // and no list appeared
+
+      await waitFor(() => expect(pending).toHaveLength(2));
+      act(() => resolveAt(1, 200, { ...reading, done_today: true }));
+      await waitFor(() => expect(statuses(client)).toEqual(["error", "success"]));
+      expect(shown(client)).toEqual({ list: undefined, today: [false, true] });
+    });
+
+    it("leaves a habit to the later tap on it when the earlier one is refused", async () => {
+      const { client, pending, resolveAt, tap } = cached({ list: true, today: true });
+      tap(8, true);
+      await waitFor(() => expect(shown(client).list).toEqual([false, true]));
+      tap(8, false);
+      await waitFor(() => expect(shown(client).list).toEqual([false, false]));
+
+      act(() => resolveAt(0, 422, refused));
+      await waitFor(() => expect(statuses(client)).toEqual(["error", "pending"]));
+      // The second tap owns the habit now: it is not undone with the first.
+      expect(shown(client)).toEqual({ list: [false, false], today: [false, false] });
+
+      await waitFor(() => expect(pending).toHaveLength(2));
+      act(() => resolveAt(1, 200, { ...reading, done_today: false }));
+      await waitFor(() => expect(statuses(client)).toEqual(["error", "success"]));
+      expect(shown(client)).toEqual({ list: [false, false], today: [false, false] });
+    });
+  });
+});
+
+describe("useShareHabit", () => {
+  it("shares through a prepared message in Telegram 8.0", async () => {
+    const telegram = installTelegram();
+    const { calls } = mockApi({ "POST /habits/7/share": { prepared_id: "prepared-1" } });
+    const { result } = renderHook(() => useShareHabit(), { wrapper: wrapperFor(createQueryClient()) });
+    act(() => result.current.mutate(7));
+    await waitFor(() => expect(result.current.data).toBe("shared"));
+    expect(telegram.shareMessage).toHaveBeenCalledWith("prepared-1", expect.any(Function));
+    expect(calls.map((call) => call.path)).toEqual(["/habits/7/share"]);
+  });
+
+  it("says when the user closed the chat picker", async () => {
+    installTelegram({ shareMessage: vi.fn((_id: string, callback?: (sent: boolean) => void) => callback?.(false)) });
+    mockApi({ "POST /habits/7/share": { prepared_id: "prepared-1" } });
+    const { result } = renderHook(() => useShareHabit(), { wrapper: wrapperFor(createQueryClient()) });
+    act(() => result.current.mutate(7));
+    await waitFor(() => expect(result.current.data).toBe("cancelled"));
+  });
+
+  it("has the bot send the card on an older Telegram", async () => {
+    const telegram = installTelegram({}, "7.10");
+    const { calls } = mockApi({ "POST /habits/7/card": { status: 204 } });
+    const { result } = renderHook(() => useShareHabit(), { wrapper: wrapperFor(createQueryClient()) });
+    act(() => result.current.mutate(7));
+    await waitFor(() => expect(result.current.data).toBe("sent"));
+    expect(telegram.shareMessage).not.toHaveBeenCalled();
+    expect(calls.map((call) => call.path)).toEqual(["/habits/7/card"]);
+  });
+
+  it("has the bot send the card when the server cannot prepare messages", async () => {
+    const { calls } = mockApi({
+      "POST /habits/7/share": { status: 503, body: { status: 503, code: "upstream_unavailable" } },
+      "POST /habits/7/card": { status: 204 },
+    });
+    const { result } = renderHook(() => useShareHabit(), { wrapper: wrapperFor(createQueryClient()) });
+    act(() => result.current.mutate(7));
+    await waitFor(() => expect(result.current.data).toBe("sent"));
+    expect(calls.map((call) => call.path)).toEqual(["/habits/7/share", "/habits/7/card"]);
+  });
+
+  it("does not fall back past a refusal meant for the user", async () => {
+    const { calls } = mockApi({
+      "POST /habits/7/share": { status: 429, body: { status: 429, code: "rate_limited" } },
+    });
+    const { result } = renderHook(() => useShareHabit(), { wrapper: wrapperFor(createQueryClient()) });
+    act(() => result.current.mutate(7));
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(calls.map((call) => call.path)).toEqual(["/habits/7/share"]);
   });
 });

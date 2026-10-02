@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import { Redirect } from "wouter";
 import { CalendarScreen } from "./screens/Calendar";
+import { HabitScreen } from "./screens/Habit";
 import { HabitForm } from "./screens/HabitForm";
 import { HabitsScreen } from "./screens/Habits";
 import { MoreScreen } from "./screens/More";
@@ -38,6 +39,8 @@ export const ROUTES: AppRoute[] = [
   { path: "/reminders/new", component: ToCalendar },
   { path: "/habits", component: HabitsScreen },
   { path: "/habits/new", component: HabitForm, hideNav: true },
+  { path: "/habits/:id", component: HabitScreen, parent: "/habits" },
+  { path: "/habits/:id/edit", component: HabitForm, hideNav: true },
   { path: "/notes", component: NotesScreen },
   { path: "/notes/new", component: NoteEditor, hideNav: true },
   { path: "/notes/:id", component: NoteEditor, hideNav: true },

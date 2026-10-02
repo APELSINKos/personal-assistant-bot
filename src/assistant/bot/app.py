@@ -44,6 +44,7 @@ def build_dispatcher(
     *,
     calendars: Calendars,
     attempts: RateLimiter,
+    cards: RateLimiter,
 ) -> Dispatcher:
     # Keyword arguments become workflow data, visible to middlewares as data["meteo"] etc.
     # The error handler reads the user's saved language with its own session from
@@ -58,6 +59,7 @@ def build_dispatcher(
         cbr=cbr,
         calendars=calendars,
         attempts=attempts,
+        cards=cards,
         settings=settings,
     )
     for observer in (dp.message, dp.callback_query):

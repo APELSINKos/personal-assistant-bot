@@ -463,3 +463,14 @@ async def test_today_lists_the_lessons(client, auth, ready, clock) -> None:
             "ends_at": "2026-09-30T11:10:00Z",
         }
     ]
+
+
+async def test_a_malformed_link_or_an_unknown_group_spends_no_attempt(client, auth, ready) -> None:
+    for _ in range(4):
+        bad = await client.put("/api/schedule", json={"url": "not a link"}, headers=auth())
+        assert bad.status_code == 422 and bad.json()["reason"] == "forbidden_host"
+        unknown = await client.put("/api/schedule", json={"mirea_id": 99_999}, headers=auth())
+        assert unknown.status_code == 404
+    assert ready.requests == []  # nothing was downloaded
+    good = await client.put("/api/schedule", json={"mirea_id": 4805}, headers=auth())
+    assert good.status_code == 200  # the budget is untouched

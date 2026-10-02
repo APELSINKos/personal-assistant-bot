@@ -1,7 +1,13 @@
+import type { StreakUnit } from "../api/types";
 import type { Dict } from "./ru";
 
 function plural(n: number, one: string, other: string): string {
   return n === 1 ? one : other;
+}
+
+/** «12 days» or «5 weeks». */
+function streakIn(count: number, unit: StreakUnit): string {
+  return `${count} ${unit === "days" ? plural(count, "day", "days") : plural(count, "week", "weeks")}`;
 }
 
 export const en: Dict = {
@@ -28,7 +34,8 @@ export const en: Dict = {
     freeDay: "A free day",
     habits: (done: number, total: number) => `Habits · ${done} of ${total}`,
     noHabits: "No habits yet — add the first one on the Habits tab",
-    bestStreak: (name: string, days: number) => `🔥 Best streak: “${name}” — ${days} ${plural(days, "day", "days")}`,
+    bestStreak: (name: string, count: number, unit: StreakUnit) =>
+      `🔥 Best streak: “${name}” — ${streakIn(count, unit)}`,
     notes: (count: number) => `${count} ${plural(count, "note", "notes")}`,
     pull: "Pull to refresh",
     refreshing: "Refreshing…",
@@ -75,15 +82,48 @@ export const en: Dict = {
   },
   habits: {
     empty: "No habits yet. Tap “+” to start.",
-    streak: (days: number) => `${days} ${plural(days, "day", "days")}`,
     progress: (done: number, total: number) => `${done} of ${total} ${plural(total, "day", "days")}`,
     newTitle: "New habit",
     name: "Name",
     confirmDelete: (name: string) => `Delete the habit “${name}” with all its statistics?`,
     toggle: (name: string, state: string) => `${name}: ${state}. Tap to change`,
     state: { done: "done", skipped: "skipped", none: "no mark" },
-    delete: (name: string) => `Delete the habit “${name}”`,
     add: "Add a habit",
+    streakIn,
+    week: (done: number, goal: number) => `${done} of ${goal} this week`,
+    goalDaily: "Every day",
+    goalWeekly: (count: number) => (count === 1 ? "Once a week" : `${count} times a week`),
+    since: (date: string) => `since ${date}`,
+    record: "Record",
+    year: "Past year",
+    yearMap: "Last 12 months",
+    dayToggle: (date: string, state: string) => `${date}: ${state}. Tap to change`,
+    share: "Share",
+    cardSent: "The card is in the chat with the bot — forward it anywhere",
+    edit: "Edit",
+    editTitle: "Habit",
+    emoji: "Emoji",
+    color: "Color",
+    colors: {
+      mint: "mint",
+      sky: "sky blue",
+      violet: "violet",
+      rose: "rose",
+      coral: "coral",
+      amber: "amber",
+      sand: "sand",
+      slate: "slate",
+    },
+    goal: "Goal",
+    goalHint: "The streak and percentages are recounted for the new goal.",
+    prevMonth: "Previous month",
+    nextMonth: "Next month",
+    streakTitle: "Streak",
+    months: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+    pickWeek: (range: string) => `Show the month of the week ${range}`,
+    gone: "This habit is gone.",
+    toHabits: "To habits",
+    deleteButton: "Delete the habit",
   },
   notes: {
     empty: "No notes yet. Tap “+” to create the first one.",
@@ -100,6 +140,7 @@ export const en: Dict = {
     city: "City",
     searchCity: "Find a city",
     noCities: "Nothing found",
+    citiesFound: (n: number) => `Cities found: ${n}`,
     morning: "Morning digest",
     morningTime: "Digest time",
     language: "Language",
@@ -139,6 +180,7 @@ export const en: Dict = {
     group: "MIREA group",
     groupPlaceholder: "E.g. ИКБО-63-24",
     noGroups: "No such group in the directory",
+    groupsFound: (n: number) => `Groups found: ${n}`,
     building: "The group directory isn't ready yet — if your group isn't there, try again later or connect the timetable by link.",
     link: "Calendar link",
     linkPlaceholder: "webcal://… or https://…",

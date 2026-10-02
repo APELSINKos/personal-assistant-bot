@@ -21,6 +21,7 @@ class ReminderForm(StatesGroup):
 
 class HabitForm(StatesGroup):
     name = State()
+    rename = State()
 
 
 class ScheduleForm(StatesGroup):

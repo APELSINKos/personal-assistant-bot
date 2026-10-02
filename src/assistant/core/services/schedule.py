@@ -130,6 +130,17 @@ async def _store(
     return source
 
 
+async def precheck(
+    session: AsyncSession, *, mirea_id: int | None = None, url: str | None = None
+) -> None:
+    """What a connect refuses without downloading anything — a malformed link, a group that is
+    not in the directory. Checked before an attempt is counted: a typo never spends the budget."""
+    if mirea_id is not None and await groups.get(session, mirea_id) is None:
+        raise NotFound(entity="group")
+    if url is not None:
+        normalize(url)
+
+
 async def connect_mirea(
     session: AsyncSession,
     user: User,

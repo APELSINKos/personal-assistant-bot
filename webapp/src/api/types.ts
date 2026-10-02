@@ -41,15 +41,49 @@ export interface Rates {
   eur: Rate;
 }
 
+export type StreakUnit = "days" | "weeks";
+export type HabitColor = "mint" | "sky" | "violet" | "rose" | "coral" | "amber" | "sand" | "slate";
+
 export interface Habit {
   id: number;
   name: string;
+  emoji: string;
+  color: HabitColor;
+  /** 1–7 days a week; 7 is a daily habit. */
+  weekly_goal: number;
   created_on: string;
   done_today: boolean | null;
   streak: number;
+  streak_unit: StreakUnit;
+  record: number;
+  percent: number;
+  week_done: number;
+  week_goal: number;
+  /** Monday to Sunday: "1" done, "0" missed, "-" no mark, "." before the habit or ahead. */
+  week: string;
   done_days: number;
   total_days: number;
   last_days: (boolean | null)[];
+}
+
+export interface HabitDetail extends Habit {
+  /** A Monday: the first day of `year`. */
+  year_from: string;
+  /** 371 days (53 weeks) from `year_from`, in the alphabet of `week`. */
+  year: string;
+}
+
+export interface HabitInput {
+  name: string;
+  emoji?: string;
+  color?: HabitColor;
+  weekly_goal?: number;
+}
+
+export type HabitPatch = Partial<HabitInput>;
+
+export interface SharedCard {
+  prepared_id: string;
 }
 
 export interface TodayReminder {
@@ -77,7 +111,7 @@ export interface Today {
   habits: { done: number; total: number; items: Habit[] };
   notes_count: number;
   rates: Rates | null;
-  best_streak: { name: string; days: number } | null;
+  best_streak: { name: string; count: number; unit: StreakUnit } | null;
   has_schedule: boolean;
   lessons: TodayLesson[];
   week_label: string | null;

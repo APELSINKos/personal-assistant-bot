@@ -158,7 +158,7 @@ export function TodayScreen() {
             <div key={habit.id} className="habit">
               <div>
                 <div className="habit__name">{habit.name}</div>
-                {habit.streak > 0 && <div className="accent">🔥 {t.habits.streak(habit.streak)}</div>}
+                {habit.streak > 0 && <div className="accent">🔥 {t.habits.streakIn(habit.streak, habit.streak_unit)}</div>}
               </div>
               <HabitToggle
                 habit={habit}
@@ -171,7 +171,7 @@ export function TodayScreen() {
           ))
         )}
         {data.best_streak && (
-          <p className="tip accent">{t.today.bestStreak(data.best_streak.name, data.best_streak.days)}</p>
+          <p className="tip accent">{t.today.bestStreak(data.best_streak.name, data.best_streak.count, data.best_streak.unit)}</p>
         )}
       </Card>
 

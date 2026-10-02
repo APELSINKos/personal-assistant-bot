@@ -34,7 +34,7 @@ from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.errors import NotFound
 from assistant.core.i18n import Translator, resolve_language, translator
 from assistant.core.models import FsmState, Lesson, Reminder, User
-from assistant.core.services import digest, reminders, schedule, users
+from assistant.core.services import digest, reminders, schedule, sharing, users
 from assistant.core.timeutil import digest_window_date, now_local, to_local, utcnow
 
 log = logging.getLogger(__name__)
@@ -397,5 +397,6 @@ class Scheduler:
                 delete(FsmState).where(FsmState.updated_at < now - FSM_TTL)
             )
             alerts = await schedule.forget_alerts(session, now - ALERTS_KEPT)
+            cards = await sharing.prune(session, now)
             await session.commit()
-        return int(result.rowcount) + alerts  # type: ignore[attr-defined]
+        return int(result.rowcount) + alerts + cards  # type: ignore[attr-defined]

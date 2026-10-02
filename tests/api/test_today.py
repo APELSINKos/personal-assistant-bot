@@ -46,7 +46,7 @@ async def test_today_collects_everything(client, auth, session, make_user) -> No
         "usd": {"value": 84.1975, "change": -0.3118},
         "eur": {"value": 96.6671, "change": -0.8313},
     }
-    assert body["best_streak"] == {"name": "Спорт", "days": 1}
+    assert body["best_streak"] == {"name": "Спорт", "count": 1, "unit": "days"}
 
 
 async def test_today_speaks_english(client, auth) -> None:

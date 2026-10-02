@@ -33,6 +33,16 @@
   --error-text: #ffa3b2;
   /* White on #ff7a90 is only ~2.5:1; the dark background gives ~7.9:1. */
   --on-error: #0a0913;
+  /* A habit's colour (assistant/core/habit_style.py): >= 4.3:1 on this background and its glows. */
+  --habit-mint: #7cf5c4;
+  --habit-sky: #7cc8ff;
+  --habit-violet: #b69cff;
+  --habit-rose: #ff8fb1;
+  --habit-coral: #ff9f7a;
+  --habit-amber: #ffd28a;
+  --habit-sand: #e0c9a6;
+  --habit-slate: #c3c7d6;
+  --on-habit: #0a0913;
 }
 
 [data-theme="light"] {
@@ -54,4 +64,14 @@
   --error-text: #b62545;
   /* White on #d63b5c is ~4.53:1, which still clears AA. */
   --on-error: #fff;
+  /* A habit's colour on the light theme: >= 3.9:1 on this background and its glows. */
+  --habit-mint: #0b7a5c;
+  --habit-sky: #1f6fb2;
+  --habit-violet: #6b4fd8;
+  --habit-rose: #c2306a;
+  --habit-coral: #b8461f;
+  --habit-amber: #9a6200;
+  --habit-sand: #86683d;
+  --habit-slate: #5b6178;
+  --on-habit: #fff;
 }

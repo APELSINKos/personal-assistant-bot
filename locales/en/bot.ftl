@@ -118,6 +118,10 @@ today-streak = 🔥 Best streak: “{ $name }” — { $count } { $count ->
         [one] day
        *[other] days
     }
+today-streak-weeks = 🔥 Best streak: “{ $name }” — { $count } { $count ->
+        [one] week
+       *[other] weeks
+    }
 today-notes = 📝 Notes: { $count }
 today-rates = 💵 { $usd } ₽ · 💶 { $eur } ₽
 morning-title = ☀️ Good morning, { $name }!
@@ -198,13 +202,18 @@ fired-done = ✓ Done
 ## Habits
 habits-empty = 🎯 No habits yet. Tap “➕ Add” to start.
 habits-title = 🎯 Your habits ({ $count }/{ $limit }):
-habit-line = { $number }. { $name } — { $done } of { $total } { $total ->
+habit-line = { $number }. { $emoji } { $name } — { $done } of { $total } { $total ->
         [one] day
        *[other] days
     }{ $fire }
+habit-line-weekly = { $number }. { $emoji } { $name } — this week { $done } of { $goal }{ $fire }
 habit-days = { $strip }  streak: { $count } { $count ->
         [one] day
        *[other] days
+    }
+habit-weeks = { $strip }  streak: { $count } { $count ->
+        [one] week
+       *[other] weeks
     }
 habits-legend = 🟩 done · 🟥 skipped · ⬜ no mark — the last 9 days
 button-mark-today = ✅ Mark today
@@ -323,3 +332,61 @@ button-alerts-minutes = { $minutes } min before
 schedule-disconnect-ask = Disconnect the timetable? Classes will disappear from the calendar and “My day”.
 button-disconnect-yes = Yes, disconnect
 schedule-disconnected = Timetable disconnected.
+card-goal-daily = Every day
+card-goal-weekly = { $count ->
+        [one] Once a week
+       *[other] { $count } times a week
+    }
+card-since = since { $date }
+card-unit-days = { $count ->
+        [one] day
+       *[other] days
+    }
+card-unit-weeks = { $count ->
+        [one] week
+       *[other] weeks
+    }
+card-in-a-row = in a row
+card-record = Record
+card-year = Past year
+card-week = This week
+card-week-value = { $done } of { $goal }
+card-map = Last 12 months
+card-done = done
+card-missed = skipped
+card-unmarked = no mark
+card-tagline = personal assistant in Telegram
+card-months = Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
+card-caption = { $emoji } { $name } — { $count } { $unit } in a row
+habit-card-streak-days = 🔥 Streak: { $count } { $count ->
+        [one] day
+       *[other] days
+    }
+habit-card-streak-weeks = 🔥 Streak: { $count } { $count ->
+        [one] week
+       *[other] weeks
+    }
+habit-card-record-days = 🏆 Record: { $count } { $count ->
+        [one] day
+       *[other] days
+    }
+habit-card-record-weeks = 🏆 Record: { $count } { $count ->
+        [one] week
+       *[other] weeks
+    }
+habit-card-year = 📊 Past year: { $percent }%
+habit-card-week = 📅 This week: { $done } of { $goal }
+button-habit-map = 📊 Year map
+button-habit-days = 📅 Past days
+button-habit-goal = 🎯 Goal
+button-habit-style = 🎨 Emoji and color
+button-habit-rename = ✏️ Rename
+button-to-habits = ↩️ To habits
+habit-days-title = 📅 { $emoji } { $name }: the last days
+habit-days-help = Tap a day: ✅ done → ❌ skipped → ⬜ no mark
+habit-goal-ask = 🎯 How many times a week — “{ $name }”? The streak and percentages are recounted for the new goal.
+habit-emoji-ask = 🎨 Pick an emoji for “{ $name }”:
+habit-color-ask = 🎨 And a color — for the card and the app:
+habit-rename-ask = ✍️ A new name for “{ $name }” (up to { $limit } characters):
+habit-renamed = ✅ Done: “{ $name }”.
+habit-cards-wait = ⏳ Too many cards in a row — try again in { $seconds } s.

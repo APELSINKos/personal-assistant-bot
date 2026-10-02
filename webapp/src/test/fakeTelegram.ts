@@ -33,6 +33,7 @@ export function installTelegram(overrides: Partial<TgWebApp> = {}, version = "8.
     showConfirm: vi.fn((_message: string, callback: (ok: boolean) => void) => callback(true)),
     openLink: vi.fn(),
     requestWriteAccess: vi.fn((callback?: (allowed: boolean) => void) => callback?.(true)),
+    shareMessage: vi.fn((_id: string, callback?: (sent: boolean) => void) => callback?.(true)),
     openTelegramLink: vi.fn(),
     onEvent: vi.fn(),
     offEvent: vi.fn(),

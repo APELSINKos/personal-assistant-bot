@@ -12,6 +12,7 @@ from assistant.api.routers import (
     notes,
     reminders,
     schedule,
+    share,
     today,
 )
 
@@ -24,4 +25,5 @@ ALL: list[APIRouter] = [
     habits.router,
     agenda.router,
     schedule.router,
+    share.router,
 ]

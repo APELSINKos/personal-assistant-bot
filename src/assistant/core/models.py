@@ -9,11 +9,13 @@ from typing import Any
 from sqlalchemy import (
     JSON,
     BigInteger,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
     LargeBinary,
     MetaData,
+    SmallInteger,
     String,
     Text,
     event,
@@ -22,6 +24,7 @@ from sqlalchemy.engine import Dialect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 
+from assistant.core.habit_style import DAILY, DEFAULT_COLOR, DEFAULT_EMOJI
 from assistant.core.timeutil import UTC, utcnow
 
 
@@ -182,13 +185,20 @@ def _occurrence_defaults_to_due(_mapper: object, _connection: object, target: Re
 
 class Habit(Base):
     __tablename__ = "habits"
-    __table_args__ = (Index("ix_habits_user", "user_id"), {"sqlite_autoincrement": True})
+    __table_args__ = (
+        CheckConstraint("weekly_goal BETWEEN 1 AND 7", name="weekly_goal_range"),
+        Index("ix_habits_user", "user_id"),
+        {"sqlite_autoincrement": True},
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(100))
     created_on: Mapped[date]
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    emoji: Mapped[str] = mapped_column(String(16), default=DEFAULT_EMOJI)
+    color: Mapped[str] = mapped_column(String(16), default=DEFAULT_COLOR)
+    weekly_goal: Mapped[int] = mapped_column(SmallInteger, default=DAILY)  # 1–7 days a week
 
 
 class HabitMark(Base):
@@ -303,3 +313,21 @@ class JobRun(Base):
     name: Mapped[str] = mapped_column(String(32), primary_key=True)
     finished_at: Mapped[datetime] = mapped_column(UTCDateTime)
     info: Mapped[str | None] = mapped_column(String(200))
+
+
+class ShareCard(Base):
+    """A habit card picture Telegram downloads by its token when the user shares the card from
+    the Mini App (services/sharing). Kept until the shared message can no longer be sent."""
+
+    __tablename__ = "share_cards"
+    __table_args__ = (
+        Index("ix_share_cards_user", "user_id", "created_at"),
+        Index("ix_share_cards_expires", "expires_at"),
+    )
+
+    token: Mapped[str] = mapped_column(String(43), primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"))
+    habit_id: Mapped[int] = mapped_column(ForeignKey("habits.id", ondelete="CASCADE"))
+    image: Mapped[bytes] = mapped_column(LargeBinary)  # JPEG
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime)

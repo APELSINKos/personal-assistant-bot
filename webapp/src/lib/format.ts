@@ -116,6 +116,16 @@ export function dayHeading(iso: string, todayIso: string, lang: Lang, words: Day
   return word ? `${word} · ${weekday}, ${day}` : capitalize(`${weekday}, ${day}`);
 }
 
+/** «28 сентября» / «September 28»; with the year — «28 сентября 2025» / «September 28, 2025». */
+export function dayMonth(iso: string, lang: Lang, withYear = false): string {
+  const format = new Intl.DateTimeFormat(lang, { timeZone: "UTC", day: "numeric", month: "long" });
+  const day = format.format(parseIsoDate(iso));
+  if (!withYear) return day;
+  // Spelled out rather than Intl's `year` option, which adds «г.» in Russian: the bot and the card
+  // write «2 июня 2025».
+  return lang === "ru" ? `${day} ${iso.slice(0, 4)}` : `${day}, ${iso.slice(0, 4)}`;
+}
+
 export function rangeLabel(fromIso: string, toIso: string, lang: Lang): string {
   const format = new Intl.DateTimeFormat(lang, { timeZone: "UTC", day: "numeric", month: "short" });
   return `${format.format(parseIsoDate(fromIso))} – ${format.format(parseIsoDate(toIso))}`;

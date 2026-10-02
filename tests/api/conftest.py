@@ -2,18 +2,22 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
 import pytest
+from aiogram import Bot
+from aiogram.methods import GetMe, SavePreparedInlineMessage
+from aiogram.types import PreparedInlineMessage, User
 from fastapi import FastAPI
 
 from assistant.api.app import create_app
 from assistant.api.auth import sign_init_data
 from assistant.core.config import Settings
 from assistant.core.ratelimit import RateLimiter
-from assistant.core.services import schedule
+from assistant.core.services import cards, schedule
+from tests.bot.fakes import FakeSession
 from tests.stubs import StubCalendars, StubCbr, StubMeteo
 
 TOKEN = "123456:API-TEST-TOKEN"
@@ -45,7 +49,7 @@ def make_init_data(
 
 @pytest.fixture
 def api_settings() -> Settings:
-    return Settings(_env_file=None, bot_token=TOKEN)
+    return Settings(_env_file=None, bot_token=TOKEN, webapp_url="https://app.example/miniapp/")
 
 
 @pytest.fixture
@@ -75,7 +79,20 @@ def monotonic() -> list[float]:
 
 
 @pytest.fixture
-def app(sessionmaker, api_settings, meteo, cbr, calendars, clock, monotonic) -> FastAPI:
+def telegram() -> FakeSession:
+    """What the API's own Bot sends to Telegram (share cards), with Telegram's answers."""
+    session = FakeSession()
+    session.results[GetMe] = User(id=42, is_bot=True, first_name="Bot", username="assistant_bot")
+    # Telegram answers with Unix time, and aiogram keeps it an int.
+    expires = int((NOW + timedelta(days=1)).timestamp())
+    session.results[SavePreparedInlineMessage] = PreparedInlineMessage(
+        id="prepared-1", expiration_date=expires
+    )
+    return session
+
+
+@pytest.fixture
+def app(sessionmaker, api_settings, meteo, cbr, calendars, clock, monotonic, telegram) -> FastAPI:
     return create_app(
         settings=api_settings,
         sessionmaker=sessionmaker,
@@ -86,6 +103,8 @@ def app(sessionmaker, api_settings, meteo, cbr, calendars, clock, monotonic) -> 
         clock=lambda: clock[0],
         limiter=RateLimiter(5_000),
         attempts=schedule.attempt_limiter(lambda: monotonic[0]),
+        card_limiter=cards.card_limiter(lambda: monotonic[0]),
+        bot=Bot(TOKEN, session=telegram),
     )
 
 

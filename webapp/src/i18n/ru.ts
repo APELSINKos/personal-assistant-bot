@@ -1,9 +1,16 @@
+import type { HabitColor, StreakUnit } from "../api/types";
+
 const rules = new Intl.PluralRules("ru");
 
 function plural(n: number, one: string, few: string, many: string): string {
   const form = rules.select(n);
   if (form === "one") return one;
   return form === "few" ? few : many;
+}
+
+/** «12 дней» or «5 недель». */
+function streakIn(count: number, unit: StreakUnit): string {
+  return `${count} ${unit === "days" ? plural(count, "день", "дня", "дней") : plural(count, "неделя", "недели", "недель")}`;
 }
 
 export const ru = {
@@ -30,8 +37,8 @@ export const ru = {
     freeDay: "Свободный день",
     habits: (done: number, total: number) => `Привычки · ${done} из ${total}`,
     noHabits: "Привычек пока нет — добавь первую во вкладке «Привычки»",
-    bestStreak: (name: string, days: number) =>
-      `🔥 Лучшая серия: «${name}» — ${days} ${plural(days, "день", "дня", "дней")}`,
+    bestStreak: (name: string, count: number, unit: StreakUnit) =>
+      `🔥 Лучшая серия: «${name}» — ${streakIn(count, unit)}`,
     notes: (count: number) => `${count} ${plural(count, "заметка", "заметки", "заметок")}`,
     pull: "Потяни, чтобы обновить",
     refreshing: "Обновляю…",
@@ -78,7 +85,6 @@ export const ru = {
   },
   habits: {
     empty: "Привычек пока нет. Нажми «+», чтобы начать.",
-    streak: (days: number) => `${days} ${plural(days, "день", "дня", "дней")}`,
     progress: (done: number, total: number) =>
       `${done} из ${total} ${plural(total, "дня", "дней", "дней")}`,
     newTitle: "Новая привычка",
@@ -86,8 +92,42 @@ export const ru = {
     confirmDelete: (name: string) => `Удалить привычку «${name}» вместе со всей статистикой?`,
     toggle: (name: string, state: string) => `${name}: ${state}. Нажми, чтобы изменить`,
     state: { done: "выполнено", skipped: "пропущено", none: "без отметки" },
-    delete: (name: string) => `Удалить привычку «${name}»`,
     add: "Добавить привычку",
+    streakIn,
+    week: (done: number, goal: number) => `${done} из ${goal} на этой неделе`,
+    goalDaily: "Каждый день",
+    goalWeekly: (count: number) => `${count} ${plural(count, "раз", "раза", "раз")} в неделю`,
+    since: (date: string) => `с ${date}`,
+    record: "Рекорд",
+    year: "За год",
+    yearMap: "Последние 12 месяцев",
+    dayToggle: (date: string, state: string) => `${date}: ${state}. Нажми, чтобы изменить`,
+    share: "Поделиться",
+    cardSent: "Карточка в чате с ботом — перешли её, куда захочешь",
+    edit: "Изменить",
+    editTitle: "Привычка",
+    emoji: "Эмодзи",
+    color: "Цвет",
+    colors: {
+      mint: "мятный",
+      sky: "голубой",
+      violet: "фиолетовый",
+      rose: "розовый",
+      coral: "коралловый",
+      amber: "янтарный",
+      sand: "песочный",
+      slate: "серый",
+    } satisfies Record<HabitColor, string>,
+    goal: "Цель",
+    goalHint: "Серия и проценты пересчитаются по новой цели.",
+    prevMonth: "Предыдущий месяц",
+    nextMonth: "Следующий месяц",
+    streakTitle: "Серия",
+    months: ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"],
+    pickWeek: (range: string) => `Показать месяц недели ${range}`,
+    gone: "Этой привычки уже нет.",
+    toHabits: "К привычкам",
+    deleteButton: "Удалить привычку",
   },
   notes: {
     empty: "Заметок пока нет. Нажми «+», чтобы создать первую.",
@@ -104,6 +144,7 @@ export const ru = {
     city: "Город",
     searchCity: "Найти город",
     noCities: "Ничего не нашлось",
+    citiesFound: (n: number) => `Найдено городов: ${n}`,
     morning: "Утренняя сводка",
     morningTime: "Время сводки",
     language: "Язык",
@@ -142,6 +183,7 @@ export const ru = {
     group: "Группа МИРЭА",
     groupPlaceholder: "Например, ИКБО-63-24",
     noGroups: "Такой группы нет в справочнике",
+    groupsFound: (n: number) => `Найдено групп: ${n}`,
     building: "Справочник групп ещё не готов — если твоей группы нет, попробуй позже или подключи расписание по ссылке.",
     link: "Ссылка на календарь",
     linkPlaceholder: "webcal://… или https://…",

@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { useCities, useHealth, useMe, useSchedule, useSetCity, useUpdateMe } from "../api/queries";
 import type { City } from "../api/types";
 import { Card } from "../components/Card";
+import { SearchStatus } from "../components/SearchStatus";
 import { ErrorState, Loader } from "../components/States";
 import { toast } from "../components/toastStore";
 import { useT } from "../i18n";
@@ -78,6 +79,11 @@ export function MoreScreen() {
   if (me.isError) return <ErrorState onRetry={() => void me.refetch()} />;
   const profile = me.data;
   const source = schedule.data?.source;
+  // Both the live query and the debounced one must be long enough — otherwise, right after
+  // picking a city (which clears `query`), the stale suggestions would linger for up to the
+  // debounce delay while `search` catches up.
+  const searching = query.trim().length >= 2 && search.trim().length >= 2;
+  const found = searching && cities.data ? cities.data.length : 0;
 
   const chooseCity = (city: City) =>
     setCity.mutate(city, {
@@ -103,30 +109,24 @@ export function MoreScreen() {
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
-        {/* Both the live query and the debounced one must be long enough — otherwise, right
-            after picking a city (which clears `query`), the stale suggestions would linger
-            for up to the debounce delay while `search` catches up. */}
-        {query.trim().length >= 2 && search.trim().length >= 2 && cities.isError && !cities.data && (
-          <p className="muted">{t.errors.upstream_unavailable}</p>
+        {searching && cities.data && cities.data.length > 0 && (
+          <div className="results">
+            {cities.data.map((city) => (
+              <button
+                type="button"
+                key={`${city.lat},${city.lon}`}
+                className="result"
+                onClick={() => chooseCity(city)}
+              >
+                {cityLabel(city)}
+              </button>
+            ))}
+          </div>
         )}
-        {query.trim().length >= 2 && search.trim().length >= 2 && cities.data && (
-          cities.data.length === 0 ? (
-            <p className="muted">{t.more.noCities}</p>
-          ) : (
-            <div className="results">
-              {cities.data.map((city) => (
-                <button
-                  type="button"
-                  key={`${city.lat},${city.lon}`}
-                  className="result"
-                  onClick={() => chooseCity(city)}
-                >
-                  {cityLabel(city)}
-                </button>
-              ))}
-            </div>
-          )
-        )}
+        <SearchStatus count={found > 0 ? t.more.citiesFound(found) : null}>
+          {searching && cities.isError && !cities.data && <p className="muted">{t.errors.upstream_unavailable}</p>}
+          {searching && cities.data?.length === 0 && <p className="muted">{t.more.noCities}</p>}
+        </SearchStatus>
       </Card>
 
       <Link href="/more/schedule" className="card card--link" style={{ "--i": 1 } as CSSProperties}>

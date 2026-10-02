@@ -81,15 +81,32 @@ class RatesOut(BaseModel):
     eur: RateOut
 
 
+StreakUnitName = Literal["days", "weeks"]
+
+
 class HabitOut(BaseModel):
     id: int
     name: str
+    emoji: str
+    color: str
+    weekly_goal: int
     created_on: date
     done_today: bool | None
     streak: int
+    streak_unit: StreakUnitName
+    record: int
+    percent: int
+    week_done: int
+    week_goal: int
+    week: str  # Monday to Sunday: "1" done, "0" missed, "-" no mark, "." before the habit or ahead
     done_days: int
     total_days: int
     last_days: list[bool | None]
+
+
+class HabitDetailOut(HabitOut):
+    year_from: date  # a Monday
+    year: str  # 371 days from year_from, in the alphabet of `week`
 
 
 class TodayReminder(BaseModel):
@@ -107,7 +124,8 @@ class TodayHabits(BaseModel):
 
 class BestStreak(BaseModel):
     name: str
-    days: int
+    count: int
+    unit: StreakUnitName
 
 
 class TodayLesson(BaseModel):
@@ -257,6 +275,22 @@ class HabitIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(max_length=1_000)
+    emoji: str | None = Field(default=None, max_length=16)
+    color: str | None = Field(default=None, max_length=16)
+    weekly_goal: int | None = Field(default=None, ge=1, le=7)
+
+
+class HabitPatchIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, max_length=1_000)
+    emoji: str | None = Field(default=None, max_length=16)
+    color: str | None = Field(default=None, max_length=16)
+    weekly_goal: int | None = Field(default=None, ge=1, le=7)
+
+
+class SharedOut(BaseModel):
+    prepared_id: str  # for Telegram.WebApp.shareMessage
 
 
 class MarkIn(BaseModel):

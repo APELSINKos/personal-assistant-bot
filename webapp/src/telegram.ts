@@ -37,6 +37,7 @@ export interface TgWebApp {
   showConfirm?(message: string, callback: (ok: boolean) => void): void;
   openLink?(url: string): void;
   requestWriteAccess?(callback?: (allowed: boolean) => void): void;
+  shareMessage?(msgId: string, callback?: (sent: boolean) => void): void;
   openTelegramLink?(url: string): void;
   onEvent(event: "themeChanged", callback: () => void): void;
   offEvent(event: "themeChanged", callback: () => void): void;
@@ -160,6 +161,18 @@ export function openLink(url: string): void {
 }
 
 /** Telegram's own "Allow the bot to message you?" dialog; a soft `false` where unsupported. */
+/** Whether this Telegram can share a message the bot prepared (Bot API 8.0). */
+export function canShareMessages(): boolean {
+  return Boolean(webApp()?.shareMessage) && supports("8.0");
+}
+
+/** Opens Telegram's chat picker for a prepared message; resolves to whether it was sent. */
+export function shareMessage(preparedId: string): Promise<boolean> {
+  const app = webApp();
+  if (!app?.shareMessage || !supports("8.0")) return Promise.resolve(false);
+  return new Promise((resolve) => app.shareMessage?.(preparedId, (sent) => resolve(sent)));
+}
+
 export function requestWriteAccess(): Promise<boolean> {
   const app = webApp();
   if (!app?.requestWriteAccess || !supports("6.9")) return Promise.resolve(false);

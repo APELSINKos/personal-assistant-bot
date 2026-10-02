@@ -26,6 +26,7 @@ class Ctx:
     cbr: CbrClient
     calendars: Calendars
     attempts: RateLimiter  # schedule.attempt_limiter: the downloads and parses users start
+    cards: RateLimiter  # cards.card_limiter: the share cards users have drawn
     settings: Settings
 
     @property
