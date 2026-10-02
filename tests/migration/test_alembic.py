@@ -290,6 +290,10 @@ def test_0004_gives_habits_the_default_look_and_downgrades_without_reusing_ids(
         )
         conn.commit()
     assert looks == [("🎯", "mint", 7)]
+    # The CHECK constraint prevents invalid weekly_goal values.
+    with closing(sqlite3.connect(db)) as conn, pytest.raises(sqlite3.IntegrityError):
+        conn.execute("UPDATE habits SET weekly_goal = 0")
+        conn.commit()
     command.downgrade(cfg, "0003")
     assert _counts(db) == {t: 1 for t in CHILDREN}
     with closing(sqlite3.connect(db)) as conn:

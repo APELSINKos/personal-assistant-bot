@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import (
     JSON,
     BigInteger,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -184,7 +185,11 @@ def _occurrence_defaults_to_due(_mapper: object, _connection: object, target: Re
 
 class Habit(Base):
     __tablename__ = "habits"
-    __table_args__ = (Index("ix_habits_user", "user_id"), {"sqlite_autoincrement": True})
+    __table_args__ = (
+        CheckConstraint("weekly_goal BETWEEN 1 AND 7", name="weekly_goal_range"),
+        Index("ix_habits_user", "user_id"),
+        {"sqlite_autoincrement": True},
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"))

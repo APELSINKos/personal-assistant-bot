@@ -196,3 +196,11 @@ async def test_share_cards_go_with_their_habit(session, make_user) -> None:
     await session.execute(delete(Habit).where(Habit.id == habit.id))
     await session.commit()
     assert (await session.scalars(select(ShareCard))).all() == []
+
+
+async def test_weekly_goal_must_be_between_1_and_7(session, make_user) -> None:
+    user = await make_user()
+    habit = Habit(user_id=user.id, name="Спорт", created_on=date(2026, 10, 1), weekly_goal=8)
+    session.add(habit)
+    with pytest.raises(IntegrityError):
+        await session.commit()
