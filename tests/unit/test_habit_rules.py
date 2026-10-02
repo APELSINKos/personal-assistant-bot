@@ -59,6 +59,14 @@ FOUR_WEEKS |= week_of(d(7), 4, 5, 6)
         ({d(0): True}, 7, d(7), TODAY, 13),
         # daily, done every day for 400 days: the window holds 365 of them
         ({d(back): True for back in range(400)}, 7, d(399), TODAY, 100),
+        # daily, done the 41 days before today, today not marked yet: nothing missed, 100 %
+        ({d(back): True for back in range(1, 42)}, 7, d(41), TODAY, 100),
+        # the same with today marked missed: today counts, 41 of 42
+        ({d(back): True for back in range(1, 42)} | {d(0): False}, 7, d(41), TODAY, 98),
+        # one day missed in a full year: 364 of 365 is not 100 %
+        ({d(back): back != 364 for back in range(400)}, 7, d(399), TODAY, 99),
+        # one day done in 300: not 0 %
+        ({d(0): True}, 7, d(299), TODAY, 1),
         # 3 a week, four weeks old: 3 of the 4 finished weeks met, this week not yet: 75 %
         (FOUR_WEEKS, 3, d(28), WED, 75),
         # the same with this week's goal met by Wednesday: it counts, 4 of 5

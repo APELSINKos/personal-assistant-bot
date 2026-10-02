@@ -135,17 +135,28 @@ def _weekly_record(marks: Mapping[date, bool], goal: int, created_on: date, toda
 
 
 def _share(part: int, whole: int) -> int:
-    """part / whole in whole percent, halves rounded up; 0 for an empty whole."""
-    return (200 * part + whole) // (2 * whole) if whole else 0
+    """part / whole in whole percent, halves rounded up; 0 for an empty whole. 100 only when
+    nothing is missing and 0 only when nothing is done: 364 of 365 is 99, 1 of 300 is 1."""
+    if not whole:
+        return 0
+    rounded = (200 * part + whole) // (2 * whole)
+    if part < whole:
+        rounded = min(rounded, 99)
+    if part > 0:
+        rounded = max(rounded, 1)
+    return rounded
 
 
 def year_percent(marks: Mapping[date, bool], goal: int, created_on: date, today: date) -> int:
     """Done days (daily habit) or met weeks (weekly habit) over the last YEAR_DAYS days, never
-    before the habit began. Weeks count once they are over; this week only once its goal is met."""
+    before the habit began. Today counts once it is marked; weeks count once they are over, this
+    week only once its goal is met."""
     first = max(created_on, today - timedelta(days=YEAR_DAYS - 1))
     if goal == DAILY:
-        done = sum(1 for day, mark in marks.items() if mark and first <= day <= today)
-        return _share(done, (today - first).days + 1)
+        # Like the streak, today counts once it is marked: an unmarked today is not a miss yet.
+        last = today if marks.get(today) is not None else today - timedelta(days=1)
+        done = sum(1 for day, mark in marks.items() if mark and first <= day <= last)
+        return _share(done, max((last - first).days + 1, 0))
     met = counted = 0
     week = monday(first)
     while week <= monday(today):
