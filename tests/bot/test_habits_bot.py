@@ -19,12 +19,17 @@ RU, EN = translator("ru"), translator("en")
 
 def _stats(**changes: object) -> HabitStats:
     values: dict[str, object] = {
-        "habit": Habit(id=7, name="Спорт"),
+        "habit": Habit(id=7, name="Спорт", weekly_goal=7),
         "done_today": None,
         "streak": 5,
         "done_days": 12,
         "total_days": 17,
         "last_days": (None, True, True, False, True, True, True, True, None),
+        "record": 5,
+        "percent": 71,
+        "week_done": 1,
+        "week_goal": 7,
+        "week": "1......",
     }
     values.update(changes)
     return HabitStats(**values)
@@ -56,8 +61,8 @@ def test_habits_view_plurals_and_no_fire() -> None:
 def test_mark_view() -> None:
     items = [
         _stats(),
-        _stats(habit=Habit(id=8, name="Чтение"), done_today=True),
-        _stats(habit=Habit(id=9, name="Сон"), done_today=False),
+        _stats(habit=Habit(id=8, name="Чтение", weekly_goal=7), done_today=True),
+        _stats(habit=Habit(id=9, name="Сон", weekly_goal=7), done_today=False),
     ]
     text, markup = mark_view(items, date(2026, 9, 28), RU)
     assert text == (

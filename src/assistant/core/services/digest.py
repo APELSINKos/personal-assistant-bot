@@ -13,7 +13,7 @@ from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.errors import UpstreamUnavailable
 from assistant.core.models import Lesson, Reminder, User
 from assistant.core.services import habits, notes, reminders, schedule, weather
-from assistant.core.services.habits import HabitStats
+from assistant.core.services.habits import HabitStats, Streak
 from assistant.core.services.weather import WeatherNow
 from assistant.core.timeutil import now_local, utcnow
 
@@ -29,7 +29,7 @@ class TodayData:
     habits_total: int
     notes_count: int
     rates: Rates | None
-    best_streak: tuple[str, int] | None
+    best_streak: Streak | None
     has_schedule: bool = False  # a timetable is connected
     lessons: list[Lesson] = field(default_factory=list)  # today's, in the user's zone
     week_label: str | None = None  # «5 неделя»
@@ -69,9 +69,6 @@ async def today(
     moment = now or utcnow()
     weather_now, rates = await asyncio.gather(_weather(meteo, user), _rates(cbr))
     items = await habits.list_with_stats(session, user, moment)
-    best = max(
-        (item for item in items if item.streak > 0), key=lambda item: item.streak, default=None
-    )
     local = now_local(user.timezone, moment)
     source = await schedule.get_source(session, user.id)
     lessons: list[Lesson] = []
@@ -89,7 +86,7 @@ async def today(
         habits_total=len(items),
         notes_count=await notes.count(session, user.id),
         rates=rates,
-        best_streak=(best.habit.name, best.streak) if best else None,
+        best_streak=habits.pick_best(items),
         has_schedule=source is not None,
         lessons=lessons,
         week_label=label,

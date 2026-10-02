@@ -360,12 +360,17 @@ def test_every_list_fits_telegram_at_its_maxima(t) -> None:
     ]
     stats = [
         HabitStats(
-            habit=Habit(id=n, name="🎉" * 50),
+            habit=Habit(id=n, name="🎉" * 50, weekly_goal=7),
             done_today=None,
             streak=3650,
             done_days=3650,
             total_days=3650,
             last_days=(True,) * 9,
+            record=3650,
+            percent=100,
+            week_done=7,
+            week_goal=7,
+            week="1111111",
         )
         for n in range(1, 11)
     ]

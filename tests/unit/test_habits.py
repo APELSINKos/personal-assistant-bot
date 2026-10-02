@@ -91,4 +91,4 @@ async def test_progress_and_best_streak(session, make_user) -> None:
     assert await habits.best_streak(session, user, NOW) is None
     await habits.set_mark(session, user, a.id, TODAY, True, NOW)
     assert await habits.today_progress(session, user, NOW) == (1, 2)
-    assert await habits.best_streak(session, user, NOW) == ("A", 1)
+    assert await habits.best_streak(session, user, NOW) == habits.Streak("A", 1, "days")
