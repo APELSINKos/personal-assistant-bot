@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { COLORS, dayState, EMOJI, nextDone, stateOn, withMark, yearWeeks } from "./habits";
+import { COLORS, dayState, EMOJI, monthOfWeek, nextDone, stateOn, withMark, yearWeeks } from "./habits";
 
 const FROM = "2025-09-29"; // a Monday
 // 371 days; the last week (from Monday 28 September 2026): before the habit, then done, missed,
@@ -47,5 +47,22 @@ describe("year map", () => {
 
   it("cycles a tap: no mark, done, missed", () => {
     expect([nextDone("none"), nextDone("done"), nextDone("missed")]).toEqual([true, false, null]);
+  });
+});
+
+describe("the month a week opens", () => {
+  it("is the month that holds most of the week: its Thursday's", () => {
+    expect(monthOfWeek("2026-08-31", "2026-10-02", "2025-06-02")).toBe("2026-09-01"); // Thu 3 Sep
+    expect(monthOfWeek("2026-09-28", "2026-11-20", "2025-06-02")).toBe("2026-10-01"); // Thu 1 Oct
+  });
+
+  it("is this month for this week, so today is in view", () => {
+    expect(monthOfWeek("2026-09-28", "2026-10-02", "2025-06-02")).toBe("2026-10-01"); // Fri 2 Oct
+    expect(monthOfWeek("2026-10-26", "2026-11-01", "2025-06-02")).toBe("2026-11-01"); // Sun 1 Nov
+    expect(monthOfWeek("2026-09-28", "2026-09-30", "2025-06-02")).toBe("2026-09-01"); // Wed 30 Sep
+  });
+
+  it("is never a month before the habit's first day", () => {
+    expect(monthOfWeek("2026-08-24", "2026-10-02", "2026-09-14")).toBe("2026-09-01");
   });
 });

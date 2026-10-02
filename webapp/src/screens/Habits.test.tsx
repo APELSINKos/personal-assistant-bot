@@ -139,7 +139,8 @@ describe("Habit form", () => {
     expect(screen.getByRole("button", { name: "мятный" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Каждый день" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByRole("button", { name: "1 раз в неделю" }));
-    expect(screen.getByText("Серия и проценты пересчитаются по новой цели.")).toBeInTheDocument();
+    expect(screen.getByText("Серия и проценты пересчитаются по новой цели.").closest("[aria-live='polite']"))
+      .not.toBeNull();
     pressMainButton(app);
     await waitFor(() => expect(history.at(-1)).toBe("/habits/7"));
     expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({

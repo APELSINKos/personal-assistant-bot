@@ -11,7 +11,7 @@ import { toast } from "../components/toastStore";
 import { YearMap } from "../components/YearMap";
 import { useLang, useT } from "../i18n";
 import { addDaysIso, dayMonth, localTodayIso, monthTitle } from "../lib/format";
-import { DAILY, nextDone } from "../lib/habits";
+import { DAILY, monthOfWeek, nextDone } from "../lib/habits";
 import { confirmAction } from "../telegram";
 
 /** The first of the month `months` away from the month of `iso`. */
@@ -91,7 +91,7 @@ export function HabitScreen() {
       </div>
 
       <Card title={t.habits.yearMap} index={1}>
-        <YearMap from={data.year_from} year={data.year} onPickWeek={(monday) => setMonth(`${monday.slice(0, 7)}-01`)} />
+        <YearMap from={data.year_from} year={data.year} onPickWeek={(monday) => setMonth(monthOfWeek(monday, today, first))} />
       </Card>
 
       <Card index={2}>

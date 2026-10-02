@@ -93,6 +93,15 @@ describe("Habit screen", () => {
     expect(screen.getByRole("heading", { name: "Сентябрь 2026" })).toBeInTheDocument();
   });
 
+  it("opens this month for this week, and never a month before the habit", async () => {
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Показать месяц недели 14 сент. – 20 сент." }));
+    fireEvent.click(screen.getByRole("button", { name: "Показать месяц недели 28 сент. – 4 окт." }));
+    expect(screen.getByRole("heading", { name: "Октябрь 2026" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Показать месяц недели 24 авг. – 30 авг." }));
+    expect(screen.getByRole("heading", { name: "Сентябрь 2026" })).toBeInTheDocument();
+  });
+
   it("shares the card through Telegram, or has the bot send it", async () => {
     const app = installTelegram();
     const first = show();

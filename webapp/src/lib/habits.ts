@@ -65,3 +65,13 @@ export function nextDone(state: DayState): boolean | null {
   if (state === "none") return true;
   return state === "done" ? false : null;
 }
+
+/**
+ * The month (its first day) that a week of the year map opens: this week opens this month, so
+ * today is in view; any other week, the month that holds most of it (its Thursday's) — but never a
+ * month before the habit's first day.
+ */
+export function monthOfWeek(monday: string, today: string, first: string): string {
+  const day = monday <= today && today <= addDaysIso(monday, 6) ? today : addDaysIso(monday, 3);
+  return `${(day < first ? first : day).slice(0, 7)}-01`;
+}

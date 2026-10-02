@@ -123,7 +123,9 @@ export function HabitForm() {
             </button>
           ))}
         </div>
-        {id !== null && current.goal !== initial.goal && <p className="muted field__note">{t.habits.goalHint}</p>}
+        <div aria-live="polite">
+          {id !== null && current.goal !== initial.goal && <p className="muted field__note">{t.habits.goalHint}</p>}
+        </div>
       </div>
 
       <MainAction text={t.common.save} onClick={save} disabled={!valid} busy={busy} />
