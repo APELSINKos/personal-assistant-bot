@@ -125,6 +125,12 @@ export const en: Dict = {
     goalHint: "The streak and percentages are recounted for the new goal.",
     prevMonth: "Previous month",
     nextMonth: "Next month",
+    streakTitle: "Streak",
+    months: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+    pickWeek: (range: string) => `Show the month of the week ${range}`,
+    gone: "This habit is gone.",
+    toHabits: "To habits",
+    deleteButton: "Delete the habit",
   },
   notes: {
     empty: "No notes yet. Tap “+” to create the first one.",

@@ -987,3 +987,195 @@ textarea.input {
 .schedule__cancel {
   width: 100%;
 }
+
+/* A habit's own screen. --habit is set on it from the habit's colour (tokens.css): it fills
+   done days and edges the streak tile, but never colours text — the light palette clears 3:1
+   for shapes, not 4.5:1 for small text. */
+.habit-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 6px 4px 14px;
+}
+
+.habit-head__emoji {
+  font-size: 44px;
+  line-height: 1;
+}
+
+.habit-head__text {
+  min-width: 0;
+}
+
+.habit-head__name {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.habit-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.habit-tile {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--glass);
+}
+
+.habit-tile--streak {
+  border: 2px solid var(--habit);
+}
+
+.habit-tile__label {
+  display: block;
+  color: var(--hint);
+  font-size: 12px;
+}
+
+.habit-tile__value {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-display);
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.year-map {
+  overflow-x: auto;
+  margin: 0 -4px;
+  padding: 0 4px 6px;
+  scrollbar-width: thin;
+}
+
+.year-map__grid {
+  display: flex;
+  gap: 3px;
+  width: max-content;
+}
+
+.year-map__week {
+  display: grid;
+  grid-template-rows: 14px repeat(7, 11px);
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.year-map__month {
+  width: 11px;
+  overflow: visible;
+  color: var(--hint);
+  font-size: 10px;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+.year-map__day {
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  background: var(--line);
+}
+
+.year-map__day--done {
+  background: var(--habit);
+}
+
+.year-map__day--missed {
+  background: var(--error);
+}
+
+.year-map__day--outside {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.month-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.month-head__title {
+  margin: 0;
+}
+
+.month-marks {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.month-marks__row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.month-marks__weekdays {
+  color: var(--hint);
+  font-size: 12px;
+  text-align: center;
+}
+
+.month-marks__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.month-marks__cell--done {
+  border-color: var(--habit);
+  background: var(--habit);
+  color: var(--on-habit);
+}
+
+.month-marks__cell--missed {
+  border-color: var(--error-text);
+  color: var(--error-text);
+}
+
+.month-marks__cell--outside {
+  border-style: dashed;
+  color: var(--hint);
+  cursor: default;
+}
+
+.month-marks__cell--other {
+  border: 0;
+}
+
+.month-marks__cell--today {
+  outline: 2px solid var(--habit);
+  outline-offset: 2px;
+}
+
+.month-marks__cell:focus-visible,
+.year-map__week:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+.habit-actions {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 24px;
+}
