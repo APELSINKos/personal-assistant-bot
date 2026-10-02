@@ -118,7 +118,8 @@ async def test_past_days_change_a_mark_round_the_circle(feed, fake, session, mak
             select(HabitMark.done).where(HabitMark.habit_id == habit_id, HabitMark.day == yesterday)
         )
         assert done is expected
-    assert buttons(fake)[0][-2].endswith("⬜")  # yesterday's button shows the mark it now has
+        # yesterday's button shows the mark it now has
+        assert buttons(fake)[0][-2].endswith({True: "✅", False: "❌", None: "⬜"}[expected])
 
 
 async def test_a_forged_or_too_early_day_is_refused(feed, fake, session, make_user) -> None:
