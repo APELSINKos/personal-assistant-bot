@@ -6,7 +6,7 @@
 
 <p align="center">
   A Telegram bot that doesn't just say “+12°C” — it says “🌧 Rain in 40 minutes, take an umbrella”.<br>
-  Weather, reminders, class schedule, notes, habits and exchange rates — in the chat and in an app right inside Telegram, and in the morning the bot writes first.
+  Weather, reminders, class schedule, notes, habits and money — in the chat and in an app right inside Telegram, and in the morning the bot writes first.
 </p>
 
 <p align="center">
@@ -25,15 +25,15 @@
 
 | | |
 |---|---|
-| 📱 **Mini App** | The same inside Telegram as an app: a Today screen, a calendar with classes and reminders, one-tap habits, notes and settings. Theme and language follow Telegram |
+| 📱 **Mini App** | The same inside Telegram as an app: a Today screen, a calendar with classes and reminders, one-tap habits, money with charts, notes and settings. Theme and language follow Telegram |
 | 🌤 **Weather with tips** | Not just degrees: in how many minutes rain or snow starts, whether it gets colder by the evening, whether it's a good day for a bike ride |
-| ☀️ **Morning digest** | The bot writes at the time you choose, in your city's time zone: weather, today's plans, habits, rates |
+| ☀️ **Morning digest** | The bot writes at the time you choose, in your city's time zone: weather, today's plans, habits, yesterday's spending, rates |
 | 📅 **My day** | Everything important for today in one message |
 | ⏰ **Reminders** | Write like to a person: “tomorrow at 9 buy milk”, “in 20 minutes tea”, “on weekdays at 7:30 workout”. Repeats on weekdays, every other week or monthly — in your city's time zone; a delivered reminder has “+10 min”, “+1 h”, “Tomorrow”, “✓ Done” buttons |
 | 🎓 **Class schedule** | A MIREA group by name, a link to any calendar (`webcal://`, `https://`) or an `.ics` file: classes and week numbers in the app's calendar, “My day” and the morning digest, refreshed every 6 hours, an optional alert 5–60 minutes before a class |
 | 🎯 **Habits** | One-tap marks, a goal of every day or a few times a week, a streak and a record, the past year's percentage, a year map, your own emoji and color; a stats card to share in any chat |
 | 📝 **Notes** | Short notes with a delete button next to each |
-| 💱 **Bank of Russia rates** | USD and EUR with the daily change, a converter both ways |
+| 💰 **Money** | An expense is noted with one phrase right in the chat: “coffee 250”, “yesterday taxi 300”, “+5000 salary”. The category is guessed from a dictionary, and a corrected one is remembered. A monthly budget, total and per category, warns at 80% and 100%, the month's report comes as a picture, Bank of Russia rates — with a 30-day chart and a converter |
 | 🌐 **Two languages** | Russian and English: taken from Telegram, switchable in the settings |
 
 ```text
@@ -78,17 +78,29 @@ Bot: ↻ on weekdays at 07:30 — workout
      [✅ Create] [🕘 Another time] [✖️ Cancel]
 ```
 
+```text
+You: coffee 250
+Bot: ✅ ☕ Eating out — 250 ₽ · coffee
+     October: 23,850 ₽ of 30,000 ₽
+     [🗂 Category] [↩️ Undo]
+```
+
+<p align="center">
+  <img src="docs/images/money-report.en.jpg" width="360" alt="The report for October 2026: 23,600 ₽ spent — 79% of a 30,000 ₽ budget, 6,400 ₽ left — 800 ₽ a day, a ring by category and spending day by day">
+</p>
+
 ## Mini App
 
 The Open button next to the message field opens the app right inside Telegram — the same account and the same data as the chat: what you add in the app shows up in the bot at once, and the other way round.
 
 | Screen | What's there |
 |---|---|
-| **Today** | A big date, weather with tips, today's classes and plans, one-tap habit marks, rates and the best streak. Pull down to refresh |
+| **Today** | A big date, weather with tips, today's classes and plans, one-tap habit marks, today's spending with the budget bar, rates and the best streak. Pull down to refresh |
 | **Calendar** | A week strip with dots and the week number, a day heading “Today · Tuesday, 29 September”, the month on a tap; classes, reminders and repeats per day, editing and deleting, a new reminder from a phrase or the fields |
 | **Habits** | A list with the week's progress and marks that cycle ⬜ → ✅ → ❌ as in the bot. Each habit has its own screen: the streak, the record, the past year's percentage, a year map (a week opens its month), marks for past days, the goal, emoji and color; Share sends the card to any chat |
 | **Notes** | A list and an editor with a character counter; leaving with unsaved text asks first |
-| **More** | City search, the class schedule (a group, a link or a file, class alerts), the morning digest, language, version |
+| **Money** | The month with arrows: what is spent and what is left for each day, a ring by category (a tap shows the category's entries), spending day by day and every entry — a tap edits, a swipe deletes. A new entry, budgets, your own categories with emoji, any Bank of Russia currency over 30 days and a converter |
+| **More** | City search, the class schedule (a group, a link or a file, class alerts), the morning digest, language, currency, version |
 
 Dark and light themes follow Telegram, Back and the main button are Telegram's own buttons, and actions answer with haptics. The app only works inside Telegram: every request carries Telegram's signature, and the server checks it.
 
@@ -112,10 +124,12 @@ flowchart LR
 ```
 
 - **Phrases without AI.** “tomorrow at 9”, “in 20 minutes”, “every other wednesday” are parsed by Russian and English rules with over a hundred table tests; nothing is created until you confirm the card.
+- **Expenses without AI too.** “coffee 250” goes through rules and a dictionary of two hundred word stems, and the user's own memory knows where they moved entries before. Reminder phrases are parsed first, units and times (“2 liters”, “meeting at 9”) never become an expense, and every expense noted comes with an Undo button at once.
 - **The core knows nothing about Telegram.** Limits, habit streaks, time parsing and weather tips live in `assistant.core` and are covered by tests. The bot only parses input and formats replies, and the app's API calls the same services — so the chat and the app follow the same rules.
 - **The app is trusted only by signature.** The API lets a request reach any data only when its initData is signed by Telegram with the bot token and is less than a day old; the user comes from the signature, and someone else's id gets 404. The one exception is the card picture, which Telegram fetches itself by a token link (below). Errors are problem+json, at most 120 requests a minute.
 - **A timetable from any calendar.** A MIREA group is found by name in a directory the server builds itself from the groups' calendars; a link or an `.ics` file goes through the same parser. Classes are expanded four months ahead and shown in your city's time zone; when the source is down, the last timetable stays, marked “data from …”.
-- **The card is drawn on the server.** Pillow draws a 1080×1350 JPEG from fonts and emoji kept in the repository, so the bot and the app show the same picture. Telegram fetches it by a link with a random 256-bit token; a card is kept while Telegram may ask for it, but no longer than 7 days, at most 10 cards per user and at most 6 new ones a minute.
+- **Pictures are drawn on the server.** Pillow draws the habit card, the month's report and the 30-day rates — 1080×1350 JPEGs from fonts and emoji kept in the repository, so the same data gives the same picture on any machine. A habit card shared from the app is fetched by Telegram by a link with a random 256-bit token; it is kept while Telegram may ask for it, but no longer than 7 days, at most 10 cards per user. At most 6 pictures a minute per user.
+- **The app's charts are its own.** The category ring, the day bars and the rate line are SVG without libraries; each chart has a label for screen readers, and its numbers are in the legend and the lists too.
 - **Links never lead inside the server.** A calendar link is downloaded from public addresses only: the server resolves the name itself, checks every address and every redirect and connects to the checked IP — up to 2 MB and 10 seconds, at most three calendar downloads or parses a minute per user (in the bot and in the app separately). On top of that, the systemd services cannot reach private, link-local or CGNAT (`100.64.0.0/10`) networks (loopback stays open).
 - **Time without surprises.** Every moment is stored in UTC, "today" is computed in the city's time zone, DST transitions are handled.
 - **Delivery with retries.** On 429 the bot waits exactly as long as Telegram asks; on network failures it retries after 30 s, 1 min, 5 min, 15 min, 1 h and 3 h; users who blocked the bot are left alone.
@@ -148,7 +162,7 @@ Settings come from environment variables or a `.env` file, see [.env.example](.e
 - [x] **v2.2** — smart reminders: repeats, “+10 minutes”, phrase input, a calendar in the app
 - [x] **v2.3** — class schedule: a MIREA group, a calendar link or file
 - [x] **v2.4** — habits: a year map, goals, a shareable stats card
-- [ ] **v2.5** — finances: expenses, budget, exchange rate charts
+- [x] **v2.5** — finances: expenses, budget, exchange rate charts
 - [ ] **v2.6** — 7-day forecast, several cities, search and checklists in notes
 - [ ] **v2.7** — showcase: screenshots, a demo and a project cover
 

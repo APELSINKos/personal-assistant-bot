@@ -479,6 +479,37 @@ the only up-to-date one with the goals, emoji and colours, and as there it is
 `assistant-<UTC date>.db`, overwritten by the nightly run at 03:30 UTC: copy it
 under another name before then.
 
+### Going from 2.4 to 2.5
+
+Nothing is installed by hand: the deploy runs migration `0005` (the users'
+currency and monthly budget, and the `money_categories`, `money_entries`,
+`money_words` and `money_alerts` tables). The 30-day rates come from the Bank
+of Russia's own site (`https://www.cbr.ru/scripts/XML_dynamic.asp`), a public
+address the services may already reach.
+
+### Going back from 2.5 to 2.4
+
+As with 2.4 → 2.3, undo migration `0005` with the 2.5 code that is still
+deployed, then deploy the 2.4 commit on purpose:
+
+```bash
+ssh <server> 'sudo bash -s' <<'EOF'
+set -euo pipefail
+systemctl stop assistant-bot assistant-api
+systemctl start assistant-backup.service
+cd /opt/assistant/app
+runuser -u assistant -- bash -c 'set -a; . /etc/assistant/assistant.env; set +a; exec .venv/bin/alembic downgrade 0004'
+EOF
+ssh <server> 'sudo DEPLOY_ALLOW_OLDER=1 /usr/local/sbin/assistant-deploy <v2.4.0 commit sha>'
+```
+
+The downgrade drops the money tables and the users' currency and budget:
+every entry, category and budget is gone, while everything else stays. The
+backup runs first for the same reason as in 2.3 → 2.2: the deploy's own
+snapshot is taken after the downgrade. That copy is the only up-to-date one
+with the money, and as there it is `assistant-<UTC date>.db`, overwritten by
+the nightly run at 03:30 UTC: copy it under another name before then.
+
 ## 8. Restore from a backup
 
 Nightly backups live in `/var/backups/assistant`

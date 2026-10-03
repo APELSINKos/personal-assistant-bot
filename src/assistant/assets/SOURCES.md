@@ -1,6 +1,6 @@
 # Card assets
 
-The share card (`assistant/core/services/cards.py`) draws with these files only. They are copied
+The pictures (`assistant/core/services/cards.py` and `money_cards.py`) draw with these files only. They are copied
 unchanged from their upstream repositories at the commits below; `SHA256SUMS` lists every file.
 
 | Files | Upstream | License |
