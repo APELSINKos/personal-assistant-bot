@@ -12,8 +12,8 @@ import { SwipeRow } from "../components/SwipeRow";
 import { useLang, useT } from "../i18n";
 import { dayMonth, localTodayIso, monthTitle } from "../lib/format";
 import {
-  addMonths, budgetText, byDay, entryDay, formatAmount, formatRate, formatSigned, monthOf, rateChange, ringParts,
-  sliceColor,
+  addMonths, budgetText, byDay, entryDay, formatAmount, formatRate, formatSigned, monthOf, percentText, rateChange,
+  ringParts, sliceColor,
 } from "../lib/money";
 
 type Categories = Map<number, MoneyCategory>;
@@ -21,7 +21,8 @@ type Categories = Map<number, MoneyCategory>;
 /** The month's money; «today» is the city's, so the screen waits for `/me` to name its zone. */
 export function MoneyScreen() {
   const me = useMe();
-  if (me.isError) return <ErrorState onRetry={() => void me.refetch()} />;
+  // A failed refresh keeps what is shown: only a first load that failed is an error.
+  if (me.isLoadingError) return <ErrorState onRetry={() => void me.refetch()} />;
   if (me.isPending) return <Loader />;
   return <MonthView today={localTodayIso(me.data.city.timezone)} />;
 }
@@ -63,7 +64,7 @@ function MonthView({ today }: { today: string }) {
       </header>
       {month.isPending ? (
         <Loader />
-      ) : month.isError ? (
+      ) : month.isLoadingError ? (
         <ErrorState onRetry={() => void month.refetch()} />
       ) : (
         <MonthBody data={month.data} today={today} filter={filter} onFilter={setFilter} />
@@ -167,13 +168,15 @@ function ByCategory({
 }: { data: MoneyMonth; categories: Categories; filter: number | null; onFilter: (id: number | null) => void }) {
   const t = useT();
   const lang = useLang();
-  const shares = data.expenses.map((item) => `${categories.get(item.category_id)?.name ?? ""} ${item.share}%`);
+  const shares = data.expenses.map(
+    (item) => `${categories.get(item.category_id)?.name ?? ""} ${percentText(item.share, lang)}`,
+  );
   return (
     <Card title={t.money.byCategory} index={1}>
       <div className="money-ring">
         <Ring
           parts={ringParts(data.expenses)}
-          label={t.money.ring(shares.join(", "))}
+          label={t.money.ring(formatAmount(data.spent, data.currency, lang), shares.join(", "))}
           count={String(data.entries.length)}
           caption={t.money.entriesWord(data.entries.length)}
         />
@@ -194,7 +197,7 @@ function ByCategory({
                 <span className="legend__dot" style={{ background: sliceColor(index) }} aria-hidden />
                 <span className="legend__name">{`${category.emoji} ${category.name}`}</span>
                 <span className="legend__amount">{formatAmount(item.amount, data.currency, lang)}</span>
-                <span className="legend__share">{`${item.share}%`}</span>
+                <span className="legend__share">{percentText(item.share, lang)}</span>
               </button>
               {category.budget !== null && item.left !== null && (
                 <div className="legend__budget">

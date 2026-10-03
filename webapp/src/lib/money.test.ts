@@ -4,7 +4,7 @@ import { dict } from "../i18n";
 import {
   addMonths, alertText, amountText, budgetText, budgetUse, byDay, CATEGORY_EMOJI, convert, CURRENCIES, currencyName,
   currencySign, entryDay, formatAmount, formatRate, formatSigned, historyWords, monthName, monthOf, parseAmount,
-  rateChange, ringParts, sliceColor,
+  percentText, rateChange, ringParts, sliceColor,
 } from "./money";
 
 /** An amount as it shows: its spaces are no-break ones. */
@@ -92,6 +92,13 @@ describe("budget warnings", () => {
       "⚠️ Потрачено 82\u00a0% бюджета «☕ Кафе» на октябрь: 4\u00a0100\u00a0₽ из 5\u00a0000\u00a0₽",
     );
     expect(ru(cafe)).toBe("🚨 Бюджет «☕ Кафе» на октябрь закончился: 5\u00a0300\u00a0₽ из 5\u00a0000\u00a0₽");
+  });
+
+  it("round half up as the bot does, and the 80 % warning never reads 100 %", () => {
+    const ru = (alert: MoneyAlert) => alertText(alert, "2026-10-03", "RUB", "ru", dict("ru"));
+    expect(ru({ ...total, spent: 2415000 })).toMatch(/^⚠️ Потрачено 81\u00a0% /); // 80.5 %
+    expect(ru({ ...total, spent: 2988000 })).toMatch(/^⚠️ Потрачено 99\u00a0% /); // 99.6 %
+    expect([percentText(36, "ru"), percentText(36, "en")]).toEqual(["36\u00a0%", "36%"]);
   });
 
   it("are in English with the user's currency", () => {

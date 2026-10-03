@@ -1,5 +1,6 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { keys } from "../api/queries";
 import type { TgWebApp } from "../telegram";
 import { installTelegram } from "../test/fakeTelegram";
 import { me, moneyCategories } from "../test/fixtures";
@@ -57,6 +58,18 @@ describe("Entry form", () => {
     fireEvent.change(screen.getByLabelText("Сумма"), { target: { value: "5000" } });
     expect(screen.queryByText(AMOUNT_HINT)).not.toBeInTheDocument();
     expect(active(app)).toBe(false); // the expense category went with the expense
+  });
+
+  it("keeps the draft when a refresh in the background fails", async () => {
+    const { client } = open("/money/new");
+    fireEvent.change(await screen.findByLabelText("Сумма"), { target: { value: "250" } });
+    mockApi({ "GET /me": { status: 429, body: { status: 429, code: "rate_limited" } } });
+    await act(async () => {
+      await client.refetchQueries({ queryKey: keys.me });
+      await new Promise((resolve) => setTimeout(resolve, 0)); // observers hear of it a tick later
+    });
+    expect(client.getQueryState(keys.me)?.status).toBe("error");
+    expect(screen.getByLabelText("Сумма")).toHaveValue("250");
   });
 
   it("steps the day back, never past today, and refuses a day over a year back", async () => {

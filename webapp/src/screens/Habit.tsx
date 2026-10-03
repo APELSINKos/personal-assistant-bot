@@ -42,8 +42,9 @@ export function HabitScreen() {
   const [month, setMonth] = useState<string | null>(null);
 
   if (habit.isError) return <HabitLoadError error={habit.error} onRetry={() => void habit.refetch()} />;
-  // The month is shown by the city's today: without /me there is none to wait for.
-  if (me.isError) return <ErrorState onRetry={() => void me.refetch()} />;
+  // The month is shown by the city's today: without /me there is none to wait for; a failed
+  // refresh of /me keeps the zone already known.
+  if (me.isLoadingError) return <ErrorState onRetry={() => void me.refetch()} />;
   if (habit.isPending || zone === undefined) return <Loader />;
 
   const data = habit.data;

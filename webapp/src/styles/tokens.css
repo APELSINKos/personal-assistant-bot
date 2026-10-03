@@ -19,7 +19,7 @@
   --glow-1: #3b1f6e;
   --glow-2: #0f4a52;
   --text: #f4f2ff;
-  --hint: #a39fc0;
+  --hint: #b3afcf; /* AA over the brightest glow */
   --glass: rgba(255, 255, 255, 0.07);
   --glass-strong: rgba(20, 16, 36, 0.78);
   --line: rgba(255, 255, 255, 0.1);
@@ -53,7 +53,7 @@
   --glow-1: #f3d9ff;
   --glow-2: #cdeff0;
   --text: #1c1830;
-  --hint: #6e6787;
+  --hint: #655e7e; /* AA over the brightest glow */
   --glass: rgba(255, 255, 255, 0.62);
   --glass-strong: rgba(255, 255, 255, 0.86);
   --line: rgba(40, 20, 80, 0.08);

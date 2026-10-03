@@ -36,7 +36,8 @@ export function MoneyEntryForm() {
   const [, params] = useRoute<{ id: string }>("/money/:id/edit");
   const me = useMe();
   const categories = useMoneyCategories();
-  if (me.isError || categories.isError) {
+  // A failed refresh keeps the form and its draft: only a first load that failed is an error.
+  if (me.isLoadingError || categories.isLoadingError) {
     return (
       <BackTo href="/money">
         <ErrorState onRetry={() => void Promise.all([me.refetch(), categories.refetch()])} />
@@ -64,7 +65,7 @@ function EditEntry({ id, ...props }: { id: number } & EditorProps) {
       </BackTo>
     );
   }
-  if (entry.isError) {
+  if (entry.isLoadingError) {
     return (
       <BackTo href="/money">
         {entry.error instanceof ApiError && entry.error.status === 404 ? (

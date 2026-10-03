@@ -18,6 +18,19 @@ describe("Categories", () => {
     expect(screen.getByRole("link", { name: "Новая категория" })).toHaveAttribute("href", "/money/categories/new");
   });
 
+  it("says when there is no room for one more category", async () => {
+    installTelegram();
+    const many = Array.from({ length: 40 }, (_, index) => ({
+      ...moneyCategories[index % moneyCategories.length], id: 100 + index, name: `Своя ${index}`,
+    }));
+    mockApi({ "GET /money/categories": many });
+    renderWithApp(<MoneyCategories />, { path: "/money/categories" });
+    expect(
+      await screen.findByText("Категорий уже 40 — новую не добавить. Ненужную можно переименовать."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Новая категория" })).not.toBeInTheDocument();
+  });
+
   it("makes a new income category with its emoji", async () => {
     const app = installTelegram();
     const made = { id: 9, kind: "income", name: "Подработка", emoji: "💼", hidden: false, can_hide: true, budget: null };

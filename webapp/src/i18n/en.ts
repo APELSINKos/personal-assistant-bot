@@ -154,7 +154,7 @@ export const en: Dict = {
     income: (income: string, balance: string) => `Income ${income} · balance ${balance}`,
     byCategory: "By category",
     byDay: "By day",
-    ring: (shares: string) => `Spending by category: ${shares}`,
+    ring: (total: string, shares: string) => `Spent this month ${total}: ${shares}`,
     entriesWord: (count: number) => plural(count, "entry", "entries"),
     days: (day: string, amount: string) => `Spending by day; the most on ${day}: ${amount}`,
     entries: "Entries",
@@ -191,6 +191,8 @@ export const en: Dict = {
     kindsPlural: { expense: "Expenses", income: "Income" },
     hiddenMark: "hidden",
     newCategory: "New category",
+    categoriesFull: (limit: number) =>
+      `There are already ${limit} categories — no room for a new one. You can rename one you don't need.`,
     categoryTitle: "Category",
     name: "Name",
     emoji: "Emoji",

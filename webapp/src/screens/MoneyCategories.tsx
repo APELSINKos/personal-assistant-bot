@@ -8,7 +8,7 @@ import { Fab } from "../components/Fab";
 import { MainAction } from "../components/MainAction";
 import { ErrorState, Loader } from "../components/States";
 import { useT } from "../i18n";
-import { CATEGORY_EMOJI } from "../lib/money";
+import { CATEGORY_EMOJI, CATEGORY_LIMIT } from "../lib/money";
 import { confirmAction, useBackButton, useClosingConfirmation } from "../telegram";
 
 const MAX_NAME = 30;
@@ -19,7 +19,7 @@ export function MoneyCategories() {
   const t = useT();
   const categories = useMoneyCategories();
   if (categories.isPending) return <Loader />;
-  if (categories.isError) return <ErrorState onRetry={() => void categories.refetch()} />;
+  if (categories.isLoadingError) return <ErrorState onRetry={() => void categories.refetch()} />;
   return (
     <>
       <h1 className="screen__title">{t.money.categoriesTitle}</h1>
@@ -44,7 +44,11 @@ export function MoneyCategories() {
           </ul>
         </Card>
       ))}
-      <Fab href="/money/categories/new" label={t.money.newCategory} />
+      {categories.data.length >= CATEGORY_LIMIT ? (
+        <p className="muted">{t.money.categoriesFull(CATEGORY_LIMIT)}</p>
+      ) : (
+        <Fab href="/money/categories/new" label={t.money.newCategory} />
+      )}
     </>
   );
 }
@@ -55,7 +59,7 @@ export function MoneyCategoryForm() {
   const [isNew] = useRoute("/money/categories/new");
   const [, params] = useRoute<{ id: string }>("/money/categories/:id");
   const categories = useMoneyCategories();
-  if (categories.isError) {
+  if (categories.isLoadingError) {
     return (
       <BackTo href="/money/categories">
         <ErrorState onRetry={() => void categories.refetch()} />

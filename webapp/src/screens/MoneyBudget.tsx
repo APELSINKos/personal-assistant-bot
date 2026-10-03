@@ -19,7 +19,8 @@ const field = (category: MoneyCategory) => `category-${category.id}`;
 export function MoneyBudget() {
   const me = useMe();
   const categories = useMoneyCategories();
-  if (me.isError || categories.isError) {
+  // A failed refresh keeps the form: only a first load that failed is an error.
+  if (me.isLoadingError || categories.isLoadingError) {
     return (
       <BackTo href="/money">
         <ErrorState onRetry={() => void Promise.all([me.refetch(), categories.refetch()])} />

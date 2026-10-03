@@ -10,6 +10,8 @@ export const DEFAULT_CURRENCY = "RUB";
 
 /** The most an entry or a budget may be, in hundredths: a billion (LIMITS.amount_max). */
 export const AMOUNT_MAX = 100_000_000_000;
+/** Categories a user may have, the presets included (LIMITS.money_categories). */
+export const CATEGORY_LIMIT = 40;
 
 /** How far back a new day of an entry may be (money.OLDEST_DAY). */
 export const ENTRY_DAYS_BACK = 366;
@@ -129,11 +131,17 @@ export function monthName(iso: string, lang: Lang): string {
   return new Intl.DateTimeFormat(lang, { timeZone: "UTC", month: "long" }).format(parseIsoDate(iso));
 }
 
+/** A whole percent as each language writes it: «36 %» with a no-break space, «36%» in English. */
+export function percentText(value: number, lang: Lang): string {
+  return lang === "ru" ? `${value}${NBSP}%` : `${value}%`;
+}
+
 /** A budget warning for an entry of `day`, worded as the bot's (bot/money_texts.alert_text). */
 export function alertText(alert: MoneyAlert, day: string, currency: string, lang: Lang, t: Dict): string {
   return t.money.alert({
     threshold: alert.threshold,
-    percent: Math.floor((alert.spent * 100) / alert.budget),
+    // Half up as the bot's share_of; the 80 % warning never reads «100 %» while something is left.
+    percent: Math.min(Math.round((alert.spent * 100) / alert.budget), 99),
     name: alert.emoji && alert.name ? `${alert.emoji} ${alert.name}` : null,
     month: monthName(day, lang),
     spent: formatAmount(alert.spent, currency, lang),

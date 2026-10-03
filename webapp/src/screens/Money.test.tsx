@@ -45,12 +45,14 @@ describe("Money", () => {
       screen.getByText(`из ${rub("30 000")} · осталось ${rub("13 019,50")}, по ${rub("4 339,83")} в день`),
     ).toBeInTheDocument();
     expect(screen.getByText(`Доходы ${rub("3 000")} · баланс −${rub("13 980,50")}`)).toBeInTheDocument();
-    const ring = screen.getByRole("img", { name: "Траты по категориям: Дом 88%, Продукты 7%, Кафе 3%, Транспорт 2%" });
+    const ring = screen.getByRole("img", {
+      name: /^Траты за месяц 16\s980,50\s₽: Дом 88\s%, Продукты 7\s%, Кафе 3\s%, Транспорт 2\s%$/,
+    });
     expect(within(ring).getByText("5")).toBeInTheDocument();
     expect(within(ring).getByText("записей")).toBeInTheDocument();
     const cafe = screen.getByRole("button", { name: /☕ Кафе/ });
     expect(within(cafe).getByText(rub("430,50"))).toBeInTheDocument();
-    expect(within(cafe).getByText("3%")).toBeInTheDocument();
+    expect(within(cafe).getByText("3 %")).toBeInTheDocument();
     expect(screen.getByText(`из ${rub("5 000")} · осталось ${rub("4 569,50")}`)).toBeInTheDocument();
     // A role's name keeps its no-break spaces, which \s matches.
     expect(screen.getByRole("img", { name: /^Траты по дням; больше всего — 1 сентября: 15\s000\s₽$/ })).toBeInTheDocument();
