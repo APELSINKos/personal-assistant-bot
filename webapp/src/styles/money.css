@@ -318,9 +318,10 @@
 
 /* A category's budget: its name (two lines at most) and its amount on one line. */
 .field--inline {
-  grid-template-columns: minmax(0, 1fr) 156px; /* room for a budget in the millions */
+  /* Room for a budget in the millions, and for «Развлечения» whole at 320 px. */
+  grid-template-columns: minmax(0, 1fr) 148px;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .field--inline .field__label {
