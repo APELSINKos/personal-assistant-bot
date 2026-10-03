@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import AnswerCallbackQuery, EditMessageText, SendMessage
 from aiogram.types import ReplyKeyboardMarkup
 
@@ -135,6 +136,23 @@ async def test_weather_change_city_button_opens_the_dialog(feed, fake) -> None:
     button = fake.of(SendMessage)[-1].reply_markup.inline_keyboard[0][0]
     await feed(callback_update(button.callback_data))
     assert fake.sent_texts()[-1] == "🏙 Напиши название города:"
+
+
+async def test_an_expired_button_still_saves_and_shows_the_setting(feed, fake) -> None:
+    # A tap that waited out a restart is too old to answer: the change is saved and shown anyway.
+    for data, shown in (
+        (SettingsCb(action="setcurrency", value="KZT"), "💱 Валюта: ₸ (KZT)"),
+        (SettingsCb(action="toggle"), "🌅 Утренняя сводка: выключена"),
+    ):
+        fake.errors.append(
+            TelegramBadRequest(
+                method=AnswerCallbackQuery(callback_query_id="1"),
+                message="Bad Request: query is too old and response timeout expired",
+            )
+        )
+        await feed(callback_update(data.pack()))
+        assert shown in fake.of(EditMessageText)[-1].text
+    assert not any("Что-то пошло не так" in text for text in fake.sent_texts())
 
 
 async def test_the_currency_of_the_accounts(feed, fake, session) -> None:

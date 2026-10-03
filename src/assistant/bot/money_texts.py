@@ -189,7 +189,10 @@ def budget_text(
     currency: str,
     t: Translator,
 ) -> str:
-    """The month's budgets: the total one and every category's that has one."""
+    """The month's budgets: the total one and every category's that has one, cut to Telegram's
+    length with the hint kept whole (36 budgets with long names and big sums would pass it)."""
+    from assistant.bot.texts import fit  # imported here so that texts can import this module
+
     lines = [t("money-budget-title", month=month_name(month.first, t)), ""]
     if month.budget is None:
         lines.append(t("money-budget-total-none"))
@@ -202,5 +205,4 @@ def budget_text(
             lines.append(
                 _budget_line(label, category.budget, spent.get(category.id, 0), currency, t)
             )
-    lines += ["", t("money-budget-hint")]
-    return "\n".join(lines)
+    return fit(lines, ["", t("money-budget-hint")])

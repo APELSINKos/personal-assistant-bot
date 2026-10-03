@@ -7,7 +7,10 @@ from aiogram.types import Update
 from aiogram.types import User as TgUser
 
 from assistant.bot.keyboards import MoneyCb
+from assistant.bot.texts import TEXT_LIMIT, utf16_len
+from assistant.core.i18n import translator
 from assistant.core.models import MoneyCategory, User
+from assistant.core.money_style import CATEGORY_EMOJI, EXPENSE
 from assistant.core.services import money, money_month
 from assistant.core.services.money_cards import month_title
 from assistant.core.services.money_phrases import format_amount
@@ -253,6 +256,26 @@ async def test_a_category_budget_and_its_overspending(feed, fake, session, make_
     salary = await preset(session, user, "salary")
     await feed(callback_update(MoneyCb(action="budgetset", id=salary.id).pack()))
     assert fake.of(AnswerCallbackQuery)[-1].text == STALE
+
+
+async def test_the_budgets_fit_telegram_at_their_most(feed, fake, session, make_user) -> None:
+    # 36 expense categories (40 less the four incomes) with 30-character names of emoji, each
+    # with a budget of 10⁹ сўм and twice that spent: uncut, the text would pass 5 000 units.
+    user = await make_user(currency="UZS")
+    for number in range(24):
+        name = f"{number:02d}" + "🍕" * 28
+        await money.create_category(session, user, EXPENSE, name, CATEGORY_EMOJI[number])
+    for category in await money.categories(session, user, kind=EXPENSE):
+        await money.update_category(session, user, category.id, budget=money.MAX_HUNDREDTHS)
+        for _ in range(2):
+            await money.add_entry(
+                session, user, amount=money.MAX_HUNDREDTHS, category_id=category.id
+            )
+    await session.commit()
+    await feed(press("budget"))
+    text = edited(fake).text
+    assert utf16_len(text) <= TEXT_LIMIT
+    assert text.endswith("\n…\n\n" + translator("ru")("money-budget-hint"))
 
 
 async def test_back_to_the_section(feed, fake, make_user) -> None:

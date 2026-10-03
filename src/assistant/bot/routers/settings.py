@@ -99,7 +99,7 @@ async def on_back(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
 
 async def on_toggle(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
     await users.set_morning(ctx.session, ctx.user, enabled=not ctx.user.morning_enabled)
-    await query.answer()
+    await replies.answer_quietly(query)  # saved: an expired query must not hide it
     await replies.edit(bot, query, *settings_view(ctx.user, ctx.t))
 
 
@@ -120,7 +120,7 @@ async def on_set_language(
         return
     await users.set_language(ctx.session, ctx.user, None if value == AUTO else value)
     t = translator(resolve_language(ctx.user.language, ctx.user.tg_language))
-    await query.answer()
+    await replies.answer_quietly(query)
     await replies.edit(bot, query, *settings_view(ctx.user, t))
     # The reply keyboard can only be replaced by sending a new message with it.
     await replies.send(bot, query, t("language-changed", language=t("language-name")), main_menu(t))
@@ -139,7 +139,7 @@ async def on_set_currency(
         await query.answer(ctx.t("stale-button"))
         return
     await money.set_currency(ctx.session, ctx.user, callback_data.value)
-    await query.answer(ctx.t("currency-changed", sign=_sign(callback_data.value)))
+    await replies.answer_quietly(query, ctx.t("currency-changed", sign=_sign(callback_data.value)))
     await replies.edit(bot, query, *settings_view(ctx.user, ctx.t))
 
 
