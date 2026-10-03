@@ -168,12 +168,49 @@ async def test_entries_are_limited_in_all_and_per_month(
         await money.add_entry(session, user, amount=1, category_id=cafe.id, now=NOW)
     assert error.value.params["entity"] == "entry_month"
     september = date(2026, 9, 15)
-    await money.add_entry(session, user, amount=1, category_id=cafe.id, day=september, now=NOW)
+    second = await money.add_entry(
+        session, user, amount=1, category_id=cafe.id, day=september, now=NOW
+    )
     with pytest.raises(LimitReached) as error:
         await money.add_entry(session, user, amount=1, category_id=cafe.id, now=NOW)
     assert error.value.params["entity"] == "entry"
-    with pytest.raises(LimitReached):  # moving the October entry into a full September
+    with pytest.raises(LimitReached) as error:  # moving the October entry into a full September
         await money.update_entry(session, user, first.id, day=september, now=NOW)
+    assert (error.value.params["entity"], first.day) == ("entry_month", TODAY)
+    # A move adds no entry: at the total cap an entry still goes to a month with room, and a
+    # new day in its own month is no move at all.
+    for day in (date(2026, 8, 20), date(2026, 8, 1)):
+        assert (await money.update_entry(session, user, second.id, day=day, now=NOW)).day == day
+
+
+async def test_a_refused_change_changes_nothing(session: AsyncSession, make_user: MakeUser) -> None:
+    user, stranger = await make_user(1), await make_user(2)
+    cafe, theirs = await preset(session, user, "cafe"), await preset(session, stranger, "cafe")
+    oldest = TODAY - timedelta(days=366)
+    entry = await money.add_entry(
+        session, user, amount=100, category_id=cafe.id, note="кофе", day=oldest, now=NOW
+    )
+    for changes, field in (
+        ({"amount": 999, "note": "ж" * 101}, "note"),
+        ({"note": "чай", "amount": 0}, "amount"),
+        ({"amount": 999, "day": TODAY + timedelta(days=1)}, "day"),
+    ):
+        with pytest.raises(InvalidInput) as error:
+            await money.update_entry(session, user, entry.id, now=NOW, **changes)  # type: ignore[arg-type]
+        assert error.value.params["field"] == field
+    with pytest.raises(NotFound):
+        await money.update_entry(session, user, entry.id, amount=999, category_id=theirs.id)
+    assert (entry.amount, entry.note, entry.day, entry.category_id) == (
+        100, "кофе", oldest, cafe.id,
+    )  # fmt: skip
+    # A month on, the entry's day is out of the window, yet the entry is saved with it.
+    later = NOW + timedelta(days=30)
+    saved = await money.update_entry(session, user, entry.id, amount=200, day=oldest, now=later)
+    assert (saved.amount, saved.day) == (200, oldest)
+    with pytest.raises(InvalidInput):  # a new day keeps to the window
+        await money.update_entry(
+            session, user, entry.id, day=TODAY - timedelta(days=365), now=later
+        )
 
 
 async def test_a_moved_note_is_remembered(session: AsyncSession, make_user: MakeUser) -> None:
@@ -185,6 +222,10 @@ async def test_a_moved_note_is_remembered(session: AsyncSession, make_user: Make
     assert await money.recall(session, user, "КОФЕ") == groceries.id
     await money.remember(session, user, "  !! ", cafe.id)  # nothing to remember
     assert await money.recall(session, user, "") is None
+    stranger = await make_user(2)
+    for owner, category_id in ((stranger, cafe.id), (user, 10**6)):
+        with pytest.raises(NotFound):  # someone else's category, or none at all
+            await money.remember(session, owner, "кофе", category_id)
 
 
 async def test_the_category_of_a_quick_phrase(session: AsyncSession, make_user: MakeUser) -> None:

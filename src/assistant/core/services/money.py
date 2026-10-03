@@ -209,12 +209,16 @@ def _check_day(user: User, day: date | None, now: datetime | None) -> date:
     return day
 
 
-async def _check_limits(session: AsyncSession, user: User, day: date) -> None:
+async def _check_total(session: AsyncSession, user: User) -> None:
     total = await session.scalar(
         select(func.count()).select_from(MoneyEntry).where(MoneyEntry.user_id == user.id)
     )
     if (total or 0) >= LIMITS.money_entries:
         raise LimitReached(entity="entry", limit=LIMITS.money_entries)
+
+
+async def _check_month(session: AsyncSession, user: User, day: date) -> None:
+    """The month of this day has room for one more entry: a new one or one moved in."""
     first = day.replace(day=1)
     in_month = await session.scalar(
         select(func.count())
@@ -247,7 +251,8 @@ async def add_entry(
     await category(session, user, category_id)
     cleaned = _clean_text(note, LIMITS.money_note_length, "note")
     when = _check_day(user, day, now)
-    await _check_limits(session, user, when)
+    await _check_total(session, user)
+    await _check_month(session, user, when)
     entry = MoneyEntry(
         user_id=user.id, category_id=category_id, amount=amount, note=cleaned, day=when
     )
@@ -277,20 +282,27 @@ async def update_entry(
     now: datetime | None = None,
 ) -> MoneyEntry:
     """Change any field; another category may be of the other kind (an expense becomes an
-    income)."""
+    income). Every field is checked before any changes. A new day keeps to the window (an
+    unchanged one is not checked again); a move to another month needs room in that month,
+    not under the total, since the entry is not a new one."""
     found = await entry(session, user, entry_id)
     if amount is not None:
-        found.amount = _check_amount(amount)
+        _check_amount(amount)
     if category_id is not None:
         await category(session, user, category_id)
+    cleaned = None if note is None else _clean_text(note, LIMITS.money_note_length, "note")
+    if day is not None and day != found.day:
+        _check_day(user, day, now)
+        if (day.year, day.month) != (found.day.year, found.day.month):
+            await _check_month(session, user, day)
+    if amount is not None:
+        found.amount = amount
+    if category_id is not None:
         found.category_id = category_id
-    if note is not None:
-        found.note = _clean_text(note, LIMITS.money_note_length, "note")
+    if cleaned is not None:
+        found.note = cleaned
     if day is not None:
-        new_day = _check_day(user, day, now)
-        if (new_day.year, new_day.month) != (found.day.year, found.day.month):
-            await _check_limits(session, user, new_day)
-        found.day = new_day
+        found.day = day
     await session.flush()
     return found
 
@@ -303,7 +315,8 @@ async def delete_entry(session: AsyncSession, user: User, entry_id: int) -> bool
 
 
 async def remember(session: AsyncSession, user: User, note: str, category_id: int) -> None:
-    """The next entry with this note goes to this category."""
+    """The next entry with this note goes to this category (one of the user's)."""
+    await category(session, user, category_id)
     key = note_key(note)
     if not key:
         return
