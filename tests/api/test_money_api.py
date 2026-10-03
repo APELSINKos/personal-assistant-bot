@@ -50,6 +50,8 @@ async def test_a_bad_entry_is_refused_by_field(client, auth) -> None:
         ({"amount": "1.234", "category_id": ids["Кафе"]}, "amount"),
         ({"amount": "-5", "category_id": ids["Кафе"]}, "amount"),
         ({"amount": "1000000000.01", "category_id": ids["Кафе"]}, "amount"),
+        ({"amount": "\u0661\u0662\u0663", "category_id": ids["Кафе"]}, "amount"),  # «١٢٣»
+        ({"amount": "\U00010d40", "category_id": ids["Кафе"]}, "amount"),  # a Garay digit
         ({"amount": "1", "category_id": ids["Кафе"], "note": "ж" * 101}, "note"),
         ({"amount": "1", "category_id": ids["Кафе"], "day": "2026-09-29"}, "day"),
     ):
@@ -124,6 +126,9 @@ async def test_a_budget_warning_comes_once(client, auth) -> None:
     ]  # fmt: skip
     removed = await client.put("/api/money/budget", json={"amount": None}, headers=auth())
     assert removed.json()["money_budget"] is None
+    for amount in ("0", "1000000000.01"):
+        refused = await client.put("/api/money/budget", json={"amount": amount}, headers=auth())
+        assert refused.status_code == 422 and refused.json()["field"] == "amount", amount
 
 
 async def test_categories_are_made_renamed_hidden_and_budgeted(client, auth) -> None:
@@ -175,9 +180,15 @@ async def test_categories_are_made_renamed_hidden_and_budgeted(client, auth) -> 
 async def test_other_months(client, auth) -> None:
     august = (await client.get("/api/money?month=2026-08", headers=auth())).json()
     assert august["month"] == "2026-08" and len(august["days"]) == 31 and None not in august["days"]
-    for value in ("2026-13", "26-09", "2026-9"):
+    for value in ("2026-13", "26-09", "2026-9", "\u0662026-09"):
         refused = await client.get(f"/api/money?month={value}", headers=auth())
         assert refused.status_code == 422, value
+    for value in ("9999-12", "0001-01", "2101-01", "1999-12"):  # outside 2000–2100
+        refused = await client.get(f"/api/money?month={value}", headers=auth())
+        assert refused.status_code == 422 and refused.json()["field"] == "month", value
+    for value in ("2000-01", "2100-12"):  # far, but a month all the same: empty
+        far = (await client.get(f"/api/money?month={value}", headers=auth())).json()
+        assert (far["month"], far["spent"], far["entries"]) == (value, 0, []), value
 
 
 async def test_the_currency_is_set_in_me(client, auth) -> None:

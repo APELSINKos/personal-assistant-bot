@@ -36,19 +36,22 @@ from assistant.core.errors import InvalidInput, NotFound
 from assistant.core.models import MoneyEntry, User
 from assistant.core.services import money, money_month
 from assistant.core.services.money import KEEP
-from assistant.core.timeutil import local_today
+from assistant.core.timeutil import SUPPORTED_YEARS, local_today
 
 router = APIRouter(tags=["money"])
-MonthParam = Annotated[str | None, Query(pattern=r"^\d{4}-\d{2}$")]
+MonthParam = Annotated[str | None, Query(pattern=r"^[0-9]{4}-[0-9]{2}$")]
 
 
 def _first(value: str | None, today: date) -> date:
     if value is None:
         return today.replace(day=1)
     try:
-        return datetime.strptime(value, "%Y-%m").date()
+        first = datetime.strptime(value, "%Y-%m").date()
     except ValueError as error:
         raise InvalidInput(field="month", reason="format") from error
+    if first.year not in SUPPORTED_YEARS:  # before any date arithmetic: 9999-12 has no next month
+        raise InvalidInput(field="month", reason="range")
+    return first
 
 
 @router.get("/money", response_model=MoneyMonthOut)
@@ -160,6 +163,9 @@ async def change_category(
 
 @router.put("/money/budget", response_model=MeOut)
 async def put_budget(body: BudgetIn, user: CurrentUser, db: Session) -> MeOut:
-    await money.set_budget(db, user, None if body.amount is None else hundredths(body.amount))
+    try:
+        await money.set_budget(db, user, None if body.amount is None else hundredths(body.amount))
+    except InvalidInput as error:  # the service calls it the budget; this body calls it amount
+        raise InvalidInput(**{**error.params, "field": "amount"}) from error
     await db.commit()
     return me_out(user)

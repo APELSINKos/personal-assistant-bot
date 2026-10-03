@@ -361,7 +361,7 @@ class GroupsOut(BaseModel):
 
 
 # An amount as the app sends it: a decimal with a point, in the user's currency («430.50»).
-Amount = Annotated[str, Field(pattern=r"^\d{1,12}(\.\d{1,2})?$")]
+Amount = Annotated[str, Field(pattern=r"^[0-9]{1,12}(\.[0-9]{1,2})?$")]  # ASCII digits
 KindName = Literal["expense", "income"]
 DbId = Annotated[int, Field(ge=1, le=2**63 - 1)]
 
