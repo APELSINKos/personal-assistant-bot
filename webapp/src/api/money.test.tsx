@@ -115,6 +115,25 @@ describe("money", () => {
     expect(entryIds(client, "2026-09")).toEqual([24, 22, 21, 20]);
   });
 
+  it("puts back only its own entry when two deletes in flight fail one after the other", async () => {
+    const answers: Record<string, (reply: { status: number; body: unknown }) => void> = {};
+    const held = ({ path }: { path: string }) =>
+      new Promise<{ status: number; body: unknown }>((resolve) => { answers[path] = resolve; });
+    mockApi({ "DELETE /money/entries/24": held, "DELETE /money/entries/23": held });
+    const client = createQueryClient();
+    client.setQueryData(keys.moneyMonth("2026-09"), moneyMonth);
+    const { result } = renderHook(() => useDeleteEntry(), { wrapper: wrapperFor(client) });
+    act(() => result.current.mutate(24));
+    act(() => result.current.mutate(23));
+    await waitFor(() => expect(Object.keys(answers)).toHaveLength(2));
+    expect(entryIds(client, "2026-09")).toEqual([22, 21, 20]);
+    const refused = { status: 500, body: { status: 500, code: "internal_error" } };
+    act(() => answers["/money/entries/24"]?.(refused));
+    await waitFor(() => expect(entryIds(client, "2026-09")).toEqual([24, 22, 21, 20]));  // 23 is still going
+    act(() => answers["/money/entries/23"]?.(refused));
+    await waitFor(() => expect(entryIds(client, "2026-09")).toEqual([24, 23, 22, 21, 20]));
+  });
+
   it("sets the total budget and keeps the new me", async () => {
     const { calls } = mockApi({ "PUT /money/budget": { ...me, money_budget: 3000000 } });
     const client = createQueryClient();

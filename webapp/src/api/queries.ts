@@ -454,13 +454,15 @@ export function useSetCity() {
     onSuccess: (me) => {
       client.setQueryData(keys.me, me);
       haptic("success");
-      // Habits' `done_today` is computed against the city's local date, so a city change can
-      // shift which day "today" is for them too. Lessons and reminders are shown in the city's zone.
+      // Habits' `done_today` and the money month's days are computed against the city's local
+      // date, so a city change can shift which day "today" is for them too. Lessons and reminders
+      // are shown in the city's zone.
       return Promise.all([
         client.invalidateQueries({ queryKey: keys.today }),
         client.invalidateQueries({ queryKey: ["agenda"] }),
         client.invalidateQueries({ queryKey: keys.reminders }),
         client.invalidateQueries({ queryKey: keys.habits }),
+        client.invalidateQueries({ queryKey: keys.money }),
       ]);
     },
   });

@@ -274,6 +274,7 @@ describe("useSetCity", () => {
     expect(invalidatedKeys).toContainEqual(keys.today);
     expect(invalidatedKeys).toContainEqual(keys.reminders);
     expect(invalidatedKeys).toContainEqual(["agenda"]);
+    expect(invalidatedKeys).toContainEqual(keys.money);  // the month's days follow the city's date
   });
 });
 

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient, type QueryKey } from "@tanstack/react-query";
 import { toast } from "../components/toastStore";
 import { useLang, useT } from "../i18n";
 import { alertText, DEFAULT_CURRENCY } from "../lib/money";
@@ -69,10 +69,14 @@ export function useSaveEntry() {
 
 const DELETE_ENTRY_KEY = ["delete", "money-entry"];
 
+/** The server's order of a month's entries: the newest day first, then the newest entry. */
+const newestFirst = (a: MoneyEntry, b: MoneyEntry) => b.day.localeCompare(a.day) || b.id - a.id;
+
 /**
  * Takes an entry out of every cached month at once (the totals follow with the refetch) and puts
- * the months back if the request fails — unless with 404: the entry is already gone. Only the
- * last delete in flight refetches, so a quicker one does not bring back a row still being deleted.
+ * that entry back if the request fails — unless with 404: the entry is already gone. Only the
+ * entry is remembered, not the months: another delete in flight keeps its row out. Only the last
+ * delete in flight refetches, so a quicker one does not bring back a row still being deleted.
  */
 export function useDeleteEntry() {
   const client = useQueryClient();
@@ -81,14 +85,23 @@ export function useDeleteEntry() {
     mutationFn: (id: number) => api<void>(`/money/entries/${id}`, { method: "DELETE" }),
     onMutate: async (id: number) => {
       await client.cancelQueries({ queryKey: keys.money });
-      const previous = client.getQueriesData<MoneyMonth>({ queryKey: keys.moneyMonths });
+      const removed: [QueryKey, MoneyEntry][] = [];
+      for (const [key, month] of client.getQueriesData<MoneyMonth>({ queryKey: keys.moneyMonths })) {
+        const entry = month?.entries.find((item) => item.id === id);
+        if (entry) removed.push([key, entry]);
+      }
       client.setQueriesData<MoneyMonth>({ queryKey: keys.moneyMonths }, (month) =>
         month && { ...month, entries: month.entries.filter((entry) => entry.id !== id) });
-      return { previous };
+      return { removed };
     },
     onError: (error, _id, context) => {
       if (error instanceof ApiError && error.status === 404) return;
-      for (const [key, month] of context?.previous ?? []) client.setQueryData(key, month);
+      for (const [key, entry] of context?.removed ?? []) {
+        client.setQueryData<MoneyMonth>(key, (month) =>
+          month && !month.entries.some((item) => item.id === entry.id)
+            ? { ...month, entries: [...month.entries, entry].sort(newestFirst) }
+            : month);
+      }
     },
     onSuccess: (_data, id) => {
       haptic("success");
