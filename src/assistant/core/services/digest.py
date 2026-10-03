@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,8 +12,9 @@ from assistant.core.clients.cbr import CbrClient, Rates
 from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.errors import UpstreamUnavailable
 from assistant.core.models import Lesson, Reminder, User
-from assistant.core.services import habits, notes, reminders, schedule, weather
+from assistant.core.services import habits, money_month, notes, reminders, schedule, weather
 from assistant.core.services.habits import HabitStats, Streak
+from assistant.core.services.money_month import Month
 from assistant.core.services.weather import WeatherNow
 from assistant.core.timeutil import now_local, utcnow
 
@@ -33,6 +34,10 @@ class TodayData:
     has_schedule: bool = False  # a timetable is connected
     lessons: list[Lesson] = field(default_factory=list)  # today's, in the user's zone
     week_label: str | None = None  # «5 неделя»
+    money: Month | None = None  # this month's money
+    spent_today: int = 0
+    spent_yesterday: int = 0
+    currency: str = "RUB"
 
 
 def part_of_day(hour: int) -> str:
@@ -76,6 +81,8 @@ async def today(
     if source is not None:
         lessons = await schedule.lessons_on(session, user, local.date())
         label = await schedule.week_label(session, user.id, local.date())
+    month = await money_month.month(session, user, now=moment)
+    yesterday = local.date() - timedelta(days=1)
     return TodayData(
         local_now=local,
         part_of_day=part_of_day(local.hour),
@@ -90,4 +97,8 @@ async def today(
         has_schedule=source is not None,
         lessons=lessons,
         week_label=label,
+        money=month,
+        spent_today=month.days[local.day - 1] or 0,
+        spent_yesterday=await money_month.spent_on(session, user, yesterday),
+        currency=user.currency,
     )

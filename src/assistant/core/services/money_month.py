@@ -201,3 +201,17 @@ async def alerts_after(
             found.append(Alert(category=scope, threshold=max(fresh), spent=spent, budget=budget))
     await session.flush()
     return found
+
+
+async def spent_on(session: AsyncSession, user: User, day: date) -> int:
+    """The expenses of one day."""
+    query = (
+        select(func.coalesce(func.sum(MoneyEntry.amount), 0))
+        .join(MoneyCategory, MoneyEntry.category_id == MoneyCategory.id)
+        .where(
+            MoneyEntry.user_id == user.id,
+            MoneyCategory.kind == EXPENSE,
+            MoneyEntry.day == day,
+        )
+    )
+    return int(await session.scalar(query) or 0)
