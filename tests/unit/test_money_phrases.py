@@ -88,6 +88,13 @@ def test_amounts_in_hundredths(number: str, thousands: bool, expected: int | Non
         ("кофе\n250", None),
         ("вчера", None),
         ("", None),
+        ("20 кило картошки", None),
+        ("40 бутылок молока", None),
+        ("10 утра обед", None),
+        ("250 купил кофе", None),
+        ("+30 минут", None),
+        ("-5 кг", None),
+        ("+2 кг", None),
     ],
 )
 def test_quick_phrases_in_roubles(text: str, expected: Quick | OtherCurrency | None) -> None:
