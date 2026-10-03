@@ -17,7 +17,10 @@ export function MoneyRates() {
   const rates = useRatesAll();
   const [code, setCode] = useState("USD");
   if (rates.isPending) return <Loader />;
-  if (rates.isError) return <ErrorState text={t.money.ratesUnavailable} onRetry={() => void rates.refetch()} />;
+  // A failed refresh keeps the rates and the converter: only a first load that failed is an error.
+  if (rates.isLoadingError) {
+    return <ErrorState text={t.money.ratesUnavailable} onRetry={() => void rates.refetch()} />;
+  }
   const list = rates.data.currencies;
   const chosen = list.find((rate) => rate.code === code) ?? list[0];
   return (
@@ -51,7 +54,9 @@ function History({ rate }: { rate: CurrencyRate }) {
   const lang = useLang();
   const history = useRateHistory(rate.code);
   if (history.isPending) return <div className="skeleton" />;
-  if (history.isError || history.data.points.length < 2) return <p className="muted">{t.money.historyUnavailable}</p>;
+  if (history.isLoadingError || history.data.points.length < 2) {
+    return <p className="muted">{t.money.historyUnavailable}</p>;
+  }
   return (
     <>
       <LineChart points={history.data.points} label={t.money.chart(rate.name)} lang={lang} />

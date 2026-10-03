@@ -100,7 +100,7 @@ function RatesCard({ currency }: { currency: string }) {
   return (
     <Link href="/money/rates" className="card money-rates" style={{ "--i": 3 } as CSSProperties}>
       <span className="card__title">{t.money.rates}</span>
-      {rates.isError ? (
+      {rates.isLoadingError ? (
         <span className="muted">{t.money.ratesUnavailable}</span>
       ) : (
         shown.map((rate) => <RateRow key={rate.code} rate={rate} />)

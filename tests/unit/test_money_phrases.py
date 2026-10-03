@@ -71,6 +71,11 @@ def test_amounts_in_hundredths(number: str, thousands: bool, expected: int | Non
         ("1 200 ₽", Quick(120000, "", None)),
         ("вчера 1 200", Quick(120000, "", None, days_ago=1)),
         ("☕ 250", Quick(25000, "☕", None)),  # an emoji is a note
+        ("1 000 000", Quick(100000000, "", None)),
+        ("250₽ (кофе)", Quick(25000, "(кофе)", None)),
+        ("300 руб 3 билета", Quick(30000, "3 билета", None)),
+        ("+5000 (стипендия)", Quick(500000, "(стипендия)", True)),
+        ("$1 200", OtherCurrency("USD")),  # a sign before a grouped number is one amount
         ("вчера такси 300", Quick(30000, "такси", None, days_ago=1)),
         ("позавчера кофе 200", Quick(20000, "кофе", None, days_ago=2)),
         ("вчера 300", Quick(30000, "", None, days_ago=1)),
@@ -104,6 +109,8 @@ def test_amounts_in_hundredths(number: str, thousands: bool, expected: int | Non
         ("+2 кг", None),
         ("+7 999 123-45-67", None),  # a phone number
         ("+7 999 1234567", None),
+        ("+7 (999) 123-45-67", None),
+        ("250 за", None),  # only a connective after the number
         ("8 999 123 45 67", None),
         ("2 + 2 = 4", None),
     ],

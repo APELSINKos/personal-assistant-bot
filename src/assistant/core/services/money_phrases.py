@@ -70,9 +70,9 @@ _AMOUNT = (
 _AT_END = re.compile(rf"^(?:(?P<body>.*?)\s+)?{_AMOUNT}$", re.IGNORECASE)
 _AT_START = re.compile(rf"^{_AMOUNT}(?:\s+(?P<body>.+))?$", re.IGNORECASE)
 _DATE_LIKE = re.compile(r"^(\d{1,2})\.(\d{2})$")
-# Only digits, signs and punctuation: before a number at the end that is part of the number
-# («1 200», «+7 999 1234567»), not a note.
-_NUMERIC_NOTE = re.compile(r"^[\d\s+\-−.,:;=*/×()]+$")
+# Only digits, signs, currency signs and punctuation: before a number at the end that is part
+# of the amount («1 200», «$1 200», «+7 999 1234567»), not a note.
+_NUMERIC_NOTE = re.compile(rf"^[\d\s+\-−.,:;=*/×(){_SIGNS}]+$")
 
 
 @dataclass(frozen=True)
@@ -177,10 +177,14 @@ def _quick(
         return None
     note = " ".join(words)
     if at_end and _NUMERIC_NOTE.match(note):
-        return None  # «1 200» is one number: it is read again from the start
+        return None  # «1 200» is one amount: it is read again from the start
     if not at_end:
-        if words and (words[0].casefold() in UNITS or words[0][0] in "0123456789(+-−"):
-            return None  # «+2 кг»: a quantity; «+7 999 123-45-67», «2 + 2 = 4»: not money
+        if not words and match.group("body"):
+            return None  # «250 за»: only a connective after the number
+        if words and words[0].casefold() in UNITS:
+            return None  # «+2 кг», «-5 %»: a quantity, not money
+        if words and sign is not None and named is None and _NUMERIC_NOTE.match(words[0]):
+            return None  # «+7 999 1234567», «+7 (999) 123-45-67»: a phone number
         # «250 кофе»: a bare number first is money only when the next word names a category;
         # alone it is an amount («15 000»).
         if (
