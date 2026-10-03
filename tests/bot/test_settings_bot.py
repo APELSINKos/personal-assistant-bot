@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from aiogram.methods import EditMessageText, SendMessage
+from aiogram.methods import AnswerCallbackQuery, EditMessageText, SendMessage
 from aiogram.types import ReplyKeyboardMarkup
 
 from assistant.bot.keyboards import SettingsCb
@@ -34,7 +34,8 @@ async def test_settings_view_and_toggle(feed, fake) -> None:
         "🏙 Город: Москва\n"
         "🌅 Утренняя сводка: включена ✅\n"
         "🕗 Время сводки: 08:00\n"
-        "🌐 Язык: как в Telegram (Русский)"
+        "🌐 Язык: как в Telegram (Русский)\n"
+        "💱 Валюта: ₽ (RUB)"
     )
     toggle_row = fake.of(SendMessage)[-1].reply_markup.inline_keyboard[1]
     assert toggle_row[0].text == "🔕 Выключить сводку"
@@ -134,3 +135,19 @@ async def test_weather_change_city_button_opens_the_dialog(feed, fake) -> None:
     button = fake.of(SendMessage)[-1].reply_markup.inline_keyboard[0][0]
     await feed(callback_update(button.callback_data))
     assert fake.sent_texts()[-1] == "🏙 Напиши название города:"
+
+
+async def test_the_currency_of_the_accounts(feed, fake, session) -> None:
+    await feed(callback_update(SettingsCb(action="currency").pack()))
+    picker = fake.of(EditMessageText)[-1]
+    assert picker.text.startswith("💱 В какой валюте вести учёт?")
+    rows = [[button.text for button in row] for row in picker.reply_markup.inline_keyboard]
+    assert rows[0] == ["₽ RUB", "$ USD", "€ EUR", "₸ KZT"]
+    assert len(rows) == 5 and rows[-1] == ["↩️ Назад"]
+    await feed(callback_update(SettingsCb(action="setcurrency", value="KZT").pack()))
+    assert fake.of(AnswerCallbackQuery)[-1].text == "Валюта: ₸"
+    assert fake.of(EditMessageText)[-1].text.endswith("💱 Валюта: ₸ (KZT)")
+    session.expire_all()
+    assert (await session.get(User, 1)).currency == "KZT"
+    await feed(callback_update(SettingsCb(action="setcurrency", value="XXX").pack()))
+    assert fake.of(AnswerCallbackQuery)[-1].text.startswith("Эта кнопка устарела")

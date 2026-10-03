@@ -495,3 +495,32 @@ money-alert-total-100 = 🚨 Бюджет на { $month } закончился: 
 money-alert-category-80 = ⚠️ Потрачено { $percent } % бюджета «{ $name }» на { $month }: { $spent } из { $budget }
 money-alert-category-100 = 🚨 Бюджет «{ $name }» на { $month } закончился: { $spent } из { $budget }
 hint-money-category = Напиши название категории.
+button-money-entries = 📜 Записи
+button-money-budget = 🎯 Бюджет
+button-budget-total = ✏️ Общий бюджет
+button-budget-categories = 🗂 По категориям
+money-entries-title = 📜 { $month } · { $count } { $count ->
+        [one] запись
+        [few] записи
+       *[many] записей
+    }
+money-entries-line = { $number }. { $day } · { $what }
+money-entries-empty = 📜 Записей в этом месяце пока нет.
+money-delete-ask = 🗑 Удалить «{ $what }»?
+money-budget-title = 🎯 Бюджет на { $month }
+money-budget-total = Общий
+money-budget-total-none = Общий бюджет не задан.
+money-budget-line = { $label }: { $budget } — потрачено { $spent }, осталось { $rest }
+money-budget-line-over = { $label }: { $budget } — потрачено { $spent }, перерасход { $rest }
+money-budget-hint = Предупрежу, когда потратишь 80 % и 100 %. Бюджет действует каждый месяц.
+money-budget-pick = 🗂 Какой категории задать бюджет?
+money-budget-ask-total = 🎯 Сколько можно потратить за месяц? Напиши сумму, например 30000, или 0 — убрать бюджет:
+money-budget-ask = 🎯 Бюджет «{ $name }» на месяц? Напиши сумму, например 5000, или 0 — убрать:
+money-budget-bad = Нужна сумма числом, например 30000 или 30 000, или 0 — убрать бюджет. Попробуй ещё раз:
+money-budget-saved = ✅ Бюджет сохранён.
+money-budget-removed = ✅ Бюджет убран.
+hint-money-budget = Напиши сумму числом, например 30000, или 0.
+settings-currency = 💱 Валюта: { $sign } ({ $code })
+button-currency = 💱 Валюта
+currency-pick = 💱 В какой валюте вести учёт? Суммы уже сделанных записей не пересчитываются.
+currency-changed = Валюта: { $sign }

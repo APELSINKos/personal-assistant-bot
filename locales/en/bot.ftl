@@ -473,3 +473,31 @@ money-alert-total-100 = 🚨 The { $month } budget has run out: { $spent } of { 
 money-alert-category-80 = ⚠️ { $percent }% of the “{ $name }” budget for { $month } is spent: { $spent } of { $budget }
 money-alert-category-100 = 🚨 The “{ $name }” budget for { $month } has run out: { $spent } of { $budget }
 hint-money-category = Write the category's name.
+button-money-entries = 📜 Entries
+button-money-budget = 🎯 Budget
+button-budget-total = ✏️ Total budget
+button-budget-categories = 🗂 By category
+money-entries-title = 📜 { $month } · { $count } { $count ->
+        [one] entry
+       *[other] entries
+    }
+money-entries-line = { $number }. { $day } · { $what }
+money-entries-empty = 📜 No entries this month yet.
+money-delete-ask = 🗑 Delete “{ $what }”?
+money-budget-title = 🎯 The budget for { $month }
+money-budget-total = Total
+money-budget-total-none = No total budget yet.
+money-budget-line = { $label }: { $budget } — spent { $spent }, { $rest } left
+money-budget-line-over = { $label }: { $budget } — spent { $spent }, { $rest } over
+money-budget-hint = I'll warn you at 80% and 100%. A budget holds for every month.
+money-budget-pick = 🗂 Which category gets a budget?
+money-budget-ask-total = 🎯 How much may a month cost? Write an amount, e.g. 30000, or 0 to remove the budget:
+money-budget-ask = 🎯 A month's budget for “{ $name }”? Write an amount, e.g. 5000, or 0 to remove it:
+money-budget-bad = I need an amount, e.g. 30000 or 30 000, or 0 to remove the budget. Try again:
+money-budget-saved = ✅ The budget is saved.
+money-budget-removed = ✅ The budget is removed.
+hint-money-budget = Write an amount, e.g. 30000, or 0.
+settings-currency = 💱 Currency: { $sign } ({ $code })
+button-currency = 💱 Currency
+currency-pick = 💱 Which currency do you keep accounts in? Amounts already noted are not converted.
+currency-changed = Currency: { $sign }

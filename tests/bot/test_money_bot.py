@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from aiogram.methods import AnswerCallbackQuery, GetMe, SendMessage, SendPhoto
+from aiogram.methods import AnswerCallbackQuery, EditMessageText, GetMe, SendMessage, SendPhoto
 from aiogram.types import Update
 from aiogram.types import User as TgUser
 
 from assistant.bot.keyboards import MoneyCb
 from assistant.core.models import MoneyCategory, User
-from assistant.core.services import money
+from assistant.core.services import money, money_month
 from assistant.core.services.money_cards import month_title
 from assistant.core.services.money_phrases import format_amount
 from assistant.core.timeutil import local_today
@@ -51,7 +51,7 @@ async def test_the_menu_opens_money_and_so_does_the_old_rates_label(feed, fake) 
     await feed(message_update("💱 Курс валют"))  # a keyboard shown before 2.5 keeps this label
     first, second = fake.of(SendMessage)
     assert first.text == second.text and first.text.startswith("💰 ")
-    assert buttons(first) == [["📊 Отчёт", "💱 Курсы"]]
+    assert buttons(first) == [["📊 Отчёт", "📜 Записи"], ["🎯 Бюджет", "💱 Курсы"]]
 
 
 async def test_start_names_the_money_section(feed, fake) -> None:
@@ -175,3 +175,87 @@ async def test_a_forged_huge_id_is_a_stale_button(feed, fake) -> None:
     for data in ("h:open:9223372036854775808:", "n:del:-1:0", "m:report:99999999999999999999::"):
         await feed(callback_update(data))
         assert fake.of(AnswerCallbackQuery)[-1].text == STALE
+
+
+def edited(fake) -> EditMessageText:
+    return fake.of(EditMessageText)[-1]
+
+
+async def test_the_entries_of_the_month_ten_a_page(feed, fake, session, make_user) -> None:
+    user = await make_user()
+    for amount in range(1, 13):
+        await spend(session, user, "cafe", amount * 100)
+    await feed(press("entries"))
+    page = edited(fake)
+    lines = page.text.split("\n")
+    assert lines[0].endswith("· 12 записей")
+    assert lines[2].startswith("1. ") and lines[2].endswith(f"☕ Кафе — {rub('12')}")
+    assert lines[-1] == "Стр. 1 из 2"
+    assert buttons(page) == [
+        ["🗑 1", "🗑 2", "🗑 3", "🗑 4", "🗑 5"],
+        ["🗑 6", "🗑 7", "🗑 8", "🗑 9", "🗑 10"],
+        ["▶️"],
+        ["↩️ Назад"],
+    ]
+    await feed(callback_update(MoneyCb(action="entries", page=1).pack()))
+    assert buttons(edited(fake))[0] == ["🗑 11", "🗑 12"]
+
+
+async def test_an_entry_is_deleted_after_a_confirmation(feed, fake, session, make_user) -> None:
+    user = await make_user()
+    await spend(session, user, "cafe", 25000)
+    [(entry, _)] = await money_month.entries(
+        session, user, local_today(user.timezone).replace(day=1)
+    )
+    await feed(callback_update(MoneyCb(action="delask", id=entry.id).pack()))
+    assert edited(fake).text == f"🗑 Удалить «☕ Кафе — {rub('250')}»?"
+    assert buttons(edited(fake)) == [["🗑 Да, удалить", "↩️ Назад"]]
+    await feed(callback_update(MoneyCb(action="del", id=entry.id).pack()))
+    assert fake.of(AnswerCallbackQuery)[-1].text == "🗑 Удалено"
+    assert edited(fake).text == "📜 Записей в этом месяце пока нет."
+    await feed(callback_update(MoneyCb(action="del", id=entry.id).pack()))
+    assert fake.of(AnswerCallbackQuery)[-1].text == "Этого уже нет."
+    await feed(callback_update(MoneyCb(action="delask", id=entry.id).pack()))
+    assert fake.of(AnswerCallbackQuery)[-1].text == "Этого уже нет."
+
+
+async def test_the_total_budget_is_set_and_removed(feed, fake, session, make_user) -> None:
+    user_id = (await make_user()).id
+    await feed(press("budget"))
+    assert "Общий бюджет не задан." in edited(fake).text
+    await feed(press("budgetset"))
+    assert fake.sent_texts()[-1].startswith("🎯 Сколько можно потратить за месяц?")
+    await feed(message_update("тридцать"))
+    assert fake.sent_texts()[-1].startswith("Нужна сумма числом")
+    await feed(message_update("30к"))
+    saved, view = fake.sent_texts()[-2:]
+    assert saved == "✅ Бюджет сохранён."
+    assert f"Общий: {rub('30 000')} — потрачено {rub('0')}, осталось {rub('30 000')}" in view
+    session.expire_all()  # the bot changed the row in its own session
+    assert (await session.get(User, user_id)).money_budget == 3000000
+    await feed(press("budgetset"))
+    await feed(message_update("0"))
+    assert fake.sent_texts()[-2] == "✅ Бюджет убран."
+
+
+async def test_a_category_budget_and_its_overspending(feed, fake, session, make_user) -> None:
+    user = await make_user()
+    await spend(session, user, "cafe", 600000)
+    cafe = await preset(session, user, "cafe")
+    await feed(press("budgetcats"))
+    assert edited(fake).text == "🗂 Какой категории задать бюджет?"
+    assert buttons(edited(fake))[0] == ["🛒 Продукты", "☕ Кафе"]
+    await feed(callback_update(MoneyCb(action="budgetset", id=cafe.id).pack()))
+    assert fake.sent_texts()[-1].startswith("🎯 Бюджет «☕ Кафе» на месяц?")
+    await feed(message_update("5 000 ₽"))
+    view = fake.sent_texts()[-1]
+    assert f"☕ Кафе: {rub('5 000')} — потрачено {rub('6 000')}, перерасход {rub('1 000')}" in view
+    salary = await preset(session, user, "salary")
+    await feed(callback_update(MoneyCb(action="budgetset", id=salary.id).pack()))
+    assert fake.of(AnswerCallbackQuery)[-1].text == STALE
+
+
+async def test_back_to_the_section(feed, fake, make_user) -> None:
+    await make_user()
+    await feed(press("home"))
+    assert edited(fake).text.startswith("💰 ")

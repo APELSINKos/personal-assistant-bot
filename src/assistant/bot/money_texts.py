@@ -6,7 +6,7 @@ from datetime import date
 
 from babel.dates import format_date
 
-from assistant.core.i18n import Translator, format_day
+from assistant.core.i18n import Translator, format_day, weekday_short
 from assistant.core.models import MoneyCategory, MoneyEntry
 from assistant.core.money_style import INCOME
 from assistant.core.services.money_cards import month_title
@@ -148,3 +148,59 @@ def alert_text(alert: Alert, name: str | None, first: date, currency: str, t: Tr
         "name": f"{alert.category.emoji} {name}" if alert.category is not None else "",
     }
     return t(f"money-alert-{scope}-{alert.threshold}", **values)
+
+
+def entries_text(
+    rows: list[tuple[MoneyEntry, MoneyCategory]],
+    first: int,
+    total: int,
+    today: date,
+    names: dict[int, str],
+    currency: str,
+    t: Translator,
+) -> str:
+    """A page of this month's entries, numbered from `first`: «3. сб 3 · ☕ Кафе — 250 ₽ · кофе»."""
+    if not total:
+        return t("money-entries-empty")
+    title = month_name(today.replace(day=1), t).capitalize()
+    lines = [t("money-entries-title", month=title, count=total), ""]
+    for number, (entry, category) in enumerate(rows, start=first):
+        what = entry_line(entry, category, names[category.id], currency, entry.day, t)
+        day = f"{weekday_short(entry.day.weekday(), t.lang)} {entry.day.day}"
+        lines.append(t("money-entries-line", number=number, day=day, what=what))
+    return "\n".join(lines)
+
+
+def _budget_line(label: str, budget: int, spent: int, currency: str, t: Translator) -> str:
+    rest = budget - spent
+    return t(
+        "money-budget-line" if rest >= 0 else "money-budget-line-over",
+        label=label,
+        budget=money(budget, currency, t),
+        spent=money(spent, currency, t),
+        rest=money(abs(rest), currency, t),
+    )
+
+
+def budget_text(
+    month: Month,
+    expenses: list[MoneyCategory],
+    names: dict[int, str],
+    currency: str,
+    t: Translator,
+) -> str:
+    """The month's budgets: the total one and every category's that has one."""
+    lines = [t("money-budget-title", month=month_name(month.first, t)), ""]
+    if month.budget is None:
+        lines.append(t("money-budget-total-none"))
+    else:
+        lines.append(_budget_line(t("money-budget-total"), month.budget, month.spent, currency, t))
+    spent = {item.category.id: item.amount for item in month.expenses}
+    for category in expenses:
+        if category.budget is not None:
+            label = f"{category.emoji} {names[category.id]}"
+            lines.append(
+                _budget_line(label, category.budget, spent.get(category.id, 0), currency, t)
+            )
+    lines += ["", t("money-budget-hint")]
+    return "\n".join(lines)
