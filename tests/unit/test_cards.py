@@ -10,7 +10,7 @@ from PIL import Image
 
 from assistant.core.habit_style import COLORS, EMOJI
 from assistant.core.i18n import translator
-from assistant.core.services import cards, habits
+from assistant.core.services import card_kit, cards, habits
 
 RU, EN = translator("ru"), translator("en")
 TODAY = date(2026, 10, 2)  # a Friday
@@ -117,7 +117,7 @@ def test_a_name_loses_only_what_its_font_cannot_draw() -> None:
     # A name from before 2.4 may hold an emoji or another script: drawn, they would be boxes.
     assert cards.render(replace(CARD, name="💪 Спорт 读书"), RU) == cards.render(CARD, RU)
     assert cards.render(replace(CARD, name="💪"), RU)[:2] == b"\xff\xd8"  # nothing left: no name
-    assert cards._drawable("Мои\u0306 день") == "Мой день"  # a decomposed «й» keeps its breve
+    assert card_kit.drawable("Мои\u0306 день") == "Мой день"  # a decomposed «й» keeps its breve
 
 
 def test_every_emoji_and_colour_of_the_set_can_be_drawn() -> None:
@@ -163,14 +163,14 @@ async def test_card_for_takes_the_habit_and_its_statistics(session, make_user) -
 
 def test_the_card_files_are_the_ones_in_the_checksums() -> None:
     listed: dict[str, str] = {}
-    for line in (cards.ASSETS / "SHA256SUMS").read_text(encoding="utf-8").splitlines():
+    for line in (card_kit.ASSETS / "SHA256SUMS").read_text(encoding="utf-8").splitlines():
         digest, name = line.split("  ", 1)
         listed[name] = digest
     files = {
-        path.relative_to(cards.ASSETS).as_posix()
-        for path in cards.ASSETS.rglob("*")
+        path.relative_to(card_kit.ASSETS).as_posix()
+        for path in card_kit.ASSETS.rglob("*")
         if path.is_file() and path.name not in {"SHA256SUMS", "SOURCES.md"}
     }
     assert files == set(listed)  # every file is listed, and every listed file is there
     for name, digest in listed.items():
-        assert hashlib.sha256((cards.ASSETS / name).read_bytes()).hexdigest() == digest, name
+        assert hashlib.sha256((card_kit.ASSETS / name).read_bytes()).hexdigest() == digest, name

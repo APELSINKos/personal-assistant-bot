@@ -4,6 +4,11 @@ import { CalendarScreen } from "./screens/Calendar";
 import { HabitScreen } from "./screens/Habit";
 import { HabitForm } from "./screens/HabitForm";
 import { HabitsScreen } from "./screens/Habits";
+import { MoneyScreen } from "./screens/Money";
+import { MoneyBudget } from "./screens/MoneyBudget";
+import { MoneyCategories, MoneyCategoryForm } from "./screens/MoneyCategories";
+import { MoneyEntryForm } from "./screens/MoneyEntryForm";
+import { MoneyRates } from "./screens/MoneyRates";
 import { MoreScreen } from "./screens/More";
 import { NoteEditor } from "./screens/NoteEditor";
 import { NotesScreen } from "./screens/Notes";
@@ -44,6 +49,14 @@ export const ROUTES: AppRoute[] = [
   { path: "/notes", component: NotesScreen },
   { path: "/notes/new", component: NoteEditor, hideNav: true },
   { path: "/notes/:id", component: NoteEditor, hideNav: true },
+  { path: "/money", component: MoneyScreen },
+  { path: "/money/new", component: MoneyEntryForm, hideNav: true },
+  { path: "/money/budget", component: MoneyBudget, hideNav: true },
+  { path: "/money/categories", component: MoneyCategories, parent: "/money" },
+  { path: "/money/categories/new", component: MoneyCategoryForm, hideNav: true },
+  { path: "/money/categories/:id", component: MoneyCategoryForm, hideNav: true },
+  { path: "/money/rates", component: MoneyRates, parent: "/money" },
+  { path: "/money/:id/edit", component: MoneyEntryForm, hideNav: true },
   { path: "/more", component: MoreScreen },
   { path: "/more/schedule", component: ScheduleScreen, parent: "/more" },
 ];

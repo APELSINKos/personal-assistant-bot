@@ -18,7 +18,8 @@ from assistant.core.config import LIMITS
 from assistant.core.errors import InvalidInput, UpstreamUnavailable
 from assistant.core.i18n import SUPPORTED, Translator, resolve_language, translator
 from assistant.core.models import User
-from assistant.core.services import users
+from assistant.core.money_style import CURRENCIES
+from assistant.core.services import money, users
 
 AUTO = "auto"
 # Joins the search id and the index in a city button's value. Not ":" — that is the
@@ -55,15 +56,27 @@ def settings_view(user: User, t: Translator) -> tuple[str, InlineKeyboardMarkup]
             t("settings-morning-on" if user.morning_enabled else "settings-morning-off"),
             t("settings-time", time=user.morning_time),
             language,
+            t("settings-currency", sign=_sign(user.currency), code=user.currency),
         ]
     )
     toggle = "button-morning-off" if user.morning_enabled else "button-morning-on"
     rows = [
         [_button(t("weather-change-city"), "city"), _button(t("button-time"), "time")],
         [_button(t(toggle), "toggle")],
-        [_button(t("button-language"), "lang")],
+        [_button(t("button-language"), "lang"), _button(t("button-currency"), "currency")],
     ]
     return text, InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _sign(code: str) -> str:
+    return CURRENCIES[code].sign if code in CURRENCIES else code
+
+
+def currency_view(t: Translator) -> tuple[str, InlineKeyboardMarkup]:
+    buttons = [_button(f"{_sign(code)} {code}", "setcurrency", code) for code in CURRENCIES]
+    rows = [buttons[index : index + 4] for index in range(0, len(buttons), 4)]
+    rows.append([_button(t("button-back"), "back")])
+    return t("currency-pick"), InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def language_view(t: Translator) -> tuple[str, InlineKeyboardMarkup]:
@@ -86,7 +99,7 @@ async def on_back(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
 
 async def on_toggle(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
     await users.set_morning(ctx.session, ctx.user, enabled=not ctx.user.morning_enabled)
-    await query.answer()
+    await replies.answer_quietly(query)  # saved: an expired query must not hide it
     await replies.edit(bot, query, *settings_view(ctx.user, ctx.t))
 
 
@@ -107,10 +120,27 @@ async def on_set_language(
         return
     await users.set_language(ctx.session, ctx.user, None if value == AUTO else value)
     t = translator(resolve_language(ctx.user.language, ctx.user.tg_language))
-    await query.answer()
+    await replies.answer_quietly(query)
     await replies.edit(bot, query, *settings_view(ctx.user, t))
     # The reply keyboard can only be replaced by sending a new message with it.
     await replies.send(bot, query, t("language-changed", language=t("language-name")), main_menu(t))
+
+
+async def on_currency_menu(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
+    await query.answer()
+    await replies.edit(bot, query, *currency_view(ctx.t))
+
+
+async def on_set_currency(
+    query: CallbackQuery, callback_data: SettingsCb, ctx: Ctx, bot: Bot
+) -> None:
+    """Only the sign of the amounts changes: the entries keep their numbers."""
+    if callback_data.value not in CURRENCIES:
+        await query.answer(ctx.t("stale-button"))
+        return
+    await money.set_currency(ctx.session, ctx.user, callback_data.value)
+    await replies.answer_quietly(query, ctx.t("currency-changed", sign=_sign(callback_data.value)))
+    await replies.edit(bot, query, *settings_view(ctx.user, ctx.t))
 
 
 async def on_city(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
@@ -196,6 +226,8 @@ async def got_time(message: Message, ctx: Ctx) -> None:
 
 def create_router() -> Router:
     router = Router(name="settings")
+    router.callback_query.register(on_currency_menu, SettingsCb.filter(F.action == "currency"))
+    router.callback_query.register(on_set_currency, SettingsCb.filter(F.action == "setcurrency"))
     for action, handler in (
         ("back", on_back),
         ("toggle", on_toggle),

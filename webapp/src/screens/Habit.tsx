@@ -6,7 +6,7 @@ import type { HabitDetail } from "../api/types";
 import { Card } from "../components/Card";
 import { HabitLoadError } from "../components/HabitBits";
 import { MonthMarks } from "../components/MonthMarks";
-import { Loader } from "../components/States";
+import { ErrorState, Loader } from "../components/States";
 import { toast } from "../components/toastStore";
 import { YearMap } from "../components/YearMap";
 import { useLang, useT } from "../i18n";
@@ -34,13 +34,17 @@ export function HabitScreen() {
   const [, params] = useRoute<{ id: string }>("/habits/:id");
   const id = Number(params?.id);
   const habit = useHabit(id);
-  const zone = useMe().data?.city.timezone;
+  const me = useMe();
+  const zone = me.data?.city.timezone;
   const mark = useMarkDay();
   const share = useShareHabit();
   const remove = useDeleteHabit();
   const [month, setMonth] = useState<string | null>(null);
 
   if (habit.isError) return <HabitLoadError error={habit.error} onRetry={() => void habit.refetch()} />;
+  // The month is shown by the city's today: without /me there is none to wait for; a failed
+  // refresh of /me keeps the zone already known.
+  if (me.isLoadingError) return <ErrorState onRetry={() => void me.refetch()} />;
   if (habit.isPending || zone === undefined) return <Loader />;
 
   const data = habit.data;

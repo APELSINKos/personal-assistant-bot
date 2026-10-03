@@ -1,4 +1,4 @@
-import type { HabitColor, StreakUnit } from "../api/types";
+import type { HabitColor, MoneyKind, StreakUnit } from "../api/types";
 
 const rules = new Intl.PluralRules("ru");
 
@@ -13,12 +13,44 @@ function streakIn(count: number, unit: StreakUnit): string {
   return `${count} ${unit === "days" ? plural(count, "день", "дня", "дней") : plural(count, "неделя", "недели", "недель")}`;
 }
 
+/** A budget warning's parts, each already formatted (lib/money.ts, alertText). */
+export interface AlertWords {
+  threshold: number;
+  percent: number;
+  /** «☕ Кафе»; null for the budget of all expenses. */
+  name: string | null;
+  month: string;
+  spent: string;
+  budget: string;
+}
+
+/** A budget's line, each amount already formatted (lib/money.ts, budgetText). */
+export interface BudgetWords {
+  budget: string;
+  /** What is left, or what is overspent when `over`. */
+  rest: string;
+  over: boolean;
+  /** What is left for each day to the month's end; null for a past month or a category. */
+  perDay: string | null;
+}
+
+/** A rate's days, each value already formatted (lib/money.ts, historyWords). */
+export interface HistoryWords {
+  first: string;
+  last: string;
+  change: string;
+  percent: string;
+  low: string;
+  high: string;
+}
+
 export const ru = {
   tabs: {
     today: "Сегодня",
     calendar: "Календарь",
     habits: "Привычки",
     notes: "Заметки",
+    money: "Деньги",
     more: "Ещё",
   },
   common: {
@@ -140,6 +172,82 @@ export const ru = {
     delete: "Удалить заметку",
     add: "Добавить заметку",
   },
+  money: {
+    alert: ({ threshold, percent, name, month, spent, budget }: AlertWords) => {
+      const which = name === null ? "" : ` «${name}»`;
+      return threshold >= 100
+        ? `🚨 Бюджет${which} на ${month} закончился: ${spent} из ${budget}`
+        : `⚠️ Потрачено ${percent}\u00a0% бюджета${which} на ${month}: ${spent} из ${budget}`;
+    },
+    prevMonth: "Предыдущий месяц",
+    nextMonth: "Следующий месяц",
+    spent: "Потрачено",
+    budget: ({ budget, rest, over, perDay }: BudgetWords) =>
+      over
+        ? `из ${budget} · перерасход ${rest}`
+        : `из ${budget} · осталось ${rest}${perDay === null ? "" : `, по ${perDay} в день`}`,
+    income: (income: string, balance: string) => `Доходы ${income} · баланс ${balance}`,
+    byCategory: "По категориям",
+    byDay: "По дням",
+    ring: (total: string, shares: string) => `Траты за месяц ${total}: ${shares}`,
+    entriesWord: (count: number) => plural(count, "запись", "записи", "записей"),
+    days: (day: string, amount: string) => `Траты по дням; больше всего — ${day}: ${amount}`,
+    entries: "Записи",
+    empty: "В этом месяце записей нет.",
+    emptyCategory: "В этой категории в этом месяце записей нет.",
+    showAll: (name: string) => `Показать все записи, не только «${name}»`,
+    deleteEntry: "Удалить запись",
+    add: "Добавить запись",
+    newEntry: "Новая запись",
+    editEntry: "Запись",
+    amount: "Сумма",
+    amountHint: "Сумма — число больше нуля, не больше двух знаков после запятой",
+    kind: "Расход или доход",
+    kinds: { expense: "Расход", income: "Доход" } satisfies Record<MoneyKind, string>,
+    category: "Категория",
+    note: "Заметка",
+    notePlaceholder: "Необязательно",
+    day: "День",
+    prevDay: "Предыдущий день",
+    nextDay: "Следующий день",
+    dayHint: "День — не позже сегодняшнего и не раньше, чем год назад",
+    confirmDelete: "Удалить запись?",
+    gone: "Этой записи уже нет.",
+    toMoney: "К деньгам",
+    setBudget: "Задать бюджет",
+    budgetLink: "🎯 Бюджет",
+    categoriesLink: "🗂 Категории",
+    budgetTitle: "Бюджет на месяц",
+    budgetHint: "Пустое поле — без бюджета. Предупрежу, когда потратишь 80\u00a0% и 100\u00a0%; бюджет действует каждый месяц.",
+    budgetTotal: "Общий",
+    budgetCategories: "По категориям",
+    noBudget: "Нет",
+    categoriesTitle: "Категории",
+    kindsPlural: { expense: "Расходы", income: "Доходы" } satisfies Record<MoneyKind, string>,
+    hiddenMark: "скрыта",
+    newCategory: "Новая категория",
+    categoriesFull: (limit: number) => `Категорий уже ${limit} — новую не добавить. Ненужную можно переименовать.`,
+    categoryTitle: "Категория",
+    name: "Название",
+    emoji: "Эмодзи",
+    hide: "Скрыть категорию",
+    hideHint: "Скрытая категория не предлагается при записи, а её записи остаются в итогах.",
+    otherFixed: "«Другое» скрыть нельзя: сюда попадает всё, чему не нашлось категории.",
+    categoryGone: "Этой категории нет.",
+    toCategories: "К категориям",
+    rates: "Курсы ЦБ",
+    ratesOn: (date: string) => `На ${date}`,
+    ratesUnavailable: "Курсы ЦБ сейчас недоступны",
+    currency: "Валюта",
+    chart: (name: string) => `Курс: ${name}, за 30 дней`,
+    history: ({ first, last, change, percent, low, high }: HistoryWords) =>
+      `За 30 дней: с ${first} до ${last} (${change}, ${percent}); минимум ${low}, максимум ${high}`,
+    historyUnavailable: "Истории курса сейчас нет",
+    converter: "Конвертер",
+    from: "Из",
+    to: "В",
+    swap: "Поменять валюты местами",
+  },
   more: {
     city: "Город",
     searchCity: "Найти город",
@@ -153,6 +261,8 @@ export const ru = {
     about: "О приложении",
     version: (value: string) => `Версия ${value}`,
     source: "Исходный код на GitHub",
+    currency: "Валюта",
+    currencyHint: "Суммы уже сделанных записей не пересчитываются — меняется только знак.",
   },
   errors: {
     generic: "Что-то пошло не так. Попробуй ещё раз.",

@@ -15,11 +15,13 @@ from assistant.core.i18n import format_day, translator
 from assistant.core.models import Habit, Lesson, Note, Reminder, Repeat, User
 from assistant.core.services.digest import TodayData
 from assistant.core.services.habits import HabitStats, Streak
+from assistant.core.services.money_month import Month
 from assistant.core.services.weather import Tip, WeatherNow
 
 RU, EN = translator("ru"), translator("en")
 MSK = ZoneInfo("Europe/Moscow")
 BUDGET = 3900  # what the bot keeps a message within, a margin under Telegram's 4096
+NBSP = "\u00a0"
 
 
 def utf16(text: str) -> int:
@@ -180,7 +182,7 @@ def test_reminder_list_is_capped_within_the_telegram_message_limit() -> None:
 
 
 def test_rates_text() -> None:
-    assert texts.rates_text(RATES, RU) == (
+    assert texts.rates_text(RATES, RU, "RUB") == (
         "💱 Курс ЦБ РФ на 28 сентября\n"
         "\n"
         "💵 USD: 84,20 ₽  ▼ 0,31\n"
@@ -188,6 +190,17 @@ def test_rates_text() -> None:
         "\n"
         "Конвертер 👇"
     )
+
+
+def test_rates_text_adds_the_users_own_currency() -> None:
+    rates = Rates(RATES.day, RATES.usd, RATES.eur, currencies={"KZT": Rate(0.1631, 0.0012)})
+    assert texts.rates_text(rates, EN, "KZT").split("\n")[2:5] == [
+        "💵 USD: 84.20 ₽  ▼ 0.31",
+        "💶 EUR: 96.67 ₽  • 0.00",
+        "💱 KZT: 0.1631 ₽  ▲ 0.0012",
+    ]
+    for currency in ("RUB", "USD", "GBP"):  # the rouble, a currency shown anyway, one not quoted
+        assert len(texts.rates_text(rates, RU, currency).split("\n")) == 6
 
 
 LESSON = Lesson(
@@ -426,3 +439,63 @@ def test_schedule_texts_promise_no_cause_or_time_they_cannot_know() -> None:
         "The MIREA group directory isn't ready yet — try again later"
         " or connect a timetable by link."
     )
+
+
+def money_month(**changes: object) -> Month:
+    values: dict[str, object] = {
+        "first": date(2026, 9, 1),
+        "today": date(2026, 9, 28),
+        "spent": 1240000,
+        "income": 0,
+        "budget": 3000000,
+        "left": 1760000,
+        "per_day": 586666,
+        "expenses": [],
+        "incomes": [],
+        "days": [0] * 27 + [65000, None, None],
+        "count": 14,
+    }
+    values.update(changes)
+    return Month(**values)  # type: ignore[arg-type]
+
+
+def money_line(text: str) -> list[str]:
+    return [line for line in text.split("\n") if line.startswith("💰")]
+
+
+def test_my_day_shows_todays_spending_and_the_month() -> None:
+    data = day_data(money=money_month(), spent_today=65000)
+    assert money_line(texts.today_text(data, "Alex", RU)) == [
+        f"💰 Сегодня: 650{NBSP}₽ · сентябрь: 12{NBSP}400{NBSP}₽ из 30{NBSP}000{NBSP}₽"
+    ]
+    plain = day_data(money=money_month(budget=None, left=None, per_day=None), spent_today=0)
+    assert money_line(texts.today_text(plain, "Alex", EN)) == [
+        f"💰 Today: 0{NBSP}₽ · September: 12,400{NBSP}₽"
+    ]
+    nothing = day_data(money=money_month(count=0, spent=0))
+    assert money_line(texts.today_text(nothing, "Alex", RU)) == []
+
+
+def test_the_morning_shows_yesterday_and_the_rest_for_each_day() -> None:
+    data = day_data(money=money_month(), spent_yesterday=125000)
+    assert money_line(texts.morning_text(data, "Alex", RU)) == [
+        f"💰 Вчера: 1{NBSP}250{NBSP}₽ · осталось 17{NBSP}600{NBSP}₽ — "
+        f"по 5{NBSP}866,66{NBSP}₽ в день"
+    ]
+    over = day_data(money=money_month(left=-300000, per_day=None), spent_yesterday=0)
+    assert money_line(texts.morning_text(over, "Alex", RU)) == [
+        f"💰 Вчера: 0{NBSP}₽ · перерасход 3{NBSP}000{NBSP}₽"
+    ]
+    plain = money_month(budget=None, left=None, per_day=None)
+    assert money_line(texts.morning_text(day_data(money=plain, spent_yesterday=500), "A", EN)) == [
+        f"💰 Yesterday: 5{NBSP}₽"
+    ]
+    assert money_line(texts.morning_text(day_data(money=plain, spent_yesterday=0), "A", RU)) == []
+
+
+def test_my_day_shows_the_users_own_currency_beside_the_dollar_and_the_euro() -> None:
+    rates = Rates(RATES.day, RATES.usd, RATES.eur, currencies={"KZT": Rate(0.1631, 0.0012)})
+    lines = texts.today_text(day_data(rates=rates, currency="KZT"), "Alex", RU).split("\n")
+    assert "💵 84,20 ₽ · 💶 96,67 ₽ · 💱 KZT 0,1631 ₽" in lines
+    morning = texts.morning_text(day_data(rates=rates, currency="RUB"), "Alex", RU).split("\n")
+    assert "💵 84,20 ₽ · 💶 96,67 ₽" in morning

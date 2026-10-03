@@ -38,6 +38,11 @@ async def test_sharing_prepares_a_message_with_a_link_to_the_card(
     assert picture.status_code == 200
     assert picture.headers["content-type"] == "image/jpeg"
     assert picture.content[:2] == b"\xff\xd8"
+    # A link preview asks for the headers first.
+    head = await client.head(link.removeprefix("https://app.example"))
+    assert (head.status_code, head.content) == (200, b"")
+    assert head.headers["content-type"] == "image/jpeg"
+    assert head.headers["content-length"] == str(len(picture.content))
     # Kept until the prepared message expires (a day) and an hour more, then gone.
     clock[0] = NOW + timedelta(hours=25)
     gone = await client.get(link.removeprefix("https://app.example"))
@@ -47,6 +52,7 @@ async def test_sharing_prepares_a_message_with_a_link_to_the_card(
 async def test_a_wrong_token_finds_no_card(client) -> None:
     for path in ("/api/share/nope.jpg", f"/api/share/{'a' * 43}.jpg", "/api/share/..%2F..%2Fx.jpg"):
         assert (await client.get(path)).status_code == 404
+        assert (await client.head(path)).status_code == 404
 
 
 async def test_six_cards_a_minute(client, auth, monotonic) -> None:

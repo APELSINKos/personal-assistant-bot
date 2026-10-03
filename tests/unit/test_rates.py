@@ -5,7 +5,7 @@ from datetime import date
 import pytest
 
 from assistant.core.clients.cbr import Rate, Rates
-from assistant.core.services.rates import convert, parse_amount
+from assistant.core.services.rates import convert, cross, parse_amount
 
 RATES = Rates(date(2026, 9, 28), Rate(84.2, -0.31), Rate(96.67, -0.83))
 
@@ -36,3 +36,14 @@ def test_convert_both_directions() -> None:
     assert convert(9667, "RUB", "EUR", RATES) == pytest.approx(100.0)
     with pytest.raises(ValueError):
         convert(1, "USD", "EUR", RATES)
+
+
+def test_cross_rates_between_any_currencies_of_the_day() -> None:
+    usd, eur, amd = Rate(80.0, 0.0), Rate(100.0, 0.0), Rate(0.2, 0.0)
+    rates = Rates(date(2026, 10, 3), usd, eur, {"USD": usd, "EUR": eur, "AMD": amd})
+    assert cross(100, "USD", "EUR", rates) == pytest.approx(80.0)
+    assert cross(8000, "RUB", "USD", rates) == pytest.approx(100.0)
+    assert cross(1000, "AMD", "RUB", rates) == pytest.approx(200.0)
+    assert cross(5, "RUB", "RUB", rates) == pytest.approx(5.0)
+    with pytest.raises(ValueError):
+        cross(1, "GBP", "RUB", rates)

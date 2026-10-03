@@ -7,8 +7,8 @@ import { stateOn, withMark } from "../lib/habits";
 import { canShareMessages, haptic, shareMessage } from "../telegram";
 import { api, ApiError } from "./client";
 import type {
-  Agenda, AlertMinutes, City, GroupSearch, Habit, HabitDetail, HabitInput, HabitPatch, Health, Me, Note,
-  ParsedPhrase, Reminder, ReminderInput, ScheduleState, SharedCard, Today,
+  Agenda, AlertMinutes, City, GroupSearch, Habit, HabitDetail, HabitInput, HabitPatch, Health, Me, MePatch,
+  Note, ParsedPhrase, Reminder, ReminderInput, ScheduleState, SharedCard, Today,
 } from "./types";
 
 export const keys = {
@@ -24,6 +24,15 @@ export const keys = {
   agenda: (from: string, to: string) => ["agenda", from, to] as const,
   schedule: ["schedule"],
   groups: (query: string) => ["groups", query] as const,
+  // Under `money`: whatever changes an entry, a category or the budget refreshes them all.
+  money: ["money"],
+  moneyMonths: ["money", "month"],
+  moneyMonth: (month: string) => ["money", "month", month] as const,
+  moneyEntry: (id: number) => ["money", "entry", id] as const,
+  moneyCategories: ["money", "categories"],
+  rates: ["rates"],
+  ratesAll: ["rates", "all"],
+  rateHistory: (code: string) => ["rates", "history", code] as const,
 } as const;
 
 const OWN_TEXT_REASONS = new Set([
@@ -398,8 +407,7 @@ export function useUpdateMe() {
   return useMutation({
     mutationKey: ME_UPDATE_KEY,
     scope: { id: "me-update" },
-    mutationFn: (body: { language?: "auto" | "ru" | "en"; morning_enabled?: boolean; morning_time?: string }) =>
-      api<Me>("/me", { method: "PATCH", body }),
+    mutationFn: (body: MePatch) => api<Me>("/me", { method: "PATCH", body }),
     onMutate: async (body) => {
       await client.cancelQueries({ queryKey: keys.me });
       const previous = client.getQueryData<Me>(keys.me);
@@ -407,6 +415,7 @@ export function useUpdateMe() {
       client.setQueryData<Me>(keys.me, (me) => me && {
         ...me,
         language_setting: body.language ?? me.language_setting,
+        currency: body.currency ?? me.currency,
         morning: {
           enabled: body.morning_enabled ?? me.morning.enabled,
           time: body.morning_time ?? me.morning.time,
@@ -418,7 +427,12 @@ export function useUpdateMe() {
     onSuccess: (me) => {
       if (client.isMutating({ mutationKey: ME_UPDATE_KEY }) === 1) client.setQueryData(keys.me, me);
       haptic("success");
-      return client.invalidateQueries({ queryKey: keys.today });
+      // The server words categories and currencies in the user's language, amounts in their currency.
+      return Promise.all([
+        client.invalidateQueries({ queryKey: keys.today }),
+        client.invalidateQueries({ queryKey: keys.money }),
+        client.invalidateQueries({ queryKey: keys.rates }),
+      ]);
     },
     onSettled: (_me, error) => {
       // After a refusal only the server knows which of several quick changes were kept.
@@ -440,13 +454,15 @@ export function useSetCity() {
     onSuccess: (me) => {
       client.setQueryData(keys.me, me);
       haptic("success");
-      // Habits' `done_today` is computed against the city's local date, so a city change can
-      // shift which day "today" is for them too. Lessons and reminders are shown in the city's zone.
+      // Habits' `done_today` and the money month's days are computed against the city's local
+      // date, so a city change can shift which day "today" is for them too. Lessons and reminders
+      // are shown in the city's zone.
       return Promise.all([
         client.invalidateQueries({ queryKey: keys.today }),
         client.invalidateQueries({ queryKey: ["agenda"] }),
         client.invalidateQueries({ queryKey: keys.reminders }),
         client.invalidateQueries({ queryKey: keys.habits }),
+        client.invalidateQueries({ queryKey: keys.money }),
       ]);
     },
   });

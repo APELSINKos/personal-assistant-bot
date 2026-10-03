@@ -1,5 +1,5 @@
 import type { StreakUnit } from "../api/types";
-import type { Dict } from "./ru";
+import type { AlertWords, BudgetWords, Dict, HistoryWords } from "./ru";
 
 function plural(n: number, one: string, other: string): string {
   return n === 1 ? one : other;
@@ -16,6 +16,7 @@ export const en: Dict = {
     calendar: "Calendar",
     habits: "Habits",
     notes: "Notes",
+    money: "Money",
     more: "More",
   },
   common: {
@@ -136,6 +137,83 @@ export const en: Dict = {
     delete: "Delete the note",
     add: "Add a note",
   },
+  money: {
+    alert: ({ threshold, percent, name, month, spent, budget }: AlertWords) => {
+      const which = name === null ? `${month} budget` : `“${name}” budget for ${month}`;
+      return threshold >= 100
+        ? `🚨 The ${which} has run out: ${spent} of ${budget}`
+        : `⚠️ ${percent}% of the ${which} is spent: ${spent} of ${budget}`;
+    },
+    prevMonth: "Previous month",
+    nextMonth: "Next month",
+    spent: "Spent",
+    budget: ({ budget, rest, over, perDay }: BudgetWords) =>
+      over
+        ? `of ${budget} · ${rest} over`
+        : `of ${budget} · ${rest} left${perDay === null ? "" : `, ${perDay} a day`}`,
+    income: (income: string, balance: string) => `Income ${income} · balance ${balance}`,
+    byCategory: "By category",
+    byDay: "By day",
+    ring: (total: string, shares: string) => `Spent this month ${total}: ${shares}`,
+    entriesWord: (count: number) => plural(count, "entry", "entries"),
+    days: (day: string, amount: string) => `Spending by day; the most on ${day}: ${amount}`,
+    entries: "Entries",
+    empty: "No entries this month.",
+    emptyCategory: "No entries in this category this month.",
+    showAll: (name: string) => `Show all the entries, not only “${name}”`,
+    deleteEntry: "Delete the entry",
+    add: "Add an entry",
+    newEntry: "New entry",
+    editEntry: "Entry",
+    amount: "Amount",
+    amountHint: "An amount is a number above zero with at most two decimals",
+    kind: "Expense or income",
+    kinds: { expense: "Expense", income: "Income" },
+    category: "Category",
+    note: "Note",
+    notePlaceholder: "Optional",
+    day: "Day",
+    prevDay: "Previous day",
+    nextDay: "Next day",
+    dayHint: "The day can be today or up to a year back",
+    confirmDelete: "Delete the entry?",
+    gone: "This entry is gone.",
+    toMoney: "Back to money",
+    setBudget: "Set a budget",
+    budgetLink: "🎯 Budget",
+    categoriesLink: "🗂 Categories",
+    budgetTitle: "Monthly budget",
+    budgetHint: "An empty field means no budget. I'll warn you at 80% and 100%; a budget holds for every month.",
+    budgetTotal: "Total",
+    budgetCategories: "By category",
+    noBudget: "None",
+    categoriesTitle: "Categories",
+    kindsPlural: { expense: "Expenses", income: "Income" },
+    hiddenMark: "hidden",
+    newCategory: "New category",
+    categoriesFull: (limit: number) =>
+      `There are already ${limit} categories — no room for a new one. You can rename one you don't need.`,
+    categoryTitle: "Category",
+    name: "Name",
+    emoji: "Emoji",
+    hide: "Hide the category",
+    hideHint: "A hidden category isn't offered for new entries; its entries stay in the totals.",
+    otherFixed: "“Other” can't be hidden: whatever finds no category goes there.",
+    categoryGone: "This category doesn't exist.",
+    toCategories: "Back to categories",
+    rates: "Central Bank rates",
+    ratesOn: (date: string) => `For ${date}`,
+    ratesUnavailable: "The Central Bank's rates are unavailable right now",
+    currency: "Currency",
+    chart: (name: string) => `${name}: the rate over 30 days`,
+    history: ({ first, last, change, percent, low, high }: HistoryWords) =>
+      `Over 30 days: from ${first} to ${last} (${change}, ${percent}); low ${low}, high ${high}`,
+    historyUnavailable: "No history of the rate right now",
+    converter: "Converter",
+    from: "From",
+    to: "To",
+    swap: "Swap the currencies",
+  },
   more: {
     city: "City",
     searchCity: "Find a city",
@@ -150,6 +228,8 @@ export const en: Dict = {
     about: "About",
     version: (value: string) => `Version ${value}`,
     source: "Source code on GitHub",
+    currency: "Currency",
+    currencyHint: "Amounts already noted aren't converted — only the sign changes.",
   },
   errors: {
     generic: "Something went wrong. Please try again.",

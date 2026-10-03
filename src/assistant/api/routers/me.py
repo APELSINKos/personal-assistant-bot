@@ -10,7 +10,7 @@ from fastapi import APIRouter, Query
 from assistant.api.deps import CurrentUser, Session, State
 from assistant.api.schemas import CityIn, CityOut, MeOut, MePatch
 from assistant.api.views import me_out, user_language
-from assistant.core.services import users
+from assistant.core.services import money, users
 
 router = APIRouter(tags=["profile"])
 
@@ -26,6 +26,8 @@ async def patch_me(body: MePatch, user: CurrentUser, db: Session) -> MeOut:
         await users.set_language(db, user, None if body.language == "auto" else body.language)
     if body.morning_enabled is not None or body.morning_time is not None:
         await users.set_morning(db, user, enabled=body.morning_enabled, time=body.morning_time)
+    if body.currency is not None:
+        await money.set_currency(db, user, body.currency)
     await db.commit()
     return me_out(user)
 

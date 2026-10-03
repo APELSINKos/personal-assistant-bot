@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { keys } from "../api/queries";
 import type { TodayLesson } from "../api/types";
@@ -254,5 +254,38 @@ describe("Today lessons", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(screen.getByText("Пары закончились")).toBeInTheDocument();
+  });
+});
+
+describe("Today's money", () => {
+  const money = {
+    currency: "RUB", today: 65000, spent: 1240000, budget: 3000000, left: 1760000, per_day: 586666, count: 14,
+  };
+
+  it("shows today's spending and the month's budget, and opens the tab", async () => {
+    installTelegram();
+    mockApi({ "GET /today": { ...today, money } });
+    renderWithApp(<TodayScreen />);
+    const card = await screen.findByRole("link", { name: /^Деньги/ });
+    expect(within(card).getByText("650 ₽")).toBeInTheDocument();
+    expect(
+      within(card).getByText(
+        "Сентябрь: 12 400 ₽ из 30 000 ₽ · осталось 17 600 ₽, по 5 866,66 ₽ в день",
+      ),
+    ).toBeInTheDocument();
+    expect(card).toHaveAttribute("href", "/money");
+  });
+
+  it("shows the month without a budget, and nothing without entries or a budget", async () => {
+    installTelegram();
+    const plain = { ...money, budget: null, left: null, per_day: null };
+    mockApi({ "GET /today": { ...today, money: plain } });
+    const { unmount } = renderWithApp(<TodayScreen />);
+    expect(await screen.findByText("Сентябрь: 12 400 ₽")).toBeInTheDocument();
+    unmount();
+    mockApi({ "GET /today": { ...today, money: { ...plain, today: 0, spent: 0, count: 0 } } });
+    renderWithApp(<TodayScreen />);
+    expect(await screen.findByText("📝 4 заметки")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^Деньги/ })).not.toBeInTheDocument();
   });
 });

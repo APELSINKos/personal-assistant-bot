@@ -9,7 +9,9 @@ from assistant.api.routers import (
     habits,
     health,
     me,
+    money,
     notes,
+    rates,
     reminders,
     schedule,
     share,
@@ -26,4 +28,6 @@ ALL: list[APIRouter] = [
     agenda.router,
     schedule.router,
     share.router,
+    money.router,
+    rates.router,
 ]

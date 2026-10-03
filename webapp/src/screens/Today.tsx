@@ -1,13 +1,15 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { Link } from "wouter";
 import { useSetMark, useToday } from "../api/queries";
-import type { Rate, TodayLesson, Weather } from "../api/types";
+import type { Rate, TodayLesson, TodayMoney, Weather } from "../api/types";
 import { Card } from "../components/Card";
 import { HabitDots, HabitToggle, nextMark } from "../components/HabitBits";
+import { BudgetBar } from "../components/MoneyCharts";
 import { PullToRefresh } from "../components/PullToRefresh";
 import { ErrorState, Loader } from "../components/States";
 import { useLang, useT, type Lang } from "../i18n";
-import { bigDate, formatNumber, formatTemp, lessonMeta } from "../lib/format";
+import { bigDate, capitalize, formatNumber, formatTemp, lessonMeta } from "../lib/format";
+import { budgetText, formatAmount, monthName } from "../lib/money";
 
 function WeatherCard({ weather }: { weather: Weather | null }) {
   const t = useT();
@@ -104,6 +106,27 @@ function RateLine({ emoji, code, rate, lang }: { emoji: string; code: string; ra
   );
 }
 
+/** Spent today and the month's budget; a tap opens the «Деньги» tab. */
+function MoneyCard({ money, date, index }: { money: TodayMoney; date: string; index: number }) {
+  const t = useT();
+  const lang = useLang();
+  const month = `${capitalize(monthName(date, lang))}: ${formatAmount(money.spent, money.currency, lang)}`;
+  const budget = money.budget !== null && money.left !== null
+    ? budgetText(money.budget, money.left, money.per_day, money.currency, lang, t)
+    : null;
+  return (
+    <Link href="/money" className="card money-today" style={{ "--i": index } as CSSProperties}>
+      <span className="card__title">{t.tabs.money}</span>
+      <span className="row">
+        <span>{t.calendar.words.today}</span>
+        <span className="money-today__amount">{formatAmount(money.today, money.currency, lang)}</span>
+      </span>
+      {money.budget !== null && <BudgetBar spent={money.spent} budget={money.budget} />}
+      <span className="muted money-today__month">{budget === null ? month : `${month} ${budget}`}</span>
+    </Link>
+  );
+}
+
 export function TodayScreen() {
   const t = useT();
   const lang = useLang();
@@ -119,6 +142,9 @@ export function TodayScreen() {
   const done = habits.filter((habit) => habit.done_today === true).length;
   // No lessons today (or no timetable at all) means no card; the cards below shift up a step.
   const shift = data.lessons.length > 0 ? 1 : 0;
+  // Neither entries this month nor a budget: no card, and the ones below move up a step.
+  const money = data.money && (data.money.count > 0 || data.money.budget !== null) ? data.money : null;
+  const moneyShift = money ? 1 : 0;
 
   return (
     <PullToRefresh onRefresh={() => today.refetch()}>
@@ -175,8 +201,10 @@ export function TodayScreen() {
         )}
       </Card>
 
+      {money && <MoneyCard money={money} date={data.date} index={3 + shift} />}
+
       {data.rates && (
-        <Card index={3 + shift}>
+        <Card index={3 + shift + moneyShift}>
           <div className="rates">
             <RateLine emoji="💵" code="USD" rate={data.rates.usd} lang={lang} />
             <RateLine emoji="💶" code="EUR" rate={data.rates.eur} lang={lang} />
@@ -184,7 +212,7 @@ export function TodayScreen() {
         </Card>
       )}
 
-      <Link href="/notes" className="card card--link" style={{ "--i": 4 + shift } as CSSProperties}>
+      <Link href="/notes" className="card card--link" style={{ "--i": 4 + shift + moneyShift } as CSSProperties}>
         <span>📝 {t.today.notes(data.notes_count)}</span>
         <span aria-hidden>›</span>
       </Link>

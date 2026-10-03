@@ -19,6 +19,11 @@ class Limits:
     habits: int = 10
     city_length: int = 50
     amount_max: float = 1_000_000_000.0
+    money_note_length: int = 100
+    money_category_length: int = 30
+    money_categories: int = 40  # presets included
+    money_entries: int = 50_000
+    money_entries_month: int = 1_000
 
 
 LIMITS = Limits()

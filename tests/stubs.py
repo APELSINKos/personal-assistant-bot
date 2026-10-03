@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
-from assistant.core.clients.cbr import Rate, Rates
+from assistant.core.clients.cbr import Point, Rate, Rates
 from assistant.core.clients.openmeteo import City
 from assistant.core.errors import InvalidInput, UpstreamUnavailable
 
@@ -40,11 +40,27 @@ class StubMeteo:
 class StubCbr:
     def __init__(self) -> None:
         self.fail = False
+        self.history_fail = False
 
     async def daily(self) -> Rates:
         if self.fail:
             raise UpstreamUnavailable(service="cbr")
-        return Rates(date(2026, 9, 28), Rate(84.1975, -0.3118), Rate(96.6671, -0.8313))
+        usd, eur = Rate(84.1975, -0.3118), Rate(96.6671, -0.8313)
+        return Rates(
+            date(2026, 9, 28),
+            usd,
+            eur,
+            {"USD": usd, "EUR": eur},
+            {"USD": "R01235", "EUR": "R01239"},
+        )
+
+    async def history(self, code: str, days: int = 30) -> list[Point]:
+        if self.fail or self.history_fail:
+            raise UpstreamUnavailable(service="cbr")
+        if code not in ("USD", "EUR"):
+            raise LookupError(code)
+        base = 84.0 if code == "USD" else 96.0
+        return [Point(date(2026, 9, 1) + timedelta(days=i), base + i / 10) for i in range(20)]
 
 
 class StubCalendars:

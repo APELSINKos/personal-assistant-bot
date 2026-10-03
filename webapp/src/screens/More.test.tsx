@@ -160,6 +160,19 @@ describe("More", () => {
     expect(patches()[1]).toEqual({ morning_time: "07:15" });
   });
 
+  it("changes the currency of the accounts, saying the amounts stay", async () => {
+    installTelegram();
+    const { calls } = mockApi({ "GET /me": me, "GET /health": HEALTH, "PATCH /me": { ...me, currency: "KZT" } });
+    renderWithApp(<MoreScreen />, { path: "/more" });
+    const select = await screen.findByLabelText("Валюта");
+    expect(select).toHaveValue("RUB");
+    expect(screen.getByRole("option", { name: "₽ RUB — Российский рубль" })).toBeInTheDocument();
+    expect(screen.getByText("Суммы уже сделанных записей не пересчитываются — меняется только знак.")).toBeInTheDocument();
+    fireEvent.change(select, { target: { value: "KZT" } });
+    await waitFor(() => expect(calls.find((call) => call.method === "PATCH")?.body).toEqual({ currency: "KZT" }));
+    expect(select).toHaveValue("KZT");
+  });
+
   it("shows the version and opens the source code", async () => {
     const app = installTelegram();
     mockApi({ "GET /me": me, "GET /health": { status: "ok", version: "2.1.0", commit: null } });

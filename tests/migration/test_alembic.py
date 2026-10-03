@@ -34,7 +34,7 @@ from __future__ import annotations
 from alembic import op
 
 revision = "test_extra"
-down_revision = "0004"
+down_revision = "0005"
 branch_labels = None
 depends_on = None
 
@@ -303,3 +303,48 @@ def test_0004_gives_habits_the_default_look_and_downgrades_without_reusing_ids(
     assert "share_cards" not in tables
     assert not columns & {"emoji", "color", "weekly_goal"}
     assert seq == 2  # the deleted habit's id is not handed out again
+
+
+def test_0005_gives_users_roubles_and_downgrades_keeping_their_data(tmp_path: Path) -> None:
+    db = tmp_path / "old.db"
+    cfg = _config(db)
+    command.upgrade(cfg, "0001")
+    _fill(db)
+    command.upgrade(cfg, "head")
+    with closing(sqlite3.connect(db)) as conn:
+        user = conn.execute("SELECT currency, money_budget FROM users").fetchall()
+        conn.execute(
+            "INSERT INTO money_categories (user_id, kind, preset, emoji, hidden, position, "
+            f"created_at) VALUES (1, 'expense', 'cafe', '☕', 0, 1, '{STAMP}')"
+        )
+        conn.execute(
+            "INSERT INTO money_entries (user_id, category_id, amount, note, day, created_at) "
+            f"VALUES (1, 1, 25000, 'кофе', '2026-10-03', '{STAMP}')"
+        )
+        conn.execute("INSERT INTO money_words (user_id, key, category_id) VALUES (1, 'кофе', 1)")
+        conn.execute(
+            "INSERT INTO money_alerts (user_id, month, category_id, threshold, sent_at) "
+            f"VALUES (1, '2026-10', 0, 80, '{STAMP}')"
+        )
+        conn.commit()
+    assert user == [("RUB", None)]
+    for statement in (
+        "UPDATE users SET currency = 'RUBLE'",
+        "UPDATE users SET money_budget = 0",
+        "UPDATE money_entries SET amount = 0",
+        "UPDATE money_categories SET kind = 'loan'",
+        "UPDATE money_categories SET budget = 100, kind = 'income'",
+    ):
+        with closing(sqlite3.connect(db)) as conn, pytest.raises(sqlite3.IntegrityError):
+            conn.execute(statement)
+            conn.commit()
+    command.downgrade(cfg, "0004")
+    assert _counts(db) == {t: 1 for t in CHILDREN}
+    with closing(sqlite3.connect(db)) as conn:
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+        broken = conn.execute("PRAGMA foreign_key_check").fetchall()
+    assert not tables & {"money_categories", "money_entries", "money_words", "money_alerts"}
+    assert not columns & {"currency", "money_budget"}
+    assert broken == []
+    command.upgrade(cfg, "head")  # and up again

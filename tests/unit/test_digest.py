@@ -7,7 +7,7 @@ import pytest
 
 from assistant.core.clients.cbr import Rate, Rates
 from assistant.core.errors import UpstreamUnavailable
-from assistant.core.services import digest, notes, schedule
+from assistant.core.services import digest, money, notes, schedule
 
 NOW = datetime(2026, 9, 28, 5, 0, tzinfo=UTC)  # 08:00 Moscow
 MIREA = (
@@ -86,3 +86,17 @@ async def test_today_has_the_lessons_of_the_day(session, make_user) -> None:
     ]
     monday = await digest.today(session, user, Meteo(), Cbr(), NOW)
     assert monday.has_schedule and monday.lessons == []  # a connected day without lessons
+
+
+async def test_today_has_the_money_of_today_yesterday_and_the_month(session, make_user) -> None:
+    user = await make_user()
+    now = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)  # the 1st: yesterday is last month
+    cafe = next(c for c in await money.categories(session, user) if c.preset == "cafe")
+    for amount, day in ((25000, date(2026, 10, 1)), (40000, date(2026, 9, 30))):
+        await money.add_entry(session, user, amount=amount, category_id=cafe.id, day=day, now=now)
+    data = await digest.today(session, user, Meteo(), Cbr(), now)
+    assert (data.spent_today, data.spent_yesterday, data.currency) == (25000, 40000, "RUB")
+    assert data.money is not None and (data.money.first, data.money.spent) == (
+        date(2026, 10, 1),
+        25000,
+    )

@@ -9,12 +9,12 @@ import { mockApi } from "./test/mockApi";
 import { normalizeLaunchHash } from "./telegram";
 
 describe("App shell", () => {
-  it("shows the five tabs in the user's language", async () => {
+  it("shows the six tabs in the user's language", async () => {
     installTelegram();
     mockApi({ "GET /me": { ...me, language: "en" } });
     render(<App />);
     expect(await screen.findByRole("link", { name: "Calendar" })).toBeInTheDocument();
-    for (const name of ["Today", "Habits", "Notes", "More"]) {
+    for (const name of ["Today", "Habits", "Notes", "Money", "More"]) {
       expect(screen.getByRole("link", { name })).toBeInTheDocument();
     }
   });

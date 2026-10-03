@@ -136,9 +136,11 @@ async def test_cancel_and_unknown(feed, fake) -> None:
         "Отменено.",
         "Отменено.",
         "🤔 Не понял. Выбери раздел в меню ниже 👇\n"
-        "Чтобы создать напоминание, просто напиши, например: «завтра в 9 купить молоко».",
+        "Чтобы создать напоминание, просто напиши, например: «завтра в 9 купить молоко». "
+        "Трату — так: «кофе 250».",
         "🤔 Не понял. Выбери раздел в меню ниже 👇\n"
-        "Чтобы создать напоминание, просто напиши, например: «завтра в 9 купить молоко».",
+        "Чтобы создать напоминание, просто напиши, например: «завтра в 9 купить молоко». "
+        "Трату — так: «кофе 250».",
     ]
 
 
@@ -152,8 +154,8 @@ async def test_handler_crash_gives_generic_error(feed, fake, monkeypatch) -> Non
     async def boom(message: Message, ctx: Ctx) -> None:
         raise RuntimeError("boom")
 
-    monkeypatch.setitem(sections.SECTIONS, "rates", boom)
-    await feed(message_update("💱 Курс валют"))
+    monkeypatch.setitem(sections.SECTIONS, "money", boom)
+    await feed(message_update("💰 Финансы"))
     assert fake.sent_texts()[-1].startswith("⚠️")
 
 
@@ -178,8 +180,8 @@ async def test_current_session_is_cleared_after_a_crash(feed, fake, monkeypatch)
     async def boom(message: Message, ctx: Ctx) -> None:
         raise RuntimeError("boom")
 
-    monkeypatch.setitem(sections.SECTIONS, "rates", boom)
-    await feed(message_update("💱 Курс валют"))
+    monkeypatch.setitem(sections.SECTIONS, "money", boom)
+    await feed(message_update("💰 Финансы"))
     assert current_session.get() is None
 
 
@@ -224,8 +226,8 @@ async def test_error_message_uses_the_saved_language(feed, fake, make_user, monk
     async def boom(message: Message, ctx: Ctx) -> None:
         raise RuntimeError("boom")
 
-    monkeypatch.setitem(sections.SECTIONS, "rates", boom)
-    await feed(message_update("💱 Курс валют", lang="ru"))  # Telegram says Russian
+    monkeypatch.setitem(sections.SECTIONS, "money", boom)
+    await feed(message_update("💰 Финансы", lang="ru"))  # Telegram says Russian
     assert fake.sent_texts()[-1] == "⚠️ Something went wrong. Please try again a bit later."
 
 
@@ -240,9 +242,9 @@ async def test_error_message_falls_back_to_telegram_language(
     async def broken_get(session, user_id):
         raise RuntimeError("database is locked")
 
-    monkeypatch.setitem(sections.SECTIONS, "rates", boom)
+    monkeypatch.setitem(sections.SECTIONS, "money", boom)
     monkeypatch.setattr(users, "get", broken_get)
-    await feed(message_update("💱 Курс валют", lang="ru"))
+    await feed(message_update("💰 Финансы", lang="ru"))
     assert fake.sent_texts()[-1] == "⚠️ Что-то пошло не так. Попробуй ещё раз чуть позже."
 
 
@@ -256,6 +258,6 @@ def test_the_menu_has_four_rows_of_two() -> None:
     assert rows == [
         ["🌤 Погода", "📅 Мой день"],
         ["⏰ Напоминания", "📝 Заметки"],
-        ["🎯 Привычки", "💱 Курс валют"],
+        ["🎯 Привычки", "💰 Финансы"],
         ["🎓 Расписание", "⚙️ Настройки"],
     ]

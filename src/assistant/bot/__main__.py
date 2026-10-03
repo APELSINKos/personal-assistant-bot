@@ -18,7 +18,7 @@ from assistant.core.config import get_settings
 from assistant.core.db import create_engine, make_sessionmaker
 from assistant.core.i18n import check_translations
 from assistant.core.logging import setup_logging
-from assistant.core.services import cards, schedule
+from assistant.core.services import card_kit, schedule
 
 log = logging.getLogger("assistant.bot")
 # Seconds the background work gets to finish on shutdown: the scheduler's current tick, the
@@ -49,7 +49,7 @@ async def main() -> None:
             settings,
             calendars=calendars,
             attempts=schedule.attempt_limiter(),
-            cards=cards.card_limiter(),
+            cards=card_kit.card_limiter(),
         )
         scheduler = Scheduler(
             bot, sessionmaker, meteo, cbr, interval=settings.scheduler_interval, calendars=calendars

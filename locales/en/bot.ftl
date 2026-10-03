@@ -5,6 +5,7 @@ menu-reminders = ⏰ Reminders
 menu-notes = 📝 Notes
 menu-habits = 🎯 Habits
 menu-rates = 💱 Exchange rates
+menu-money = 💰 Money
 menu-schedule = 🎓 Schedule
 menu-settings = ⚙️ Settings
 menu-cancel = ❌ Cancel
@@ -65,7 +66,7 @@ welcome =
     ⏰ Reminders — I'll ping you at the right time
     📝 Notes — keep what you don't want to forget
     🎯 Habits — mark them daily and keep the streak
-    💱 Exchange rates — USD and EUR by the Bank of Russia
+    💰 Money — expenses, budget and exchange rates
     🎓 Schedule — your MIREA group's classes or any calendar
     ⚙️ Settings — city, morning digest and language
 
@@ -76,8 +77,8 @@ app-open = Open the app with the button below 👇
 menu-button = Open
 stale-button = This button is outdated — open the section again from the menu.
 bot-name = Personal Assistant
-bot-short-description = Weather with tips, reminders, class schedule, notes, habits and exchange rates — in one chat.
-bot-description = Personal assistant: smart weather, reminders, a class schedule, notes, a habit tracker, exchange rates and a morning digest the bot sends on its own.
+bot-short-description = Weather with tips, reminders, class schedule, notes, habits, expenses and exchange rates — in one chat.
+bot-description = Personal assistant: smart weather, reminders, a class schedule, notes, a habit tracker, expenses with a budget, exchange rates and a morning digest the bot sends on its own.
 cmd-start = Main menu
 cmd-app = Open the app
 cmd-settings = Settings
@@ -191,7 +192,7 @@ reminder-delete-series = Delete the repeat “{ $text }” entirely?
 day-today = Today
 day-tomorrow = Tomorrow
 day-after-tomorrow = The day after tomorrow
-unknown-hint = To create a reminder, just write, e.g. “tomorrow at 9 buy milk”.
+unknown-hint = To create a reminder, just write, e.g. “tomorrow at 9 buy milk”. An expense — like this: “coffee 250”.
 button-snooze-10m = +10 min
 button-snooze-1h = +1 h
 button-snooze-tomorrow = Tomorrow
@@ -390,3 +391,119 @@ habit-color-ask = 🎨 And a color — for the card and the app:
 habit-rename-ask = ✍️ A new name for “{ $name }” (up to { $limit } characters):
 habit-renamed = ✅ Done: “{ $name }”.
 habit-cards-wait = ⏳ Too many cards in a row — try again in { $seconds } s.
+
+## Money
+money-cat-groceries = Groceries
+money-cat-cafe = Eating out
+money-cat-transport = Transport
+money-cat-home = Home
+money-cat-phone = Phone & internet
+money-cat-health = Health
+money-cat-clothes = Clothes
+money-cat-fun = Fun
+money-cat-study = Study
+money-cat-gifts = Gifts
+money-cat-subscriptions = Subscriptions
+money-cat-other = Other
+money-cat-salary = Salary
+money-cat-stipend = Stipend
+money-cat-gifts_in = Gifts received
+money-cat-other_in = Other
+money-report-subtitle = Expenses this month
+money-report-budget = { $percent }% of the budget
+money-report-of = of { $amount }
+money-report-share = { $percent }%
+money-report-left = { $amount } left
+money-report-left-per-day = { $amount } left — { $per_day } a day
+money-report-over = { $amount } over the budget
+money-report-income = Income { $income } · balance { $balance }
+money-report-empty = No expenses this month
+money-report-entries = { $count ->
+        [one] entry
+       *[other] entries
+    }
+money-report-rest = Other
+money-report-days = Day by day
+money-report-caption = 💰 { $month }: spent { $amount }
+rates-card-title = Bank of Russia rates
+rates-card-period = 30 days · { $start } — { $end }
+rates-card-name-usd = US dollar
+rates-card-name-eur = Euro
+rates-card-change = { $amount } · { $percent }% in 30 days
+rates-card-unavailable = The bank's rates are not available now
+rates-card-caption = 📈 Bank of Russia rates for 30 days
+money-title = 💰 { $month }
+money-spent = Spent: { $amount }
+money-spent-budget = Spent: { $amount } of { $budget } ({ $percent }%)
+money-income = Income: { $amount } · balance { $balance }
+money-left = { $amount } left — { $per_day } a day
+money-over = Over the budget: { $amount }
+money-category = { $bar } { $emoji } { $name } — { $amount } ({ $share }%)
+money-none = No expenses this month yet.
+money-hint = To note an expense, just write: coffee 250. Income goes with a plus: +5000 salary
+button-money-report = 📊 Report
+button-money-rates = 💱 Rates
+button-money-previous = ◀️ { $month }
+button-rates-chart = 📈 30 days
+button-entry-category = 🗂 Category
+button-entry-undo = ↩️ Undo
+button-entry-income = 🔁 It's income
+button-entry-expense = 🔁 It's an expense
+button-entry-new = ➕ New
+money-entry-month = { $month }: { $spent } of { $budget }
+money-entry-month-plain = { $month }: { $spent }
+money-undone = ↩️ Undone: { $what }
+money-pick = 🗂 Where does “{ $note }” go?
+money-pick-plain = 🗂 Which category?
+money-new-ask = ✍️ The new category's name (up to { $limit } characters):
+money-new-emoji = 🎨 An emoji for “{ $name }”:
+money-category-created = ✅ New category: { $emoji } { $name }
+money-duplicate = There is already such a category — try another name:
+money-duplicate-late = There is already such a category — the entry stayed where it was.
+money-bad-name = A name is 1 to { $limit } characters. Try again:
+money-categories-full = There are already { $limit } categories — no room for more. You can rename one you don't need in the app.
+money-other-currency = Amounts are noted in { $sign } — the currency is changed in ⚙️ Settings.
+money-limit = There are already { $limit } entries — no room for more.
+money-limit-month = This month already has { $limit } entries — no more can be added.
+money-bad-note = A note is up to { $limit } characters.
+money-day-1 = yesterday
+money-day-2 = the day before yesterday
+money-alert-total-80 = ⚠️ { $percent }% of the { $month } budget is spent: { $spent } of { $budget }
+money-alert-total-100 = 🚨 The { $month } budget has run out: { $spent } of { $budget }
+money-alert-category-80 = ⚠️ { $percent }% of the “{ $name }” budget for { $month } is spent: { $spent } of { $budget }
+money-alert-category-100 = 🚨 The “{ $name }” budget for { $month } has run out: { $spent } of { $budget }
+hint-money-category = Write the category's name.
+button-money-entries = 📜 Entries
+button-money-budget = 🎯 Budget
+button-budget-total = ✏️ Total budget
+button-budget-categories = 🗂 By category
+money-entries-title = 📜 { $month } · { $count } { $count ->
+        [one] entry
+       *[other] entries
+    }
+money-entries-line = { $number }. { $day } · { $what }
+money-entries-empty = 📜 No entries this month yet.
+money-delete-ask = 🗑 Delete “{ $what }”?
+money-budget-title = 🎯 The budget for { $month }
+money-budget-total = Total
+money-budget-total-none = No total budget yet.
+money-budget-line = { $label }: { $budget } — spent { $spent }, { $rest } left
+money-budget-line-over = { $label }: { $budget } — spent { $spent }, { $rest } over
+money-budget-hint = I'll warn you at 80% and 100%. A budget holds for every month.
+money-budget-pick = 🗂 Which category gets a budget?
+money-budget-ask-total = 🎯 How much may a month cost? Write an amount, e.g. 30000, or 0 to remove the budget:
+money-budget-ask = 🎯 A month's budget for “{ $name }”? Write an amount, e.g. 5000, or 0 to remove it:
+money-budget-bad = I need an amount, e.g. 30000 or 30 000, or 0 to remove the budget. Try again:
+money-budget-saved = ✅ The budget is saved.
+money-budget-removed = ✅ The budget is removed.
+hint-money-budget = Write an amount, e.g. 30000, or 0.
+settings-currency = 💱 Currency: { $sign } ({ $code })
+button-currency = 💱 Currency
+currency-pick = 💱 Which currency do you keep accounts in? Amounts already noted are not converted.
+currency-changed = Currency: { $sign }
+today-money = 💰 Today: { $today } · { $month }: { $spent } of { $budget }
+today-money-plain = 💰 Today: { $today } · { $month }: { $spent }
+morning-money = 💰 Yesterday: { $yesterday } · { $left } left — { $per_day } a day
+morning-money-over = 💰 Yesterday: { $yesterday } · { $over } over the budget
+morning-money-plain = 💰 Yesterday: { $yesterday }
+today-rates-own = 💵 { $usd } ₽ · 💶 { $eur } ₽ · 💱 { $code } { $own } ₽

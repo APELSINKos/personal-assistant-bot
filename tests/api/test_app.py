@@ -165,3 +165,7 @@ async def test_api_gives_upstream_services_a_short_time_budget(monkeypatch, api_
     # «Сегодня» must not wait for a hanging upstream as long as the bot may; calendars have a
     # client of their own with the whole ten seconds.
     assert timeouts == [4.0, 10.0] and api_settings.http_timeout == 10.0
+
+
+def test_the_api_waits_for_telegram_15_seconds() -> None:
+    assert entry.share_bot("123456:ABC-DEF").session.timeout == 15

@@ -19,7 +19,7 @@
   --glow-1: #3b1f6e;
   --glow-2: #0f4a52;
   --text: #f4f2ff;
-  --hint: #a39fc0;
+  --hint: #b8b4d3; /* AA over the brightest glow */
   --glass: rgba(255, 255, 255, 0.07);
   --glass-strong: rgba(20, 16, 36, 0.78);
   --line: rgba(255, 255, 255, 0.1);
@@ -33,6 +33,8 @@
   --error-text: #ffa3b2;
   /* White on #ff7a90 is only ~2.5:1; the dark background gives ~7.9:1. */
   --on-error: #0a0913;
+  /* A budget warning: the habit palette's amber. */
+  --warning: #ffd28a;
   /* A habit's colour (assistant/core/habit_style.py): >= 4.3:1 on this background and its glows. */
   --habit-mint: #7cf5c4;
   --habit-sky: #7cc8ff;
@@ -51,7 +53,7 @@
   --glow-1: #f3d9ff;
   --glow-2: #cdeff0;
   --text: #1c1830;
-  --hint: #6e6787;
+  --hint: #655e7e; /* AA over the brightest glow */
   --glass: rgba(255, 255, 255, 0.62);
   --glass-strong: rgba(255, 255, 255, 0.86);
   --line: rgba(40, 20, 80, 0.08);
@@ -64,6 +66,8 @@
   --error-text: #b62545;
   /* White on #d63b5c is ~4.53:1, which still clears AA. */
   --on-error: #fff;
+  /* A budget warning: the habit palette's amber. */
+  --warning: #9a6200;
   /* A habit's colour on the light theme: >= 3.9:1 on this background and its glows. */
   --habit-mint: #0b7a5c;
   --habit-sky: #1f6fb2;

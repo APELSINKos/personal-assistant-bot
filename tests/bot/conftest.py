@@ -10,7 +10,7 @@ from assistant.bot.app import build_dispatcher
 from assistant.bot.db_commit import install_commit_before_request
 from assistant.core.config import Settings
 from assistant.core.ratelimit import RateLimiter
-from assistant.core.services import cards, schedule
+from assistant.core.services import card_kit, schedule
 from tests.bot.fakes import FakeSession
 from tests.stubs import StubCalendars, StubCbr, StubMeteo
 
@@ -60,7 +60,7 @@ def attempts(monotonic: list[float]) -> RateLimiter:
 
 @pytest.fixture
 def card_budget(monotonic: list[float]) -> RateLimiter:
-    return cards.card_limiter(lambda: monotonic[0])
+    return card_kit.card_limiter(lambda: monotonic[0])
 
 
 @pytest.fixture

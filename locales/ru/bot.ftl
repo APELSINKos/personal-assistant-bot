@@ -5,6 +5,7 @@ menu-reminders = ⏰ Напоминания
 menu-notes = 📝 Заметки
 menu-habits = 🎯 Привычки
 menu-rates = 💱 Курс валют
+menu-money = 💰 Финансы
 menu-schedule = 🎓 Расписание
 menu-settings = ⚙️ Настройки
 menu-cancel = ❌ Отмена
@@ -74,7 +75,7 @@ welcome =
     ⏰ Напоминания — напомню в нужное время
     📝 Заметки — сохраню, чтобы не забыть
     🎯 Привычки — отмечай и держи серию
-    💱 Курс валют — доллар и евро по ЦБ РФ
+    💰 Финансы — траты, бюджет и курсы валют
     🎓 Расписание — пары твоей группы МИРЭА или любого календаря
     ⚙️ Настройки — город, утренняя сводка и язык
 
@@ -85,8 +86,8 @@ app-open = Открой приложение кнопкой ниже 👇
 menu-button = Открыть
 stale-button = Эта кнопка устарела — открой раздел заново из меню.
 bot-name = Личный помощник
-bot-short-description = Погода с советами, напоминания, расписание пар, заметки, привычки и курсы валют — в одном чате.
-bot-description = Личный помощник: умная погода, напоминания, расписание пар, заметки, трекер привычек, курсы валют и утренняя сводка, которую бот присылает сам.
+bot-short-description = Погода с советами, напоминания, расписание пар, заметки, привычки, траты и курсы валют — в одном чате.
+bot-description = Личный помощник: умная погода, напоминания, расписание пар, заметки, трекер привычек, учёт трат с бюджетом, курсы валют и утренняя сводка, которую бот присылает сам.
 cmd-start = Главное меню
 cmd-app = Открыть приложение
 cmd-settings = Настройки
@@ -203,7 +204,7 @@ reminder-delete-series = Удалить повтор «{ $text }» целико�
 day-today = Сегодня
 day-tomorrow = Завтра
 day-after-tomorrow = Послезавтра
-unknown-hint = Чтобы создать напоминание, просто напиши, например: «завтра в 9 купить молоко».
+unknown-hint = Чтобы создать напоминание, просто напиши, например: «завтра в 9 купить молоко». Трату — так: «кофе 250».
 button-snooze-10m = +10 мин
 button-snooze-1h = +1 ч
 button-snooze-tomorrow = Завтра
@@ -411,3 +412,121 @@ habit-color-ask = 🎨 И цвет — для карточки и приложе
 habit-rename-ask = ✍️ Новое название для «{ $name }» (до { $limit } символов):
 habit-renamed = ✅ Готово: «{ $name }».
 habit-cards-wait = ⏳ Слишком много карточек подряд — попробуй через { $seconds } с.
+
+## Money
+money-cat-groceries = Продукты
+money-cat-cafe = Кафе
+money-cat-transport = Транспорт
+money-cat-home = Дом
+money-cat-phone = Связь
+money-cat-health = Здоровье
+money-cat-clothes = Одежда
+money-cat-fun = Развлечения
+money-cat-study = Учёба
+money-cat-gifts = Подарки
+money-cat-subscriptions = Подписки
+money-cat-other = Другое
+money-cat-salary = Зарплата
+money-cat-stipend = Стипендия
+money-cat-gifts_in = Подарили
+money-cat-other_in = Другое
+money-report-subtitle = Расходы за месяц
+money-report-budget = { $percent } % бюджета
+money-report-of = из { $amount }
+money-report-share = { $percent } %
+money-report-left = Осталось { $amount }
+money-report-left-per-day = Осталось { $amount } — по { $per_day } в день
+money-report-over = Перерасход { $amount }
+money-report-income = Доходы { $income } · баланс { $balance }
+money-report-empty = Трат за этот месяц нет
+money-report-entries = { $count ->
+        [one] запись
+        [few] записи
+       *[many] записей
+    }
+money-report-rest = Остальное
+money-report-days = По дням
+money-report-caption = 💰 { $month }: потрачено { $amount }
+rates-card-title = Курсы ЦБ
+rates-card-period = за 30 дней · { $start } — { $end }
+rates-card-name-usd = Доллар США
+rates-card-name-eur = Евро
+rates-card-change = { $amount } · { $percent } % за 30 дней
+rates-card-unavailable = Курсы ЦБ сейчас недоступны
+rates-card-caption = 📈 Курсы ЦБ за 30 дней
+money-title = 💰 { $month }
+money-spent = Потрачено: { $amount }
+money-spent-budget = Потрачено: { $amount } из { $budget } ({ $percent } %)
+money-income = Доходы: { $amount } · баланс { $balance }
+money-left = Осталось { $amount } — по { $per_day } в день
+money-over = Перерасход: { $amount }
+money-category = { $bar } { $emoji } { $name } — { $amount } ({ $share } %)
+money-none = Трат в этом месяце пока нет.
+money-hint = Чтобы записать трату, просто напиши: кофе 250. Доход — со знаком +: +5000 стипендия
+button-money-report = 📊 Отчёт
+button-money-rates = 💱 Курсы
+button-money-previous = ◀️ { $month }
+button-rates-chart = 📈 30 дней
+button-entry-category = 🗂 Категория
+button-entry-undo = ↩️ Отменить
+button-entry-income = 🔁 Это доход
+button-entry-expense = 🔁 Это расход
+button-entry-new = ➕ Новая
+money-entry-month = { $month }: { $spent } из { $budget }
+money-entry-month-plain = { $month }: { $spent }
+money-undone = ↩️ Отменено: { $what }
+money-pick = 🗂 Куда записать «{ $note }»?
+money-pick-plain = 🗂 Куда записать?
+money-new-ask = ✍️ Название новой категории (до { $limit } символов):
+money-new-emoji = 🎨 Эмодзи для «{ $name }»:
+money-category-created = ✅ Новая категория: { $emoji } { $name }
+money-duplicate = Такая категория уже есть — придумай другое название:
+money-duplicate-late = Такая категория уже есть — запись осталась в прежней.
+money-bad-name = Название — от 1 до { $limit } символов. Попробуй ещё раз:
+money-categories-full = Категорий уже { $limit } — больше не помещается. Ненужную можно переименовать в приложении.
+money-other-currency = Суммы записываются в { $sign } — валюта меняется в ⚙️ Настройках.
+money-limit = Записей уже { $limit } — больше не помещается.
+money-limit-month = В этом месяце уже { $limit } записей — больше нельзя.
+money-bad-note = Заметка — до { $limit } символов.
+money-day-1 = вчера
+money-day-2 = позавчера
+money-alert-total-80 = ⚠️ Потрачено { $percent } % бюджета на { $month }: { $spent } из { $budget }
+money-alert-total-100 = 🚨 Бюджет на { $month } закончился: { $spent } из { $budget }
+money-alert-category-80 = ⚠️ Потрачено { $percent } % бюджета «{ $name }» на { $month }: { $spent } из { $budget }
+money-alert-category-100 = 🚨 Бюджет «{ $name }» на { $month } закончился: { $spent } из { $budget }
+hint-money-category = Напиши название категории.
+button-money-entries = 📜 Записи
+button-money-budget = 🎯 Бюджет
+button-budget-total = ✏️ Общий бюджет
+button-budget-categories = 🗂 По категориям
+money-entries-title = 📜 { $month } · { $count } { $count ->
+        [one] запись
+        [few] записи
+       *[many] записей
+    }
+money-entries-line = { $number }. { $day } · { $what }
+money-entries-empty = 📜 Записей в этом месяце пока нет.
+money-delete-ask = 🗑 Удалить «{ $what }»?
+money-budget-title = 🎯 Бюджет на { $month }
+money-budget-total = Общий
+money-budget-total-none = Общий бюджет не задан.
+money-budget-line = { $label }: { $budget } — потрачено { $spent }, осталось { $rest }
+money-budget-line-over = { $label }: { $budget } — потрачено { $spent }, перерасход { $rest }
+money-budget-hint = Предупрежу, когда потратишь 80 % и 100 %. Бюджет действует каждый месяц.
+money-budget-pick = 🗂 Какой категории задать бюджет?
+money-budget-ask-total = 🎯 Сколько можно потратить за месяц? Напиши сумму, например 30000, или 0 — убрать бюджет:
+money-budget-ask = 🎯 Бюджет «{ $name }» на месяц? Напиши сумму, например 5000, или 0 — убрать:
+money-budget-bad = Нужна сумма числом, например 30000 или 30 000, или 0 — убрать бюджет. Попробуй ещё раз:
+money-budget-saved = ✅ Бюджет сохранён.
+money-budget-removed = ✅ Бюджет убран.
+hint-money-budget = Напиши сумму числом, например 30000, или 0.
+settings-currency = 💱 Валюта: { $sign } ({ $code })
+button-currency = 💱 Валюта
+currency-pick = 💱 В какой валюте вести учёт? Суммы уже сделанных записей не пересчитываются.
+currency-changed = Валюта: { $sign }
+today-money = 💰 Сегодня: { $today } · { $month }: { $spent } из { $budget }
+today-money-plain = 💰 Сегодня: { $today } · { $month }: { $spent }
+morning-money = 💰 Вчера: { $yesterday } · осталось { $left } — по { $per_day } в день
+morning-money-over = 💰 Вчера: { $yesterday } · перерасход { $over }
+morning-money-plain = 💰 Вчера: { $yesterday }
+today-rates-own = 💵 { $usd } ₽ · 💶 { $eur } ₽ · 💱 { $code } { $own } ₽

@@ -8,6 +8,7 @@ from pathlib import Path
 import httpx
 import uvicorn
 from aiogram import Bot
+from aiogram.client.session.aiohttp import AiohttpSession
 
 from assistant.api.app import create_app
 from assistant.api.routers.health import read_commit
@@ -24,6 +25,13 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 # the app waits for them, and a quick 503 beats a skeleton that hangs for ten seconds.
 # Calendars have a client of their own (calendar_client), with the full ten seconds.
 UPSTREAM_TIMEOUT = 4.0
+# Telegram gets 15 seconds here, not aiogram's 60: «Поделиться» in the app waits for it.
+BOT_TIMEOUT = 15.0
+
+
+def share_bot(token: str) -> Bot:
+    """The API's own Bot, for the share cards: sending a card to the user, preparing a message."""
+    return Bot(token, session=AiohttpSession(timeout=BOT_TIMEOUT))
 
 
 async def main() -> None:
@@ -31,8 +39,7 @@ async def main() -> None:
     setup_logging(settings.log_level, [settings.bot_token.get_secret_value()])
     check_translations()
     engine = create_engine(settings.database_url)
-    # Its own Bot for the share cards: sending a card to the user, preparing a shared message.
-    bot = Bot(settings.bot_token.get_secret_value())
+    bot = share_bot(settings.bot_token.get_secret_value())
     try:
         async with (
             httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as http,

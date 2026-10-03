@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from babel.dates import format_date, format_datetime
 
+from assistant.bot.money_texts import money, month_name
 from assistant.core.clients.cbr import Rates
 from assistant.core.i18n import (
     Translator,
@@ -152,12 +153,44 @@ def streak_line(streak: Streak, t: Translator) -> str:
     return t(key, name=streak.name, count=streak.length)
 
 
-def _rates_line(rates: Rates, t: Translator) -> str:
-    return t(
-        "today-rates",
-        usd=format_number(rates.usd.value, t.lang),
-        eur=format_number(rates.eur.value, t.lang),
-    )
+def _rates_line(rates: Rates, currency: str, t: Translator) -> str:
+    """«💵 84,20 ₽ · 💶 96,67 ₽», and the user's own currency when the bank quotes it."""
+    usd = format_number(rates.usd.value, t.lang)
+    eur = format_number(rates.eur.value, t.lang)
+    own = rates.currencies.get(currency)
+    if own is None or currency in ("USD", "EUR"):
+        return t("today-rates", usd=usd, eur=eur)
+    value = format_number(own.value, t.lang, _rate_digits(own.value))
+    return t("today-rates-own", usd=usd, eur=eur, code=currency, own=value)
+
+
+def _money_today(data: TodayData, t: Translator) -> list[str]:
+    """«💰 Сегодня: 650 ₽ · октябрь: 12 400 ₽ из 30 000 ₽», once the month has entries."""
+    month = data.money
+    if month is None or not month.count:
+        return []
+    values = {
+        "today": money(data.spent_today, data.currency, t),
+        "month": month_name(month.first, t),
+        "spent": money(month.spent, data.currency, t),
+    }
+    if month.budget is None:
+        return [t("today-money-plain", **values)]
+    return [t("today-money", budget=money(month.budget, data.currency, t), **values)]
+
+
+def _money_morning(data: TodayData, t: Translator) -> list[str]:
+    """Yesterday's spending and what the budget leaves for each day; nothing without either."""
+    month = data.money
+    yesterday = money(data.spent_yesterday, data.currency, t)
+    if month is None or month.budget is None or month.left is None:
+        return [t("morning-money-plain", yesterday=yesterday)] if data.spent_yesterday else []
+    if month.left < 0:
+        over = money(-month.left, data.currency, t)
+        return [t("morning-money-over", yesterday=yesterday, over=over)]
+    left = money(month.left, data.currency, t)
+    per_day = money(month.per_day or 0, data.currency, t)
+    return [t("morning-money", yesterday=yesterday, left=left, per_day=per_day)]
 
 
 def today_text(data: TodayData, name: str, t: Translator) -> str:
@@ -185,9 +218,10 @@ def _today(data: TodayData, name: str, t: Translator, shown: int, lessons: int) 
         lines.append(t("today-habits-none"))
     if data.best_streak is not None:
         lines.append(streak_line(data.best_streak, t))
+    lines += _money_today(data, t)
     lines.append(t("today-notes", count=data.notes_count))
     if data.rates is not None:
-        lines.append(_rates_line(data.rates, t))
+        lines.append(_rates_line(data.rates, data.currency, t))
     return "\n".join(lines)
 
 
@@ -221,8 +255,9 @@ def _morning(data: TodayData, name: str, t: Translator, shown: int, lessons: int
         extra.append(t("morning-habits", count=data.habits_total))
     if data.best_streak is not None:
         extra.append(streak_line(data.best_streak, t))
+    extra += _money_morning(data, t)
     if data.rates is not None:
-        extra.append(_rates_line(data.rates, t))
+        extra.append(_rates_line(data.rates, data.currency, t))
     if extra:
         lines += ["", *extra]
     return "\n".join(lines)
@@ -234,18 +269,29 @@ def _arrow(change: float) -> str:
     return "▼" if change < 0 else "•"
 
 
-def rates_text(rates: Rates, t: Translator) -> str:
+def _rate_digits(value: float) -> int:
+    """Four digits for a rate under ten roubles (a tenge is 0,1631 ₽), two for the others."""
+    return 4 if value < 10 else 2
+
+
+def rates_text(rates: Rates, t: Translator, currency: str) -> str:
+    """USD and EUR, and the user's own currency when the bank quotes it."""
     lines = [t("rates-title", date=format_day(rates.day, t.lang)), ""]
-    for emoji, code, rate in (("💵", "USD", rates.usd), ("💶", "EUR", rates.eur)):
-        change = round(rate.change, 2)
+    shown = [("💵", "USD", rates.usd), ("💶", "EUR", rates.eur)]
+    own = rates.currencies.get(currency)
+    if own is not None and currency not in ("USD", "EUR"):
+        shown.append(("💱", currency, own))
+    for emoji, code, rate in shown:
+        digits = _rate_digits(rate.value)
+        change = round(rate.change, digits)
         lines.append(
             t(
                 "rates-line",
                 emoji=emoji,
                 code=code,
-                value=format_number(rate.value, t.lang),
+                value=format_number(rate.value, t.lang, digits),
                 arrow=_arrow(change),
-                change=format_number(abs(change), t.lang),
+                change=format_number(abs(change), t.lang, digits),
             )
         )
     lines += ["", t("rates-converter")]

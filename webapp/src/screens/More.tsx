@@ -6,7 +6,8 @@ import { Card } from "../components/Card";
 import { SearchStatus } from "../components/SearchStatus";
 import { ErrorState, Loader } from "../components/States";
 import { toast } from "../components/toastStore";
-import { useT } from "../i18n";
+import { useLang, useT } from "../i18n";
+import { CURRENCY_CODES, currencyName, currencySign } from "../lib/money";
 import { useDebounced } from "../lib/useDebounced";
 import { openLink } from "../telegram";
 
@@ -66,6 +67,7 @@ function MorningTime({ saved, disabled, onSave }: { saved: string; disabled: boo
 
 export function MoreScreen() {
   const t = useT();
+  const lang = useLang();
   const me = useMe();
   const health = useHealth();
   const schedule = useSchedule();
@@ -175,7 +177,21 @@ export function MoreScreen() {
         </div>
       </Card>
 
-      <Card title={t.more.about} index={4}>
+      <Card title={t.more.currency} index={4}>
+        <select
+          className="input"
+          aria-label={t.more.currency}
+          value={profile.currency}
+          onChange={(event) => update.mutate({ currency: event.target.value })}
+        >
+          {CURRENCY_CODES.map((code) => (
+            <option key={code} value={code}>{`${currencySign(code)} ${code} — ${currencyName(code, lang)}`}</option>
+          ))}
+        </select>
+        <p className="muted field__note">{t.more.currencyHint}</p>
+      </Card>
+
+      <Card title={t.more.about} index={5}>
         {health.data && <p className="muted">{t.more.version(health.data.version)}</p>}
         <button type="button" className="button" onClick={() => openLink(REPO_URL)}>
           {t.more.source}

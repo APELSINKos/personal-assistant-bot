@@ -2,33 +2,48 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
+
+from babel.numbers import get_currency_name
 
 from assistant.api.schemas import (
+    AlertOut,
     BestStreak,
+    CategoryTotalOut,
     CityOut,
+    CurrencyRateOut,
     HabitDetailOut,
     HabitOut,
     MeOut,
+    MoneyCategoryOut,
+    MoneyEntryOut,
+    MoneyMonthOut,
     MorningOut,
     NoteOut,
+    RateHistoryOut,
     RateOut,
+    RatePointOut,
+    RatesAllOut,
     RatesOut,
     ReminderOut,
     RuleOut,
     ScheduleOut,
     TodayHabits,
     TodayLesson,
+    TodayMoneyOut,
     TodayOut,
     TodayReminder,
     WeatherOut,
 )
-from assistant.core.clients.cbr import Rates
+from assistant.core.clients.cbr import Point, Rates
 from assistant.core.i18n import Translator, resolve_language, translator
-from assistant.core.models import Note, Reminder, ScheduleSource, User
-from assistant.core.services import reminders, schedule
+from assistant.core.models import MoneyCategory, MoneyEntry, Note, Reminder, ScheduleSource, User
+from assistant.core.money_style import OTHER
+from assistant.core.services import money, reminders, schedule
 from assistant.core.services.digest import TodayData
 from assistant.core.services.habits import HabitDetail, HabitStats
+from assistant.core.services.money_month import Alert, CategoryTotal, Month
 from assistant.core.services.recurrence import Rule, describe
 from assistant.core.services.weather import WeatherNow
 from assistant.core.services.weather import describe as describe_weather
@@ -52,6 +67,8 @@ def me_out(user: User) -> MeOut:
         city=CityOut(name=user.city, lat=user.lat, lon=user.lon, timezone=user.timezone),
         morning=MorningOut(enabled=user.morning_enabled, time=user.morning_time),
         can_write=user.can_write,
+        currency=user.currency,
+        money_budget=user.money_budget,
     )
 
 
@@ -189,6 +206,17 @@ def today_out(data: TodayData, t: Translator) -> TodayOut:
             for lesson in data.lessons
         ],
         week_label=data.week_label,
+        money=TodayMoneyOut(
+            currency=data.currency,
+            today=data.spent_today,
+            spent=data.money.spent,
+            budget=data.money.budget,
+            left=data.money.left,
+            per_day=data.money.per_day,
+            count=data.money.count,
+        )
+        if data.money is not None
+        else None,
     )
 
 
@@ -204,4 +232,102 @@ def schedule_out(source: ScheduleSource, now: datetime, lessons_ahead: int) -> S
         stale=schedule.is_stale(source, now),
         lesson_reminder_minutes=source.lesson_reminder_minutes,
         lessons_ahead=lessons_ahead,
+    )
+
+
+def hundredths(amount: str) -> int:
+    """«430.50» → 43050 (the schema checked the form)."""
+    return int(Decimal(amount) * 100)
+
+
+def category_out(category: MoneyCategory, t: Translator) -> MoneyCategoryOut:
+    return MoneyCategoryOut(
+        id=category.id,
+        kind=category.kind,  # type: ignore[arg-type]
+        name=money.name_of(category, t),
+        emoji=category.emoji,
+        hidden=category.hidden,
+        can_hide=category.preset != OTHER[category.kind],
+        budget=category.budget,
+    )
+
+
+def entry_out(entry: MoneyEntry) -> MoneyEntryOut:
+    return MoneyEntryOut(
+        id=entry.id,
+        amount=entry.amount,
+        category_id=entry.category_id,
+        note=entry.note,
+        day=entry.day,
+    )
+
+
+def _total_out(item: CategoryTotal) -> CategoryTotalOut:
+    return CategoryTotalOut(
+        category_id=item.category.id, amount=item.amount, share=item.share, left=item.left
+    )
+
+
+def month_out(
+    month: Month,
+    oldest: date | None,
+    categories: list[MoneyCategory],
+    entries: list[MoneyEntry],
+    user: User,
+    t: Translator,
+) -> MoneyMonthOut:
+    return MoneyMonthOut(
+        month=month.first.strftime("%Y-%m"),
+        first_month=None if oldest is None else oldest.strftime("%Y-%m"),
+        currency=user.currency,
+        spent=month.spent,
+        income=month.income,
+        balance=month.balance,
+        budget=month.budget,
+        left=month.left,
+        per_day=month.per_day,
+        expenses=[_total_out(item) for item in month.expenses],
+        incomes=[_total_out(item) for item in month.incomes],
+        days=month.days,
+        categories=[category_out(item, t) for item in categories],
+        entries=[entry_out(item) for item in entries],
+    )
+
+
+def alert_out(alert: Alert, t: Translator) -> AlertOut:
+    category = alert.category
+    return AlertOut(
+        category_id=None if category is None else category.id,
+        emoji=None if category is None else category.emoji,
+        name=None if category is None else money.name_of(category, t),
+        threshold=alert.threshold,
+        spent=alert.spent,
+        budget=alert.budget,
+    )
+
+
+def rates_all_out(rates: Rates, user: User) -> RatesAllOut:
+    """USD, EUR and the user's currency first, the others by name in the user's language."""
+    lang = user_language(user)
+    first = ["USD", "EUR", user.currency]
+
+    def name(code: str) -> str:
+        found = str(get_currency_name(code, locale=lang))
+        return found[:1].upper() + found[1:]
+
+    def order(code: str) -> tuple[int, str]:
+        return (first.index(code), "") if code in first else (len(first), name(code))
+
+    return RatesAllOut(
+        date=rates.day,
+        currencies=[
+            CurrencyRateOut(code=code, name=name(code), value=rate.value, change=rate.change)
+            for code, rate in sorted(rates.currencies.items(), key=lambda item: order(item[0]))
+        ],
+    )
+
+
+def history_out(code: str, points: list[Point]) -> RateHistoryOut:
+    return RateHistoryOut(
+        code=code, points=[RatePointOut(day=point.day, value=point.value) for point in points]
     )
