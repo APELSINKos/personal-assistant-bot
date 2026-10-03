@@ -11,11 +11,11 @@ export function Loader() {
   );
 }
 
-export function ErrorState({ onRetry }: { onRetry: () => void }) {
+export function ErrorState({ onRetry, text }: { onRetry: () => void; text?: string }) {
   const t = useT();
   return (
     <div className="error-state" role="alert">
-      <div>{t.errors.generic}</div>
+      <div>{text ?? t.errors.generic}</div>
       <button type="button" className="button" onClick={onRetry}>
         {t.common.retry}
       </button>

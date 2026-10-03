@@ -1,5 +1,5 @@
 import type { StreakUnit } from "../api/types";
-import type { AlertWords, BudgetWords, Dict } from "./ru";
+import type { AlertWords, BudgetWords, Dict, HistoryWords } from "./ru";
 
 function plural(n: number, one: string, other: string): string {
   return n === 1 ? one : other;
@@ -199,6 +199,18 @@ export const en: Dict = {
     otherFixed: "“Other” can't be hidden: whatever finds no category goes there.",
     categoryGone: "This category doesn't exist.",
     toCategories: "Back to categories",
+    rates: "Central Bank rates",
+    ratesOn: (date: string) => `For ${date}`,
+    ratesUnavailable: "The Central Bank's rates are unavailable right now",
+    currency: "Currency",
+    chart: (name: string) => `${name}: the rate over 30 days`,
+    history: ({ first, last, change, percent, low, high }: HistoryWords) =>
+      `Over 30 days: from ${first} to ${last} (${change}, ${percent}); low ${low}, high ${high}`,
+    historyUnavailable: "No history of the rate right now",
+    converter: "Converter",
+    from: "From",
+    to: "To",
+    swap: "Swap the currencies",
   },
   more: {
     city: "City",
@@ -214,6 +226,8 @@ export const en: Dict = {
     about: "About",
     version: (value: string) => `Version ${value}`,
     source: "Source code on GitHub",
+    currency: "Currency",
+    currencyHint: "Amounts already noted aren't converted — only the sign changes.",
   },
   errors: {
     generic: "Something went wrong. Please try again.",

@@ -1,7 +1,7 @@
-import type { CategoryTotal, MoneyAlert, MoneyEntry } from "../api/types";
+import type { CategoryTotal, CurrencyRate, MoneyAlert, MoneyEntry, RatePoint } from "../api/types";
 import type { Lang } from "../i18n";
-import type { Dict } from "../i18n/ru";
-import { daysBetween, parseIsoDate } from "./format";
+import type { Dict, HistoryWords } from "../i18n/ru";
+import { capitalize, daysBetween, formatNumber, parseIsoDate } from "./format";
 
 /** Joins the parts of an amount, so a line never breaks inside one. */
 export const NBSP = "\u00a0";
@@ -52,8 +52,21 @@ export const CATEGORY_EMOJI = [
   "🧸", "📺", "💼", "💰", "🏦", "💳", "🧾", "📦",
 ] as const;
 
+/** The codes in the settings' order. */
+export const CURRENCY_CODES = Object.keys(CURRENCIES);
+
 export function currencySign(code: string): string {
   return CURRENCIES[code]?.sign ?? code;
+}
+
+/** «Российский рубль», «Euro»: a currency's name in the user's language, or its code. */
+export function currencyName(code: string, lang: Lang): string {
+  try {
+    const name = new Intl.DisplayNames(lang, { type: "currency" }).of(code);
+    return name ? capitalize(name) : code;
+  } catch {
+    return code;
+  }
 }
 
 /**
@@ -198,4 +211,51 @@ export function byDay(entries: MoneyEntry[]): { day: string; entries: MoneyEntry
     else days.push({ day: entry.day, entries: [entry] });
   }
   return days;
+}
+
+/** Roubles for one unit, the rouble included; undefined for a currency the bank does not quote. */
+function roubles(code: string, rates: CurrencyRate[]): number | undefined {
+  return code === "RUB" ? 1 : rates.find((rate) => rate.code === code)?.value;
+}
+
+/** An amount of one currency in another, through the rouble (services/rates.cross); null without a rate. */
+export function convert(amount: number, from: string, to: string, rates: CurrencyRate[]): number | null {
+  const source = roubles(from, rates);
+  const target = roubles(to, rates);
+  return source === undefined || target === undefined ? null : (amount * source) / target;
+}
+
+/** Four digits for a rate under ten roubles (a dram is 0,2149 ₽), two for the others. */
+const rateDigits = (value: number) => (Math.abs(value) < 10 ? 4 : 2);
+
+/** «82,64 ₽», «0,2149 ₽»: a rate in roubles. */
+export function formatRate(value: number, lang: Lang, digits = rateDigits(value)): string {
+  return `${formatNumber(value, lang, digits).replace(/\s/g, NBSP)}${NBSP}₽`;
+}
+
+/** «▲ 0,31», «▼ 0,45», «• 0,00»: how a rate changed since the bank's previous day. */
+export function rateChange(rate: CurrencyRate, lang: Lang): string {
+  const digits = rateDigits(rate.value);
+  const rounded = Number(rate.change.toFixed(digits));
+  const arrow = rounded > 0 ? "▲" : rounded < 0 ? "▼" : "•";
+  return `${arrow}${NBSP}${formatNumber(Math.abs(rounded), lang, digits)}`;
+}
+
+/** A rate's days told in words: the first and the last value, the change, the lowest and the highest. */
+export function historyWords(points: RatePoint[], lang: Lang): HistoryWords {
+  const values = points.map((point) => point.value);
+  const first = values[0] ?? 0;
+  const last = values.at(-1) ?? 0;
+  const digits = rateDigits(first);
+  const change = last - first;
+  const sign = change > 0 ? "+" : change < 0 ? "−" : "";
+  const percent = first ? (Math.abs(change) * 100) / first : 0;
+  return {
+    first: formatRate(first, lang, digits),
+    last: formatRate(last, lang, digits),
+    change: `${sign}${formatRate(Math.abs(change), lang, digits)}`,
+    percent: `${sign}${formatNumber(percent, lang, 1)}${lang === "ru" ? NBSP : ""}%`,
+    low: formatRate(Math.min(...values), lang, digits),
+    high: formatRate(Math.max(...values), lang, digits),
+  };
 }

@@ -1,4 +1,7 @@
-import { budgetUse, type RingPart } from "../lib/money";
+import type { RatePoint } from "../api/types";
+import type { Lang } from "../i18n";
+import { dayMonth } from "../lib/format";
+import { budgetUse, formatRate, type RingPart } from "../lib/money";
 
 /** How much of a budget is spent. The words next to it say the same, so it is hidden from readers. */
 export function BudgetBar({ spent, budget }: { spent: number; budget: number }) {
@@ -73,5 +76,56 @@ export function DayBars({ days, today, label }: { days: (number | null)[]; today
         ))}
       </div>
     </div>
+  );
+}
+
+/** A rate's last days as a small line in a list's row; the row's numbers say the rest. */
+export function Sparkline({ values }: { values: number[] }) {
+  if (values.length < 2) return <span className="sparkline" aria-hidden />;
+  const low = Math.min(...values);
+  const span = Math.max(...values) - low || 1;
+  const line = values
+    .map((value, index) => `${((index / (values.length - 1)) * 60).toFixed(1)},${(22 - ((value - low) / span) * 20).toFixed(1)}`)
+    .join(" ");
+  return (
+    <svg className="sparkline" viewBox="0 0 60 24" aria-hidden>
+      <polyline points={line} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** A rate over its days: the line, the highest and the lowest value beside it, the first and the last day under it. */
+export function LineChart({ points, label, lang }: { points: RatePoint[]; label: string; lang: Lang }) {
+  const values = points.map((point) => point.value);
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const span = high - low || 1;
+  const line = points
+    .map((point, index) => {
+      const x = (index / Math.max(points.length - 1, 1)) * 300;
+      return `${x.toFixed(1)},${(112 - ((point.value - low) / span) * 104).toFixed(1)}`;
+    })
+    .join(" ");
+  return (
+    <figure className="line-chart">
+      <svg className="line-chart__plot" viewBox="0 0 300 120" preserveAspectRatio="none" role="img" aria-label={label}>
+        <polyline
+          points={line}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      <div className="line-chart__scale" aria-hidden>
+        <span>{formatRate(high, lang)}</span>
+        <span>{formatRate(low, lang)}</span>
+      </div>
+      <div className="line-chart__days" aria-hidden>
+        <span>{dayMonth(points[0]?.day ?? "", lang)}</span>
+        <span>{dayMonth(points.at(-1)?.day ?? "", lang)}</span>
+      </div>
+    </figure>
   );
 }

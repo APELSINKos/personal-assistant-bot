@@ -1,18 +1,19 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { type CSSProperties, useState } from "react";
 import { Link } from "wouter";
-import { useDeleteEntry, useMoneyMonth } from "../api/money";
+import { useDeleteEntry, useMoneyMonth, useRateHistory, useRatesAll } from "../api/money";
 import { useMe } from "../api/queries";
-import type { MoneyCategory, MoneyMonth } from "../api/types";
+import type { CurrencyRate, MoneyCategory, MoneyMonth } from "../api/types";
 import { Card } from "../components/Card";
 import { Fab } from "../components/Fab";
-import { BudgetBar, DayBars, Ring } from "../components/MoneyCharts";
+import { BudgetBar, DayBars, Ring, Sparkline } from "../components/MoneyCharts";
 import { Empty, ErrorState, Loader } from "../components/States";
 import { SwipeRow } from "../components/SwipeRow";
 import { useLang, useT } from "../i18n";
 import { dayMonth, localTodayIso, monthTitle } from "../lib/format";
 import {
-  addMonths, budgetText, byDay, entryDay, formatAmount, formatSigned, monthOf, ringParts, sliceColor,
+  addMonths, budgetText, byDay, entryDay, formatAmount, formatRate, formatSigned, monthOf, rateChange, ringParts,
+  sliceColor,
 } from "../lib/money";
 
 type Categories = Map<number, MoneyCategory>;
@@ -83,7 +84,40 @@ function MonthBody({
       {data.spent > 0 && <ByCategory data={data} categories={categories} filter={filter} onFilter={onFilter} />}
       {data.spent > 0 && <ByDay data={data} today={today} />}
       <Entries data={data} categories={categories} today={today} filter={filter} onFilter={onFilter} />
+      <RatesCard currency={data.currency} />
     </>
+  );
+}
+
+/** USD, EUR and the user's currency, each with its last 30 days; a tap opens the rates. */
+function RatesCard({ currency }: { currency: string }) {
+  const t = useT();
+  const rates = useRatesAll();
+  const shown = (rates.data?.currencies ?? []).filter(
+    (rate) => rate.code === "USD" || rate.code === "EUR" || rate.code === currency,
+  );
+  return (
+    <Link href="/money/rates" className="card money-rates" style={{ "--i": 3 } as CSSProperties}>
+      <span className="card__title">{t.money.rates}</span>
+      {rates.isError ? (
+        <span className="muted">{t.money.ratesUnavailable}</span>
+      ) : (
+        shown.map((rate) => <RateRow key={rate.code} rate={rate} />)
+      )}
+    </Link>
+  );
+}
+
+function RateRow({ rate }: { rate: CurrencyRate }) {
+  const lang = useLang();
+  const history = useRateHistory(rate.code);
+  return (
+    <span className="rate-row">
+      <span className="rate-row__code">{rate.code}</span>
+      <span className="rate-row__value">{formatRate(rate.value, lang)}</span>
+      <span className="muted rate-row__change">{rateChange(rate, lang)}</span>
+      <Sparkline values={history.data?.points.map((point) => point.value) ?? []} />
+    </span>
   );
 }
 

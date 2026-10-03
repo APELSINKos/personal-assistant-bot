@@ -34,6 +34,16 @@ export interface BudgetWords {
   perDay: string | null;
 }
 
+/** A rate's days, each value already formatted (lib/money.ts, historyWords). */
+export interface HistoryWords {
+  first: string;
+  last: string;
+  change: string;
+  percent: string;
+  low: string;
+  high: string;
+}
+
 export const ru = {
   tabs: {
     today: "Сегодня",
@@ -224,6 +234,18 @@ export const ru = {
     otherFixed: "«Другое» скрыть нельзя: сюда попадает всё, чему не нашлось категории.",
     categoryGone: "Этой категории нет.",
     toCategories: "К категориям",
+    rates: "Курсы ЦБ",
+    ratesOn: (date: string) => `На ${date}`,
+    ratesUnavailable: "Курсы ЦБ сейчас недоступны",
+    currency: "Валюта",
+    chart: (name: string) => `Курс: ${name}, за 30 дней`,
+    history: ({ first, last, change, percent, low, high }: HistoryWords) =>
+      `За 30 дней: с ${first} до ${last} (${change}, ${percent}); минимум ${low}, максимум ${high}`,
+    historyUnavailable: "Истории курса сейчас нет",
+    converter: "Конвертер",
+    from: "Из",
+    to: "В",
+    swap: "Поменять валюты местами",
   },
   more: {
     city: "Город",
@@ -238,6 +260,8 @@ export const ru = {
     about: "О приложении",
     version: (value: string) => `Версия ${value}`,
     source: "Исходный код на GitHub",
+    currency: "Валюта",
+    currencyHint: "Суммы уже сделанных записей не пересчитываются — меняется только знак.",
   },
   errors: {
     generic: "Что-то пошло не так. Попробуй ещё раз.",

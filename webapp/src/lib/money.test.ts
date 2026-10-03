@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { MoneyAlert } from "../api/types";
 import { dict } from "../i18n";
 import {
-  addMonths, alertText, amountText, budgetText, budgetUse, byDay, CATEGORY_EMOJI, CURRENCIES, currencySign, entryDay,
-  formatAmount, formatSigned, monthName, monthOf, parseAmount, ringParts, sliceColor,
+  addMonths, alertText, amountText, budgetText, budgetUse, byDay, CATEGORY_EMOJI, convert, CURRENCIES, currencyName,
+  currencySign, entryDay, formatAmount, formatRate, formatSigned, historyWords, monthName, monthOf, parseAmount,
+  rateChange, ringParts, sliceColor,
 } from "./money";
 
 /** An amount as it shows: its spaces are no-break ones. */
@@ -150,5 +151,49 @@ describe("the month's parts", () => {
       { day: "2026-09-28", entries: [entry(3, "2026-09-28")] },
       { day: "2026-09-27", entries: [entry(2, "2026-09-27"), entry(1, "2026-09-27")] },
     ]);
+  });
+});
+
+describe("rates", () => {
+  const usd = { code: "USD", name: "Доллар США", value: 82.6417, change: -0.45 };
+  const eur = { code: "EUR", name: "Евро", value: 96.1234, change: 0.31 };
+  const amd = { code: "AMD", name: "Армянский драм", value: 0.2149, change: 0 };
+
+  it("convert any two currencies through the rouble", () => {
+    expect(convert(100, "USD", "RUB", [usd, eur])).toBeCloseTo(8264.17, 2);
+    expect(convert(100, "RUB", "EUR", [usd, eur])).toBeCloseTo(1.04, 2);
+    expect(convert(10, "EUR", "USD", [usd, eur])).toBeCloseTo(11.63, 2);
+    expect(convert(5, "RUB", "RUB", [])).toBe(5);
+    expect(convert(1, "GBP", "RUB", [usd, eur])).toBeNull();
+  });
+
+  it("show a rate with more digits under ten roubles, and its day's change", () => {
+    expect(formatRate(82.6417, "ru")).toBe(shown("82,64 ₽"));
+    expect(formatRate(82.6417, "en")).toBe(shown("82.64 ₽"));
+    expect(formatRate(0.2149, "ru")).toBe(shown("0,2149 ₽"));
+    expect(rateChange(usd, "ru")).toBe(shown("▼ 0,45"));
+    expect(rateChange(eur, "en")).toBe(shown("▲ 0.31"));
+    expect(rateChange(amd, "ru")).toBe(shown("• 0,0000"));
+  });
+
+  it("name a currency in the user's language", () => {
+    expect(currencyName("RUB", "ru")).toBe("Российский рубль");
+    expect(currencyName("EUR", "en")).toBe("Euro");
+  });
+
+  it("tell a rate's days in words", () => {
+    const points = [84, 85.1, 81.9, 82.64].map((value, index) => ({ day: `2026-09-0${index + 1}`, value }));
+    expect(historyWords(points, "ru")).toEqual({
+      first: shown("84,00 ₽"),
+      last: shown("82,64 ₽"),
+      change: shown("−1,36 ₽"),
+      percent: shown("−1,6 %"),
+      low: shown("81,90 ₽"),
+      high: shown("85,10 ₽"),
+    });
+    expect(dict("en").money.history(historyWords(points, "en"))).toBe(
+      `Over 30 days: from ${shown("84.00 ₽")} to ${shown("82.64 ₽")} (${shown("−1.36 ₽")}, −1.6%); `
+        + `low ${shown("81.90 ₽")}, high ${shown("85.10 ₽")}`,
+    );
   });
 });

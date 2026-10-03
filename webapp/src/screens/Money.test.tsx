@@ -132,3 +132,31 @@ describe("Money's ways on", () => {
     expect(screen.getByText("кофе").closest("a")).toHaveAttribute("href", "/money/24/edit");
   });
 });
+
+describe("Money's rates", () => {
+  const rates = {
+    date: "2026-09-28",
+    currencies: [
+      { code: "USD", name: "Доллар США", value: 82.6417, change: -0.45 },
+      { code: "EUR", name: "Евро", value: 96.1234, change: 0.31 },
+      { code: "AMD", name: "Армянский драм", value: 0.2149, change: 0 },
+    ],
+  };
+  const days = { code: "USD", points: [{ day: "2026-09-26", value: 84 }, { day: "2026-09-27", value: 82.64 }] };
+
+  it("show the dollar and the euro of the day and lead to the rates", async () => {
+    show({ "GET /rates/all": rates, "GET /rates/history?code=USD": days, "GET /rates/history?code=EUR": days });
+    const card = await screen.findByRole("link", { name: /Курсы ЦБ/ });
+    expect(card).toHaveAttribute("href", "/money/rates");
+    expect(await within(card).findByText("82,64 ₽")).toBeInTheDocument();
+    expect(within(card).getByText("96,12 ₽")).toBeInTheDocument();
+    expect(within(card).getByText("▲ 0,31")).toBeInTheDocument();
+    expect(within(card).queryByText("AMD")).not.toBeInTheDocument(); // not the user's currency
+  });
+
+  it("say when the bank's rates cannot be had", async () => {
+    show({ "GET /rates/all": NOT_FOUND });
+    const card = await screen.findByRole("link", { name: /Курсы ЦБ/ });
+    expect(await within(card).findByText("Курсы ЦБ сейчас недоступны")).toBeInTheDocument();
+  });
+});
