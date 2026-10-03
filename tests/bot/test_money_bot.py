@@ -54,6 +54,15 @@ async def test_the_menu_opens_money_and_so_does_the_old_rates_label(feed, fake) 
     assert buttons(first) == [["📊 Отчёт", "💱 Курсы"]]
 
 
+async def test_start_names_the_money_section(feed, fake) -> None:
+    await feed(message_update("/start"))
+    await feed(message_update("/start", user_id=2, lang="en"))
+    ru, en = (text.split("\n") for text in fake.sent_texts())
+    assert "💰 Финансы — траты, бюджет и курсы валют" in ru
+    assert "💰 Money — expenses, budget and exchange rates" in en
+    assert not any("💱" in line for line in [*ru, *en])  # the rates live in the money section
+
+
 async def test_the_month_so_far(feed, fake, session, make_user) -> None:
     user = await make_user()
     today = local_today(user.timezone)
@@ -77,6 +86,21 @@ async def test_the_month_so_far(feed, fake, session, make_user) -> None:
     ]
 
 
+async def test_a_month_with_incomes_only_has_no_expenses_yet(
+    feed, fake, session, make_user
+) -> None:
+    user = await make_user()
+    await spend(session, user, "salary", 500000)
+    await feed(message_update("💰 Финансы"))
+    lines = fake.sent_texts()[-1].split("\n")
+    assert lines[1:5] == [
+        f"Потрачено: 0{NBSP}₽",
+        f"Доходы: {rub('5 000')} · баланс +{rub('5 000')}",
+        "",
+        "Трат в этом месяце пока нет.",
+    ]
+
+
 async def test_an_empty_month_in_english(feed, fake, make_user) -> None:
     await make_user(language="en")
     await feed(message_update("💰 Money", lang="en"))
@@ -84,7 +108,7 @@ async def test_an_empty_month_in_english(feed, fake, make_user) -> None:
     assert lines[1:] == [
         f"Spent: 0{NBSP}₽",
         "",
-        "No entries this month yet.",
+        "No expenses this month yet.",
         "",
         "To note an expense, just write: coffee 250. Income goes with a plus: +5000 salary",
     ]

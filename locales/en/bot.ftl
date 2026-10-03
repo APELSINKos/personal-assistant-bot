@@ -66,7 +66,7 @@ welcome =
     ⏰ Reminders — I'll ping you at the right time
     📝 Notes — keep what you don't want to forget
     🎯 Habits — mark them daily and keep the streak
-    💱 Exchange rates — USD and EUR by the Bank of Russia
+    💰 Money — expenses, budget and exchange rates
     🎓 Schedule — your MIREA group's classes or any calendar
     ⚙️ Settings — city, morning digest and language
 
@@ -77,8 +77,8 @@ app-open = Open the app with the button below 👇
 menu-button = Open
 stale-button = This button is outdated — open the section again from the menu.
 bot-name = Personal Assistant
-bot-short-description = Weather with tips, reminders, class schedule, notes, habits and exchange rates — in one chat.
-bot-description = Personal assistant: smart weather, reminders, a class schedule, notes, a habit tracker, exchange rates and a morning digest the bot sends on its own.
+bot-short-description = Weather with tips, reminders, class schedule, notes, habits, expenses and exchange rates — in one chat.
+bot-description = Personal assistant: smart weather, reminders, a class schedule, notes, a habit tracker, expenses with a budget, exchange rates and a morning digest the bot sends on its own.
 cmd-start = Main menu
 cmd-app = Open the app
 cmd-settings = Settings
@@ -439,7 +439,7 @@ money-income = Income: { $amount } · balance { $balance }
 money-left = { $amount } left — { $per_day } a day
 money-over = Over the budget: { $amount }
 money-category = { $bar } { $emoji } { $name } — { $amount } ({ $share }%)
-money-none = No entries this month yet.
+money-none = No expenses this month yet.
 money-hint = To note an expense, just write: coffee 250. Income goes with a plus: +5000 salary
 button-money-report = 📊 Report
 button-money-rates = 💱 Rates
