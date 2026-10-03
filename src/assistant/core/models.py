@@ -18,6 +18,7 @@ from sqlalchemy import (
     SmallInteger,
     String,
     Text,
+    UniqueConstraint,
     event,
 )
 from sqlalchemy.engine import Dialect
@@ -25,6 +26,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
 
 from assistant.core.habit_style import DAILY, DEFAULT_COLOR, DEFAULT_EMOJI
+from assistant.core.money_style import DEFAULT_CURRENCY
 from assistant.core.timeutil import UTC, utcnow
 
 
@@ -111,6 +113,10 @@ class ScheduleKindType(TypeDecorator[ScheduleKind]):
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint("length(currency) = 3", name="currency_code"),
+        CheckConstraint("money_budget IS NULL OR money_budget > 0", name="money_budget_positive"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
     first_name: Mapped[str | None] = mapped_column(String(128))
@@ -128,6 +134,8 @@ class User(Base):
     can_write: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
+    currency: Mapped[str] = mapped_column(String(3), default=DEFAULT_CURRENCY)  # money_style
+    money_budget: Mapped[int | None] = mapped_column(BigInteger)  # a month's, in hundredths
 
 
 class Note(Base):
@@ -331,3 +339,80 @@ class ShareCard(Base):
     image: Mapped[bytes] = mapped_column(LargeBinary)  # JPEG
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
+class MoneyCategory(Base):
+    """A user's expense or income category: a preset (named by its translation until renamed)
+    or their own."""
+
+    __tablename__ = "money_categories"
+    __table_args__ = (
+        CheckConstraint("kind IN ('expense', 'income')", name="kind"),
+        CheckConstraint("budget IS NULL OR (budget > 0 AND kind = 'expense')", name="budget"),
+        UniqueConstraint("user_id", "preset"),
+        Index("ix_money_categories_user", "user_id"),
+        # AUTOINCREMENT: an old inline button carries a category id, which must never come back.
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(8))  # money_style.EXPENSE or INCOME
+    preset: Mapped[str | None] = mapped_column(String(16))  # money_style.PRESETS key
+    name: Mapped[str | None] = mapped_column(String(30))  # None: a preset's translated name
+    emoji: Mapped[str] = mapped_column(String(16))
+    hidden: Mapped[bool] = mapped_column(default=False)
+    budget: Mapped[int | None] = mapped_column(BigInteger)  # a month's, in hundredths
+    position: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class MoneyEntry(Base):
+    """One expense or income; which of the two is the category's kind."""
+
+    __tablename__ = "money_entries"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="amount_positive"),
+        Index("ix_money_entries_user_day", "user_id", "day"),
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"))
+    category_id: Mapped[int] = mapped_column(ForeignKey("money_categories.id", ondelete="RESTRICT"))
+    amount: Mapped[int] = mapped_column(BigInteger)  # hundredths of the user's currency
+    note: Mapped[str] = mapped_column(String(100), default="")
+    day: Mapped[date]  # the user's local date
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class MoneyWord(Base):
+    """A note the user moved to another category: the next entry with it goes there too."""
+
+    __tablename__ = "money_words"
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+        autoincrement=False,
+    )
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)  # money_phrases.note_key
+    category_id: Mapped[int] = mapped_column(ForeignKey("money_categories.id", ondelete="CASCADE"))
+
+
+class MoneyAlert(Base):
+    """A budget warning already shown: one per budget, threshold and month."""
+
+    __tablename__ = "money_alerts"
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+        autoincrement=False,
+    )
+    month: Mapped[str] = mapped_column(String(7), primary_key=True)  # «2026-10»
+    category_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)  # 0: total
+    threshold: Mapped[int] = mapped_column(SmallInteger, primary_key=True, autoincrement=False)
+    sent_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
