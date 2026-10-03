@@ -57,6 +57,24 @@ def picture(jpeg: bytes) -> Image.Image:
     return Image.open(BytesIO(jpeg))
 
 
+def near(pixel: object, colour: tuple[int, int, int], tolerance: int = 40) -> bool:
+    assert isinstance(pixel, tuple)
+    return all(abs(a - b) <= tolerance for a, b in zip(pixel, colour, strict=True))
+
+
+class Recording:
+    """Words a picture in Russian and keeps the arguments each message was given."""
+
+    lang = "ru"
+
+    def __init__(self) -> None:
+        self.said: dict[str, dict[str, object]] = {}
+
+    def __call__(self, key: str, **args: object) -> str:
+        self.said[key] = args
+        return RU(key, **args)
+
+
 def test_the_report_is_a_1080_by_1350_jpeg_under_a_megabyte() -> None:
     for t in (RU, EN):
         jpeg = money_cards.render_report(REPORT, t)
@@ -94,6 +112,36 @@ def test_the_pictures_are_the_same_bytes_on_every_machine() -> None:
 def test_every_kind_of_month_is_drawn(changes: dict[str, object]) -> None:
     jpeg = money_cards.render_report(replace(REPORT, **changes), RU)  # type: ignore[arg-type]
     assert picture(jpeg).size == (1080, 1350)
+
+
+def test_a_thin_slice_leaves_the_ring_to_the_others() -> None:
+    # 200 of 100 000 is under a degree of the ring: it must not paint the whole ring.
+    slices = (Slice("🛒", "Продукты", 99800, 100), Slice(None, "", 200, 0))
+    report = replace(REPORT, slices=slices, spent=100000, budget=None, left=None)
+    image = picture(money_cards.render_report(report, RU)).convert("RGB")
+    below = image.getpixel((272, 902))  # the ring's band straight below its centre
+    assert near(below, money_cards.PALETTE[0]) and not near(below, money_cards.REST)
+
+
+def test_the_budgets_percent_is_rounded_half_up_as_everywhere() -> None:
+    t = Recording()
+    money_cards.render_report(replace(REPORT, spent=375000, left=2625000), t)  # type: ignore[arg-type]
+    assert t.said["money-report-budget"] == {"percent": 13}  # 12.5 %: share_of, not round()
+
+
+def test_a_little_spending_shows_on_the_budget_bar() -> None:
+    report = replace(REPORT, spent=30000, left=2970000)  # 1 % of the budget
+    image = picture(money_cards.render_report(report, RU)).convert("RGB")
+    assert near(image.getpixel((107, 473)), money_cards.MINT)  # a dot at the bar's start
+
+
+def test_a_rate_that_did_not_move_is_neither_up_nor_down() -> None:
+    still = tuple(Point(date(2026, 9, 21) + timedelta(days=i), 90.0) for i in range(10))
+    t = Recording()
+    card = replace(RATES, lines=(("USD", still), ("EUR", still)))
+    image = picture(money_cards.render_rates(card, t)).convert("RGB")  # type: ignore[arg-type]
+    assert t.said["rates-card-change"]["percent"] == "0,0"  # no sign
+    assert near(image.getpixel((123, 450)), money_cards.HINT)  # a grey dash, not a mint ▼
 
 
 def test_every_category_emoji_can_be_drawn() -> None:

@@ -150,7 +150,7 @@ def render_report(report: Report, t: Translator) -> bytes:
         share = report.spent / report.budget
         draw.text(
             (LEFT, bar_top - 46),
-            t("money-report-budget", percent=round(share * 100)),
+            t("money-report-budget", percent=share_of(report.spent, report.budget)),
             font=words_font,
             fill=TEXT,
         )
@@ -164,8 +164,10 @@ def render_report(report: Report, t: Translator) -> bytes:
         draw.rounded_rectangle((LEFT, bar_top, RIGHT, bar_top + 22), 11, fill=TRACK)
         colour = MINT if share < 0.8 else AMBER if share < 1 else ROSE
         filled = LEFT + round((RIGHT - LEFT) * min(share, 1.0))
-        if filled > LEFT + 22:
-            draw.rounded_rectangle((LEFT, bar_top, filled, bar_top + 22), 11, fill=colour)
+        if report.spent > 0:  # a little spending still shows as a dot
+            draw.rounded_rectangle(
+                (LEFT, bar_top, max(filled, LEFT + 22), bar_top + 22), 11, fill=colour
+            )
         if report.left < 0:
             line = t("money-report-over", amount=_money(-report.left, report, lang))
         elif report.per_day is not None:
@@ -203,7 +205,8 @@ def render_report(report: Report, t: Translator) -> bytes:
         for index, item in enumerate(report.slices):
             sweep = 360 * item.amount / report.spent
             colour = REST if item.emoji is None else PALETTE[index]
-            gap = 1.2 if len(report.slices) > 1 else 0.0
+            # The gaps between slices shrink with a thin slice, so its end stays after its start.
+            gap = min(1.2, sweep / 4) if len(report.slices) > 1 else 0.0
             ring_draw.pieslice(box, start + gap, start + sweep - gap, fill=(*colour, 255))
             start += sweep
         hole_box = (centre[0] - hole, centre[1] - hole, centre[0] + hole, centre[1] + hole)
@@ -317,9 +320,15 @@ def render_rates(card: RatesCard, t: Translator) -> bytes:
         last_value = f"{format_number(values[-1], lang)} ₽"
         draw.text((LEFT + 8, top + 66), last_value, font=kit.font("Unbounded", 76, 700), fill=TEXT)
         change = values[-1] - values[0]
-        colour = ROSE if change > 0 else MINT
+        percent = 100 * change / values[0]
+        flat = abs(percent) < 0.05  # «0,0 %»: neither up nor down
+        colour = HINT if flat else ROSE if change > 0 else MINT
         arrow_x, arrow_y = LEFT + 14, top + 178
-        if change > 0:
+        if flat:
+            draw.rounded_rectangle(
+                (arrow_x, arrow_y + 7, arrow_x + 26, arrow_y + 13), 3, fill=colour
+            )
+        elif change > 0:
             draw.polygon(
                 ((arrow_x, arrow_y + 20), (arrow_x + 26, arrow_y + 20), (arrow_x + 13, arrow_y)),
                 fill=colour,
@@ -332,8 +341,8 @@ def render_rates(card: RatesCard, t: Translator) -> bytes:
         delta = t(
             "rates-card-change",
             amount=f"{format_number(abs(change), lang)} ₽",
-            percent=("+" if change > 0 else "−")
-            + format_number(abs(100 * change / values[0]), lang, 1),
+            percent=("" if flat else "+" if change > 0 else "−")
+            + format_number(abs(percent), lang, 1),
         )
         draw.text(
             (arrow_x + 40, arrow_y - 8), delta, font=kit.font("Manrope", 30, 600), fill=colour
@@ -353,8 +362,10 @@ def render_rates(card: RatesCard, t: Translator) -> bytes:
         end = line[-1]
         draw.ellipse((end[0] - 9, end[1] - 9, end[0] + 9, end[1] + 9), fill=(*SKY, 255))
         high_text, low_text = format_number(high, lang), format_number(low, lang)
+        # Ending on its highest rate, the line's end dot would touch the label: it steps left.
+        high_right = RIGHT - 12 if values[-1] < high else end[0] - 18
         draw.text(
-            (RIGHT - 12 - draw.textlength(high_text, font=tiny), chart[1] - 30),
+            (high_right - draw.textlength(high_text, font=tiny), chart[1] - 30),
             high_text,
             font=tiny,
             fill=HINT,

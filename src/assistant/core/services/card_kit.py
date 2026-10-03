@@ -34,7 +34,7 @@ TEXT = (244, 242, 255)
 HINT = (163, 159, 192)
 GLASS = (255, 255, 255, 16)
 GLASS_LINE = (255, 255, 255, 30)
-MISSING = ""  # a private-use character: no font has it, so it shows the «missing» glyph
+MISSING = "\ue000"  # a private-use character: no font has it, so it shows the «missing» glyph
 QUALITY = 90
 CARDS_PER_MINUTE = 6
 
