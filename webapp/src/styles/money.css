@@ -41,7 +41,7 @@
 .budget-bar__fill {
   height: 100%;
   border-radius: inherit;
-  background: var(--accent);
+  background: var(--accent-text); /* 3:1 against the track in the light theme too */
 }
 
 .budget-bar--warning .budget-bar__fill {
@@ -84,7 +84,7 @@
 
 .legend__row {
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto 36px;
+  grid-template-columns: 10px minmax(0, 1fr) auto minmax(36px, auto);
   align-items: center;
   gap: 10px;
   width: 100%;
@@ -101,6 +101,10 @@
 
 .legend__row[aria-pressed="true"] {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.legend__row[aria-pressed="true"] .legend__share {
+  color: var(--text); /* the hint colour is under AA on the accent tint */
 }
 
 .legend__dot {
@@ -123,6 +127,7 @@
 .legend__share {
   color: var(--hint);
   text-align: right;
+  white-space: nowrap;
 }
 
 .legend__budget {
@@ -174,7 +179,17 @@
 }
 
 .money-entries__head .card__title {
+  flex: none;
   margin: 0;
+}
+
+/* A long category name must not push the page sideways: the chip ends in «…». */
+.money-entries__head .chip-button {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .money-entry {

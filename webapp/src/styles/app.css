@@ -314,6 +314,11 @@ a {
   cursor: pointer;
 }
 
+.icon-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 /* Lists with swipe-to-delete */
 .group__label {
   margin: 18px 4px 8px;
