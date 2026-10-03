@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from aiogram.methods import AnswerCallbackQuery, SendMessage
 
-from assistant.bot.keyboards import RatesCb, SettingsCb
+from assistant.bot.keyboards import MoneyCb, RatesCb, SettingsCb
 from tests.bot.fakes import callback_update, message_update
 
 NBSP = " "
@@ -37,7 +37,7 @@ async def test_today_survives_upstream_failures(feed, fake, meteo, cbr) -> None:
 
 
 async def test_rates_and_converter(feed, fake) -> None:
-    await feed(message_update("💱 Курс валют"))
+    await feed(callback_update(MoneyCb(action="rates").pack()))  # «💰 Финансы» → «💱 Курсы»
     assert fake.sent_texts()[0].startswith("💱 Курс ЦБ РФ на 28 сентября")
     await feed(callback_update(RatesCb(source="USD", target="RUB").pack()))
     assert fake.sent_texts()[-1] == "Сколько USD перевести в RUB?"
@@ -70,5 +70,5 @@ async def test_converter_rejects_forged_pair(feed, fake) -> None:
 
 async def test_rates_unavailable(feed, fake, cbr) -> None:
     cbr.fail = True
-    await feed(message_update("💱 Курс валют"))
+    await feed(callback_update(MoneyCb(action="rates").pack()))
     assert fake.sent_texts() == ["⚠️ Не удалось получить курсы. Попробуй чуть позже."]

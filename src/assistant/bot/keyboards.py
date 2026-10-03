@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from datetime import datetime
+from typing import Annotated
 
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import (
@@ -13,31 +14,39 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
     WebAppInfo,
 )
+from pydantic import Field
 
 from assistant.core.i18n import Translator, labels
 
 PAGE_SIZE = 5
+# A database id in a button: one out of range (a forged button) does not unpack, so it is
+# answered as a stale button instead of failing in the database driver.
+Id = Annotated[int, Field(ge=0, lt=2**63)]
 MENU_KEYS: tuple[str, ...] = (
     "weather",
     "today",
     "reminders",
     "notes",
     "habits",
-    "rates",
+    "money",
     "schedule",
     "settings",
 )
 _ROWS = (
     ("weather", "today"),
     ("reminders", "notes"),
-    ("habits", "rates"),
+    ("habits", "money"),
     ("schedule", "settings"),
 )
 
 
+# A label of an older menu → the section it opens now (a keyboard already shown keeps it).
+OLD_LABELS = {"rates": "money"}
+
+
 class NoteCb(CallbackData, prefix="n"):
     action: str
-    id: int = 0
+    id: Id = 0
     page: int = 0
 
 
@@ -45,7 +54,7 @@ class ReminderCb(CallbackData, prefix="r", sep="|"):
     # A custom separator: `value` carries "HH:MM" time choices, which would otherwise
     # collide with the default ":" separator between packed fields.
     action: str
-    id: int = 0
+    id: Id = 0
     page: int = 0
     value: str = ""
 
@@ -54,13 +63,13 @@ class FireCb(CallbackData, prefix="f"):
     """A button under a delivered reminder: snooze or done."""
 
     action: str
-    id: int
+    id: Id
     at: int  # the reported firing, in minutes since the epoch
 
 
 class HabitCb(CallbackData, prefix="h"):
     action: str
-    id: int = 0
+    id: Id = 0
     value: str = ""
 
 
@@ -79,6 +88,13 @@ class RatesCb(CallbackData, prefix="x"):
     target: str
 
 
+class MoneyCb(CallbackData, prefix="m"):
+    action: str
+    id: Id = 0
+    page: int = 0
+    value: str = ""  # a month «2026-09», a currency code
+
+
 def main_menu(t: Translator) -> ReplyKeyboardMarkup:
     rows = [[KeyboardButton(text=t(f"menu-{key}")) for key in row] for row in _ROWS]
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, is_persistent=True)
@@ -95,6 +111,9 @@ def menu_key(text: str | None) -> str | None:
         return None
     for key in MENU_KEYS:
         if text in labels(f"menu-{key}"):
+            return key
+    for old, key in OLD_LABELS.items():
+        if text in labels(f"menu-{old}"):
             return key
     return None
 

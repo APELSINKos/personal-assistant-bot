@@ -180,7 +180,7 @@ def test_reminder_list_is_capped_within_the_telegram_message_limit() -> None:
 
 
 def test_rates_text() -> None:
-    assert texts.rates_text(RATES, RU) == (
+    assert texts.rates_text(RATES, RU, "RUB") == (
         "💱 Курс ЦБ РФ на 28 сентября\n"
         "\n"
         "💵 USD: 84,20 ₽  ▼ 0,31\n"
@@ -188,6 +188,17 @@ def test_rates_text() -> None:
         "\n"
         "Конвертер 👇"
     )
+
+
+def test_rates_text_adds_the_users_own_currency() -> None:
+    rates = Rates(RATES.day, RATES.usd, RATES.eur, currencies={"KZT": Rate(0.1631, 0.0012)})
+    assert texts.rates_text(rates, EN, "KZT").split("\n")[2:5] == [
+        "💵 USD: 84.20 ₽  ▼ 0.31",
+        "💶 EUR: 96.67 ₽  • 0.00",
+        "💱 KZT: 0.1631 ₽  ▲ 0.0012",
+    ]
+    for currency in ("RUB", "USD", "GBP"):  # the rouble, a currency shown anyway, one not quoted
+        assert len(texts.rates_text(rates, RU, currency).split("\n")) == 6
 
 
 LESSON = Lesson(

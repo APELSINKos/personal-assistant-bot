@@ -234,18 +234,29 @@ def _arrow(change: float) -> str:
     return "▼" if change < 0 else "•"
 
 
-def rates_text(rates: Rates, t: Translator) -> str:
+def _rate_digits(value: float) -> int:
+    """Four digits for a rate under ten roubles (a tenge is 0,1631 ₽), two for the others."""
+    return 4 if value < 10 else 2
+
+
+def rates_text(rates: Rates, t: Translator, currency: str) -> str:
+    """USD and EUR, and the user's own currency when the bank quotes it."""
     lines = [t("rates-title", date=format_day(rates.day, t.lang)), ""]
-    for emoji, code, rate in (("💵", "USD", rates.usd), ("💶", "EUR", rates.eur)):
-        change = round(rate.change, 2)
+    shown = [("💵", "USD", rates.usd), ("💶", "EUR", rates.eur)]
+    own = rates.currencies.get(currency)
+    if own is not None and currency not in ("USD", "EUR"):
+        shown.append(("💱", currency, own))
+    for emoji, code, rate in shown:
+        digits = _rate_digits(rate.value)
+        change = round(rate.change, digits)
         lines.append(
             t(
                 "rates-line",
                 emoji=emoji,
                 code=code,
-                value=format_number(rate.value, t.lang),
+                value=format_number(rate.value, t.lang, digits),
                 arrow=_arrow(change),
-                change=format_number(abs(change), t.lang),
+                change=format_number(abs(change), t.lang, digits),
             )
         )
     lines += ["", t("rates-converter")]

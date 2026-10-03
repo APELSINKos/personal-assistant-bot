@@ -11,6 +11,7 @@ from aiogram import Router
 
 from assistant.bot.routers import (
     habits,
+    money,
     notes,
     rates,
     reminders,
@@ -29,4 +30,5 @@ SECTION_ROUTERS: list[Callable[[], Router]] = [
     habits.create_router,
     schedule.create_router,
     settings.create_router,
+    money.create_router,
 ]

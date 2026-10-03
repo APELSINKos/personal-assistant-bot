@@ -1,4 +1,5 @@
-"""💱 Exchange rates of the Bank of Russia and a RUB ⇄ USD/EUR converter."""
+"""💱 Exchange rates of the Bank of Russia and a RUB ⇄ USD/EUR converter, reached from
+«💰 Финансы»."""
 
 from __future__ import annotations
 
@@ -7,18 +8,17 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from assistant.bot import replies, texts
 from assistant.bot.context import Ctx
-from assistant.bot.keyboards import RatesCb, cancel_menu, main_menu
-from assistant.bot.sections import section
+from assistant.bot.keyboards import MoneyCb, RatesCb, cancel_menu, main_menu
 from assistant.bot.states import RatesForm
 from assistant.core.errors import UpstreamUnavailable
-from assistant.core.i18n import format_number
+from assistant.core.i18n import Translator, format_number
 from assistant.core.services.rates import convert, parse_amount
 
 PAIRS = (("USD", "RUB"), ("EUR", "RUB"), ("RUB", "USD"), ("RUB", "EUR"))
 _SIGN = {"USD": "USD", "EUR": "EUR", "RUB": "₽"}
 
 
-def converter_markup() -> InlineKeyboardMarkup:
+def converter_markup(t: Translator) -> InlineKeyboardMarkup:
     buttons = [
         InlineKeyboardButton(
             text=f"{_SIGN[source]} → {_SIGN[target]}",
@@ -26,17 +26,24 @@ def converter_markup() -> InlineKeyboardMarkup:
         )
         for source, target in PAIRS
     ]
-    return InlineKeyboardMarkup(inline_keyboard=[buttons[:2], buttons[2:]])
+    chart = InlineKeyboardButton(
+        text=t("button-rates-chart"), callback_data=MoneyCb(action="chart").pack()
+    )
+    return InlineKeyboardMarkup(inline_keyboard=[buttons[:2], buttons[2:], [chart]])
 
 
-@section("rates")
-async def show_rates(message: Message, ctx: Ctx) -> None:
+async def send_rates(bot: Bot, user_id: int, ctx: Ctx) -> None:
+    """The day's rates with the converter and the 30-day picture."""
     try:
         rates = await ctx.cbr.daily()
     except UpstreamUnavailable:
-        await message.answer(ctx.t("rates-unavailable"))
+        await bot.send_message(user_id, ctx.t("rates-unavailable"))
         return
-    await message.answer(texts.rates_text(rates, ctx.t), reply_markup=converter_markup())
+    await bot.send_message(
+        user_id,
+        texts.rates_text(rates, ctx.t, ctx.user.currency),
+        reply_markup=converter_markup(ctx.t),
+    )
 
 
 async def ask_amount(query: CallbackQuery, callback_data: RatesCb, ctx: Ctx, bot: Bot) -> None:
