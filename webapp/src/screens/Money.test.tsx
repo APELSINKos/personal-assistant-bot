@@ -121,3 +121,14 @@ describe("Money", () => {
     expect(screen.getByRole("heading", { level: 3, name: "Fri, Sep 25" })).toBeInTheDocument();
   });
 });
+
+describe("Money's ways on", () => {
+  it("lead to a new entry, an entry's form, the budget and the categories", async () => {
+    show({ "GET /money?month=2026-09": { ...moneyMonth, budget: null, left: null, per_day: null } });
+    expect(await screen.findByRole("link", { name: "Задать бюджет" })).toHaveAttribute("href", "/money/budget");
+    expect(screen.getByRole("link", { name: "Добавить запись" })).toHaveAttribute("href", "/money/new");
+    expect(screen.getByRole("link", { name: "🎯 Бюджет" })).toHaveAttribute("href", "/money/budget");
+    expect(screen.getByRole("link", { name: "🗂 Категории" })).toHaveAttribute("href", "/money/categories");
+    expect(screen.getByText("кофе").closest("a")).toHaveAttribute("href", "/money/24/edit");
+  });
+});

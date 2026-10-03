@@ -11,6 +11,9 @@ export const DEFAULT_CURRENCY = "RUB";
 /** The most an entry or a budget may be, in hundredths: a billion (LIMITS.amount_max). */
 export const AMOUNT_MAX = 100_000_000_000;
 
+/** How far back a new day of an entry may be (money.OLDEST_DAY). */
+export const ENTRY_DAYS_BACK = 366;
+
 interface Currency {
   sign: string;
   /** In English the sign goes before the number: «$1,200». */

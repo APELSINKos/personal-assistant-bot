@@ -196,6 +196,8 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  color: inherit;
+  text-decoration: none;
 }
 
 .money-entry__emoji {
@@ -257,6 +259,192 @@
   font-size: 13px;
 }
 
+.money-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.money-links .chip-button {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.money-summary__set {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 4px;
+  color: var(--accent-text);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+/* The forms: an amount with its sign, expense or income, the categories, the day. */
+.money-amount {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.money-amount .input {
+  padding-right: 56px;
+}
+
+.money-amount__sign {
+  position: absolute;
+  right: 14px;
+  color: var(--hint);
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.money-amount--big .input {
+  min-height: 64px;
+  padding-right: 72px;
+  font-family: var(--font-display);
+  font-size: 26px;
+}
+
+.money-amount--big .money-amount__sign {
+  font-size: 20px;
+}
+
+.money-kinds {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+/* A category's budget: its name (two lines at most) and its amount on one line. */
+.field--inline {
+  grid-template-columns: minmax(0, 1fr) 120px;
+  align-items: center;
+  gap: 12px;
+}
+
+.field--inline .field__label {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: break-word;
+}
+
+.field--inline .money-amount .input {
+  padding-right: 48px;
+}
+
+/* Forty emoji: seven in a row under 360 px keep each at least 44 px wide. */
+@media (max-width: 359px) {
+  .category-emoji {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+}
+
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.category-grid__item {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 4px;
+  min-height: 72px;
+  padding: 8px 4px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-field);
+  background: var(--glass);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.category-grid__item[aria-pressed="true"] {
+  border-color: var(--accent-text);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.category-grid__emoji {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.category-grid__name {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: break-word;
+}
+
+.money-day {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 8px;
+}
+
+.money-form__hint {
+  margin: -8px 4px 14px;
+  font-size: 14px;
+}
+
+.money-form__delete {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.category-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.category-row__emoji {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.category-row__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-row--hidden .category-row__name {
+  color: var(--hint);
+}
+
+.category-row--hidden .category-row__emoji {
+  opacity: 0.55;
+}
+
+.category-row__mark {
+  color: var(--hint);
+  font-size: 13px;
+}
+
+.category-grid__item:focus-visible,
+.money-entry:focus-visible,
+.category-row:focus-visible,
+.money-summary__set:focus-visible,
 .legend__row:focus-visible,
 .money-today:focus-visible {
   outline: 2px solid var(--accent);

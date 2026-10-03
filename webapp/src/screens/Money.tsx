@@ -1,9 +1,11 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { Link } from "wouter";
 import { useDeleteEntry, useMoneyMonth } from "../api/money";
 import { useMe } from "../api/queries";
 import type { MoneyCategory, MoneyMonth } from "../api/types";
 import { Card } from "../components/Card";
+import { Fab } from "../components/Fab";
 import { BudgetBar, DayBars, Ring } from "../components/MoneyCharts";
 import { Empty, ErrorState, Loader } from "../components/States";
 import { SwipeRow } from "../components/SwipeRow";
@@ -65,6 +67,7 @@ function MonthView({ today }: { today: string }) {
       ) : (
         <MonthBody data={month.data} today={today} filter={filter} onFilter={setFilter} />
       )}
+      <Fab href="/money/new" label={t.money.add} />
     </>
   );
 }
@@ -76,10 +79,22 @@ function MonthBody({
   return (
     <>
       <Summary data={data} />
+      <MoneyLinks />
       {data.spent > 0 && <ByCategory data={data} categories={categories} filter={filter} onFilter={onFilter} />}
       {data.spent > 0 && <ByDay data={data} today={today} />}
       <Entries data={data} categories={categories} today={today} filter={filter} onFilter={onFilter} />
     </>
+  );
+}
+
+/** The budget and the categories, each on its own screen. */
+function MoneyLinks() {
+  const t = useT();
+  return (
+    <div className="money-links">
+      <Link href="/money/budget" className="chip-button">{t.money.budgetLink}</Link>
+      <Link href="/money/categories" className="chip-button">{t.money.categoriesLink}</Link>
+    </div>
   );
 }
 
@@ -97,6 +112,9 @@ function Summary({ data }: { data: MoneyMonth }) {
             {budgetText(data.budget, data.left, data.per_day, data.currency, lang, t)}
           </p>
         </>
+      )}
+      {data.budget === null && (
+        <Link href="/money/budget" className="money-summary__set">{t.money.setBudget}</Link>
       )}
       {data.income > 0 && (
         <p className="money-summary__line muted">
@@ -208,7 +226,7 @@ function Entries({
             const income = category.kind === "income";
             return (
               <SwipeRow key={entry.id} onDelete={() => remove.mutate(entry.id)} deleteLabel={t.money.deleteEntry}>
-                <div className="money-entry">
+                <Link href={`/money/${entry.id}/edit`} className="money-entry">
                   <span className="money-entry__emoji" aria-hidden>{category.emoji}</span>
                   <span className="money-entry__text">
                     <span className="money-entry__title">{entry.note || category.name}</span>
@@ -217,7 +235,7 @@ function Entries({
                   <span className={income ? "money-entry__amount money-entry__amount--income" : "money-entry__amount"}>
                     {formatAmount(entry.amount, data.currency, lang, income)}
                   </span>
-                </div>
+                </Link>
               </SwipeRow>
             );
           })}
