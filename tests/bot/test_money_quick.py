@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import timedelta
 
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import AnswerCallbackQuery, EditMessageText, SendMessage
 from aiogram.types import Update
 from sqlalchemy import select
@@ -119,6 +120,45 @@ async def test_undo_and_a_button_of_an_entry_that_is_gone(feed, fake, session, m
     for action in ("undo", "cat", "set"):
         await feed(press(action, entry.id, 1))
         assert fake.of(AnswerCallbackQuery)[-1].text == "Этого уже нет."
+
+
+def too_old() -> TelegramBadRequest:
+    return TelegramBadRequest(
+        method=AnswerCallbackQuery(callback_query_id="1"),
+        message="Bad Request: query is too old and response timeout expired",
+    )
+
+
+async def test_an_expired_button_still_shows_what_it_did(feed, fake, session, make_user) -> None:
+    # Taps that waited out a restart arrive too old to answer: the work is done all the same.
+    user = await make_user()
+    await feed(message_update("кофе 250"))
+    await feed(message_update("такси 300"))
+    coffee, taxi = await entries(session)
+    groceries = await preset(session, user, "groceries")
+    fake.errors.append(too_old())
+    await feed(press("set", coffee.id, groceries.id))
+    assert fake.of(EditMessageText)[-1].text.startswith(f"✅ 🛒 Продукты — {rub('250')} · кофе")
+    fake.errors.append(too_old())
+    await feed(press("undo", taxi.id))
+    assert fake.of(EditMessageText)[-1].text == f"↩️ Отменено: 🚌 Транспорт — {rub('300')} · такси"
+    await feed(press("new", coffee.id, 0))
+    await feed(message_update("Кофейни"))
+    fake.errors.append(too_old())
+    await feed(press("emoji", coffee.id, CATEGORY_EMOJI.index("☕")))
+    assert fake.of(SendMessage)[-1].text == "✅ Новая категория: ☕ Кофейни"
+    assert fake.of(EditMessageText)[-1].text.startswith(f"✅ ☕ Кофейни — {rub('250')} · кофе")
+    assert not any("Что-то пошло не так" in text for text in fake.sent_texts())
+
+
+async def test_a_command_with_a_number_is_not_money(feed, fake, session, make_user) -> None:
+    await make_user()
+    await feed(message_update("/note 7"))
+    await feed(message_update("/foo 250"))
+    assert await entries(session) == []
+    assert [text.split("\n")[0] for text in fake.sent_texts()] == [
+        "🤔 Не понял. Выбери раздел в меню ниже 👇"
+    ] * 2
 
 
 async def test_another_users_entry_is_gone_for_this_one(feed, fake, session, make_user) -> None:

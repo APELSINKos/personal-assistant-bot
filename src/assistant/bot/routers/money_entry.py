@@ -27,8 +27,11 @@ EMOJI_ROW = 8
 
 
 def looks_like_money(text: str | None) -> bool:
-    """A phrase with an amount in any currency (the user's is checked in the handler)."""
-    return text is not None and parse_quick(text, "RUB") is not None
+    """A phrase with an amount in any currency (the user's is checked in the handler); a command
+    with a number («/note 7») is never one."""
+    if text is None or text.lstrip().startswith("/"):
+        return False
+    return parse_quick(text, "RUB") is not None
 
 
 def _button(text: str, data: EntryCb) -> InlineKeyboardButton:
@@ -176,7 +179,7 @@ async def on_set(query: CallbackQuery, callback_data: EntryCb, ctx: Ctx, bot: Bo
         return
     if entry.note:
         await money.remember(ctx.session, ctx.user, entry.note, entry.category_id)
-    await query.answer()
+    await replies.answer_quietly(query)  # the move is done: an expired query must not hide it
     await replies.edit(bot, query, *await _card(ctx, entry))
     await _send_alerts(
         bot, ctx, entry, await money_month.alerts_after(ctx.session, ctx.user, entry)
@@ -201,7 +204,7 @@ async def on_undo(query: CallbackQuery, callback_data: EntryCb, ctx: Ctx, bot: B
         entry, category, money.name_of(category, ctx.t), ctx.user.currency, today, ctx.t
     )
     await money.delete_entry(ctx.session, ctx.user, entry.id)
-    await query.answer()
+    await replies.answer_quietly(query)
     await replies.edit(bot, query, ctx.t("money-undone", what=what))
 
 
@@ -263,7 +266,7 @@ async def on_emoji(query: CallbackQuery, callback_data: EntryCb, ctx: Ctx, bot: 
             CATEGORY_EMOJI[callback_data.value],
         )  # fmt: skip
     except LimitReached:
-        await query.answer()
+        await replies.answer_quietly(query)  # the dialog is over either way
         await replies.send(
             bot,
             query,
@@ -272,10 +275,10 @@ async def on_emoji(query: CallbackQuery, callback_data: EntryCb, ctx: Ctx, bot: 
         )
         return
     except InvalidInput:  # the same name was taken meanwhile
-        await query.answer()
+        await replies.answer_quietly(query)
         await replies.send(bot, query, ctx.t("money-duplicate-late"), main_menu(ctx.t))
         return
-    await query.answer()
+    await replies.answer_quietly(query)
     await replies.send(bot, query, _created_text(created, ctx), main_menu(ctx.t))
     try:
         entry = await money.update_entry(
