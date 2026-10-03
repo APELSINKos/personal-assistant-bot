@@ -30,6 +30,10 @@ class ScheduleForm(StatesGroup):
     file = State()  # an .ics file
 
 
+class MoneyForm(StatesGroup):
+    category = State()  # the name of a new category for a noted entry
+
+
 class SettingsForm(StatesGroup):
     city = State()
     time = State()

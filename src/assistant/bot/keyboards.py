@@ -95,6 +95,14 @@ class MoneyCb(CallbackData, prefix="m"):
     value: str = ""  # a month «2026-09», a currency code
 
 
+class EntryCb(CallbackData, prefix="e"):
+    """A button under a noted expense or income: its category, undo."""
+
+    action: str
+    id: Id  # the entry
+    value: Id = 0  # a category id, a kind (0 expense, 1 income) or an emoji's place in the set
+
+
 def main_menu(t: Translator) -> ReplyKeyboardMarkup:
     rows = [[KeyboardButton(text=t(f"menu-{key}")) for key in row] for row in _ROWS]
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, is_persistent=True)

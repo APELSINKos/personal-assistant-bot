@@ -105,9 +105,11 @@ def _same(a: str, b: str) -> bool:
     return a.casefold().replace("ё", "е") == b.casefold().replace("ё", "е")
 
 
-async def _check_name(
+async def check_name(
     session: AsyncSession, user: User, kind: str, name: str, own_id: int | None = None
 ) -> str:
+    """The cleaned name of a category of this kind, or InvalidInput: empty, too long, or a
+    name another category already has (a preset's in any language)."""
     cleaned = _clean_text(name, LIMITS.money_category_length, "name")
     if not cleaned:
         raise InvalidInput(field="name", reason="empty")
@@ -136,7 +138,7 @@ async def create_category(
     existing = await categories(session, user)
     if len(existing) >= LIMITS.money_categories:
         raise LimitReached(entity="category", limit=LIMITS.money_categories)
-    cleaned = await _check_name(session, user, kind, name)
+    cleaned = await check_name(session, user, kind, name)
     created = MoneyCategory(
         user_id=user.id,
         kind=kind,
@@ -174,7 +176,7 @@ async def update_category(
     budget of an expense category; a changed budget warns afresh."""
     found = await category(session, user, category_id)
     if name is not None:
-        found.name = await _check_name(session, user, found.kind, name, own_id=found.id)
+        found.name = await check_name(session, user, found.kind, name, own_id=found.id)
     if emoji is not None:
         if emoji not in CATEGORY_EMOJI:
             raise InvalidInput(field="emoji", reason="not_in_set")

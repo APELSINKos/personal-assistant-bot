@@ -48,7 +48,7 @@ async def test_rates_and_converter(feed, fake) -> None:
         assert fake.sent_texts()[-1].startswith("Нужно число больше нуля")
     await feed(message_update("100"))
     assert fake.sent_texts()[-1] == f"💱 100,00 USD = 8{NBSP}419,75 RUB"
-    await feed(message_update("100"))  # the dialog is over
+    await feed(message_update("сто"))  # the dialog is over
     assert fake.sent_texts()[-1].startswith("🤔")
 
 
@@ -57,7 +57,7 @@ async def test_converter_clears_state_when_rates_fail_at_conversion_time(feed, f
     cbr.fail = True
     await feed(message_update("100"))
     assert fake.sent_texts()[-1] == "⚠️ Не удалось получить курсы. Попробуй чуть позже."
-    await feed(message_update("100"))  # the dialog is over: state was cleared, not stuck
+    await feed(message_update("сто"))  # the dialog is over: state was cleared, not stuck
     assert fake.sent_texts()[-1].startswith("🤔")
 
 
