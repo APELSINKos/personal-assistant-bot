@@ -10,7 +10,7 @@ from assistant.core.i18n import Translator, format_day, weekday_short
 from assistant.core.models import MoneyCategory, MoneyEntry
 from assistant.core.money_style import INCOME
 from assistant.core.services.money_cards import month_title
-from assistant.core.services.money_month import Alert, Month
+from assistant.core.services.money_month import Alert, Month, share_of
 from assistant.core.services.money_phrases import format_amount
 
 SHOWN_CATEGORIES = 6
@@ -37,7 +37,7 @@ def section_text(month: Month, names: dict[int, str], currency: str, t: Translat
     day left, the largest categories, and how to note an expense."""
     lines = [t("money-title", month=month_title(month.first, t.lang))]
     if month.budget is not None:
-        percent = round(100 * month.spent / month.budget)
+        percent = share_of(month.spent, month.budget)  # half up, as the picture and the app
         lines.append(
             t(
                 "money-spent-budget",
@@ -141,7 +141,8 @@ def alert_text(alert: Alert, name: str | None, first: date, currency: str, t: Tr
     """A budget warning: 80 % reached, or the budget is over."""
     scope = "total" if alert.category is None else "category"
     values = {
-        "percent": alert.spent * 100 // alert.budget,
+        # Half up as everywhere; the 80 % warning never reads «100 %» while something is left.
+        "percent": min(share_of(alert.spent, alert.budget), 99),
         "month": month_name(first, t),
         "spent": money(alert.spent, currency, t),
         "budget": money(alert.budget, currency, t),
