@@ -19,7 +19,7 @@ from assistant.core.clients.cbr import CbrClient
 from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.config import Settings
 from assistant.core.ratelimit import RateLimiter
-from assistant.core.services import cards, schedule
+from assistant.core.services import card_kit, schedule
 from assistant.core.timeutil import utcnow
 
 
@@ -59,7 +59,7 @@ def create_app(
         calendars=calendars,
         limiter=limiter or RateLimiter(settings.api_rate_limit),
         attempts=attempts or schedule.attempt_limiter(),
-        cards=card_limiter or cards.card_limiter(),
+        cards=card_limiter or card_kit.card_limiter(),
         bot=bot,
         site=site_origin(settings.webapp_url),
         clock=clock,

@@ -66,7 +66,9 @@ def next_month(first: date) -> date:
     return (first + timedelta(days=32)).replace(day=1)
 
 
-def _share(part: int, whole: int) -> int:
+def share_of(part: int, whole: int) -> int:
+    """`part` in percent of `whole`, half a percent up (12.5 → 13): the shares the bot, the app and
+    the month's picture all show."""
     return (200 * part + whole) // (2 * whole) if whole else 0
 
 
@@ -122,7 +124,7 @@ async def month(
             if category.kind != kind:
                 continue
             left = None if category.budget is None else category.budget - amount
-            share = _share(amount, spent) if kind == EXPENSE else 0
+            share = share_of(amount, spent) if kind == EXPENSE else 0
             found.append(CategoryTotal(category, amount, share, left))
         return sorted(found, key=lambda item: (-item.amount, item.category.position))
 

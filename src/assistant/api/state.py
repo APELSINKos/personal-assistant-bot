@@ -27,7 +27,7 @@ class AppState:
     calendars: Calendars
     limiter: RateLimiter
     attempts: RateLimiter  # schedule.attempt_limiter: the downloads and parses users start
-    cards: RateLimiter  # cards.card_limiter: the share cards users have drawn
+    cards: RateLimiter  # card_kit.card_limiter: the pictures users have drawn
     bot: Bot | None  # sends cards and prepares shared messages; None: sharing is off
     site: str | None  # «https://host» of the Mini App: share links point there; None: off
     clock: Callable[[], datetime]

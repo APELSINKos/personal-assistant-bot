@@ -16,7 +16,7 @@ from assistant.api.app import create_app
 from assistant.api.auth import sign_init_data
 from assistant.core.config import Settings
 from assistant.core.ratelimit import RateLimiter
-from assistant.core.services import cards, schedule
+from assistant.core.services import card_kit, schedule
 from tests.bot.fakes import FakeSession
 from tests.stubs import StubCalendars, StubCbr, StubMeteo
 
@@ -103,7 +103,7 @@ def app(sessionmaker, api_settings, meteo, cbr, calendars, clock, monotonic, tel
         clock=lambda: clock[0],
         limiter=RateLimiter(5_000),
         attempts=schedule.attempt_limiter(lambda: monotonic[0]),
-        card_limiter=cards.card_limiter(lambda: monotonic[0]),
+        card_limiter=card_kit.card_limiter(lambda: monotonic[0]),
         bot=Bot(TOKEN, session=telegram),
     )
 

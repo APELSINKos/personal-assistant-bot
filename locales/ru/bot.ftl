@@ -429,3 +429,27 @@ money-cat-salary = Зарплата
 money-cat-stipend = Стипендия
 money-cat-gifts_in = Подарили
 money-cat-other_in = Другое
+money-report-subtitle = Расходы за месяц
+money-report-budget = { $percent } % бюджета
+money-report-of = из { $amount }
+money-report-share = { $percent } %
+money-report-left = Осталось { $amount }
+money-report-left-per-day = Осталось { $amount } — по { $per_day } в день
+money-report-over = Перерасход { $amount }
+money-report-income = Доходы { $income } · баланс { $balance }
+money-report-empty = Трат за этот месяц нет
+money-report-entries = { $count ->
+        [one] запись
+        [few] записи
+       *[many] записей
+    }
+money-report-rest = Остальное
+money-report-days = По дням
+money-report-caption = 💰 { $month }: потрачено { $amount }
+rates-card-title = Курсы ЦБ
+rates-card-period = за 30 дней · { $start } — { $end }
+rates-card-name-usd = Доллар США
+rates-card-name-eur = Евро
+rates-card-change = { $amount } · { $percent } % за 30 дней
+rates-card-unavailable = Курсы ЦБ сейчас недоступны
+rates-card-caption = 📈 Курсы ЦБ за 30 дней

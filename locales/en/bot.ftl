@@ -408,3 +408,26 @@ money-cat-salary = Salary
 money-cat-stipend = Stipend
 money-cat-gifts_in = Gifts received
 money-cat-other_in = Other
+money-report-subtitle = Expenses this month
+money-report-budget = { $percent }% of the budget
+money-report-of = of { $amount }
+money-report-share = { $percent }%
+money-report-left = { $amount } left
+money-report-left-per-day = { $amount } left — { $per_day } a day
+money-report-over = { $amount } over the budget
+money-report-income = Income { $income } · balance { $balance }
+money-report-empty = No expenses this month
+money-report-entries = { $count ->
+        [one] entry
+       *[other] entries
+    }
+money-report-rest = Other
+money-report-days = Day by day
+money-report-caption = 💰 { $month }: spent { $amount }
+rates-card-title = Bank of Russia rates
+rates-card-period = 30 days · { $start } — { $end }
+rates-card-name-usd = US dollar
+rates-card-name-eur = Euro
+rates-card-change = { $amount } · { $percent }% in 30 days
+rates-card-unavailable = The bank's rates are not available now
+rates-card-caption = 📈 Bank of Russia rates for 30 days

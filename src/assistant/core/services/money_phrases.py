@@ -187,14 +187,18 @@ def _quick(
     return Quick(amount=amount, note=note, income=income, days_ago=days_ago)
 
 
-def format_amount(hundredths: int, currency: str, lang: str, *, plus: bool = False) -> str:
+def format_amount(
+    hundredths: int, currency: str, lang: str, *, plus: bool = False, sign: str | None = None
+) -> str:
     """«1 200 ₽», «430,50 ₽», in English «$1,200» and «1,200 ₽»; kopecks only when there are
-    some. `plus` marks an income: «+5 000 ₽»."""
+    some. `plus` marks an income: «+5 000 ₽». `sign` replaces the currency's sign (a picture
+    draws «AMD» where its fonts lack «֏»)."""
     whole = hundredths % 100 == 0
     value = Decimal(hundredths) / 100
     number = str(format_decimal(value, format="#,##0" if whole else "#,##0.00", locale=lang))
     number = number.replace("\u202f", NBSP).replace(" ", NBSP)
     style = CURRENCIES.get(currency)
-    sign = style.sign if style else currency
-    text = f"{sign}{number}" if style and style.before and lang == "en" else f"{number}{NBSP}{sign}"
+    mark = sign or (style.sign if style else currency)
+    before = style is not None and style.before and lang == "en" and mark == style.sign
+    text = f"{mark}{number}" if before else f"{number}{NBSP}{mark}"
     return f"+{text}" if plus else text
