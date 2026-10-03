@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from assistant.core.config import LIMITS
 from assistant.core.errors import InvalidInput, LimitReached, NotFound
 from assistant.core.i18n import Translator, labels
-from assistant.core.models import MoneyCategory, MoneyEntry, MoneyWord, User
+from assistant.core.models import MoneyAlert, MoneyCategory, MoneyEntry, MoneyWord, User
 from assistant.core.money_style import (
     CATEGORY_EMOJI,
     CURRENCIES,
@@ -150,6 +150,16 @@ async def create_category(
     return created
 
 
+async def _forget_alerts(session: AsyncSession, user: User, category_id: int) -> None:
+    """The warnings shown for a budget that changed (0: the budget of all expenses): the new
+    budget warns afresh."""
+    await session.execute(
+        sql_delete(MoneyAlert).where(
+            MoneyAlert.user_id == user.id, MoneyAlert.category_id == category_id
+        )
+    )
+
+
 async def update_category(
     session: AsyncSession,
     user: User,
@@ -161,7 +171,7 @@ async def update_category(
     budget: object = KEEP,
 ) -> MoneyCategory:
     """Rename (a preset too), change the emoji, hide or show, set or clear (None) the monthly
-    budget of an expense category."""
+    budget of an expense category; a changed budget warns afresh."""
     found = await category(session, user, category_id)
     if name is not None:
         found.name = await _check_name(session, user, found.kind, name, own_id=found.id)
@@ -176,19 +186,24 @@ async def update_category(
     if budget is not KEEP:
         if found.kind != EXPENSE:
             raise InvalidInput(field="budget", reason="income")
-        if budget is None:
-            found.budget = None
-        elif isinstance(budget, int) and not isinstance(budget, bool):
-            found.budget = _check_amount(budget, "budget")
-        else:
+        new: int | None = None
+        if isinstance(budget, int) and not isinstance(budget, bool):
+            new = _check_amount(budget, "budget")
+        elif budget is not None:
             raise InvalidInput(field="budget", reason="out_of_range")
+        if new != found.budget:
+            await _forget_alerts(session, user, found.id)
+        found.budget = new
     await session.flush()
     return found
 
 
 async def set_budget(session: AsyncSession, user: User, amount: int | None) -> None:
-    """The monthly budget of all expenses; None removes it."""
-    user.money_budget = None if amount is None else _check_amount(amount, "budget")
+    """The monthly budget of all expenses; None removes it. A changed budget warns afresh."""
+    new = None if amount is None else _check_amount(amount, "budget")
+    if new != user.money_budget:
+        await _forget_alerts(session, user, 0)
+    user.money_budget = new
     await session.flush()
 
 

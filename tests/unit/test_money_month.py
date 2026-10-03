@@ -63,6 +63,37 @@ async def test_a_month_by_category_and_by_day(session: AsyncSession, make_user: 
     assert [entry.amount for entry, _ in only] == [75000, 25000]
 
 
+async def test_a_share_is_rounded_half_up(session: AsyncSession, make_user: MakeUser) -> None:
+    user = await make_user()
+    await spend(session, user, "cafe", 100, date(2026, 10, 1))
+    await spend(session, user, "groceries", 700, date(2026, 10, 1))
+    month = await money_month.month(session, user, now=NOW)
+    assert [(t.category.preset, t.share) for t in month.expenses] == [
+        ("groceries", 88), ("cafe", 13),
+    ]  # fmt: skip
+
+
+async def test_a_month_across_the_new_year(session: AsyncSession, make_user: MakeUser) -> None:
+    user = await make_user()
+    await money.set_budget(session, user, 3100000)
+    new_year = datetime(2027, 1, 2, 9, 0, tzinfo=UTC)
+    await spend(session, user, "cafe", 1000, date(2026, 12, 31), now=new_year)
+    await spend(session, user, "cafe", 2000, date(2027, 1, 1), now=new_year)
+    january = await money_month.month(session, user, now=new_year)
+    assert (january.first, january.spent, january.count, len(january.days)) == (
+        date(2027, 1, 1), 2000, 1, 31,
+    )  # fmt: skip
+    assert january.days[:3] == [2000, 0, None]
+    assert january.per_day == (3100000 - 2000) // 30  # 2 to 31 January
+    december = await money_month.month(session, user, date(2026, 12, 20), now=new_year)
+    assert (december.first, december.spent, december.count, december.per_day) == (
+        date(2026, 12, 1), 1000, 1, None,
+    )  # fmt: skip
+    assert december.days[30] == 1000
+    eve = datetime(2026, 12, 31, 9, 0, tzinfo=UTC)
+    assert (await money_month.month(session, user, now=eve)).per_day == 3100000 - 1000
+
+
 async def test_the_month_is_the_users_local_one(session: AsyncSession, make_user: MakeUser) -> None:
     user = await make_user(tz="Asia/Vladivostok")
     evening = datetime(2026, 9, 30, 20, 0, tzinfo=UTC)  # already 1 October in Vladivostok
@@ -84,6 +115,22 @@ async def test_the_budgets_rest_for_each_day_left(
     await spend(session, user, "cafe", 600000, date(2026, 10, 3))
     over = await money_month.month(session, user, now=NOW)
     assert (over.left, over.per_day) == (-35000, None)
+
+
+async def test_the_rest_per_day_is_for_the_current_month_only(
+    session: AsyncSession, make_user: MakeUser
+) -> None:
+    user = await make_user()
+    await money.set_budget(session, user, 3000000)
+    await spend(session, user, "groceries", 100000, date(2026, 9, 10))
+    for now in (datetime(2026, 10, 1, 9, 0, tzinfo=UTC), NOW):  # September on 1 and 3 October
+        september = await money_month.month(session, user, date(2026, 9, 1), now=now)
+        assert (september.left, september.per_day) == (2900000, None)
+    november = await money_month.month(session, user, date(2026, 11, 1), now=NOW)
+    assert (november.left, november.per_day, november.days) == (3000000, None, [None] * 30)
+    await spend(session, user, "groceries", 3000000, date(2026, 10, 2))  # all of it
+    october = await money_month.month(session, user, now=NOW)
+    assert (october.left, october.per_day) == (0, None)
 
 
 async def test_a_category_budgets_rest(session: AsyncSession, make_user: MakeUser) -> None:
@@ -134,6 +181,44 @@ async def test_a_category_budget_warns_on_its_own(
     assert [(a.category.preset if a.category else None, a.threshold) for a in found] == [
         ("cafe", 80)
     ]
+
+
+async def test_each_budget_warns_for_itself_and_only_expenses_count(
+    session: AsyncSession, make_user: MakeUser
+) -> None:
+    user = await make_user()
+    cafe, salary = await preset(session, user, "cafe"), await preset(session, user, "salary")
+    await spend(session, user, "cafe", 9000, date(2026, 10, 2))
+    await money.add_entry(
+        session, user, amount=500000, category_id=salary.id, day=date(2026, 10, 2), now=NOW
+    )
+    await money.update_category(session, user, cafe.id, budget=10000)
+    await money.set_budget(session, user, 10000)
+    entry = await money.add_entry(session, user, amount=100, category_id=cafe.id, now=NOW)
+    found = await money_month.alerts_after(session, user, entry, NOW)
+    assert [(a.category.preset if a.category else None, a.threshold, a.spent) for a in found] == [
+        ("cafe", 80, 9100), (None, 80, 9100),
+    ]  # fmt: skip
+
+
+async def test_a_changed_budget_warns_afresh(session: AsyncSession, make_user: MakeUser) -> None:
+    user = await make_user()
+    cafe = await preset(session, user, "cafe")
+    await money.set_budget(session, user, 100000)
+    await money.update_category(session, user, cafe.id, budget=10000)
+
+    async def add(amount: int) -> list[tuple[str | None, int]]:
+        entry = await money.add_entry(session, user, amount=amount, category_id=cafe.id, now=NOW)
+        found = await money_month.alerts_after(session, user, entry, NOW)
+        return [(a.category.preset if a.category else None, a.threshold) for a in found]
+
+    assert await add(100000) == [("cafe", 100), (None, 100)]
+    await money.set_budget(session, user, 100000)  # the same budgets: nothing new
+    await money.update_category(session, user, cafe.id, budget=10000)
+    assert await add(100) == []
+    await money.set_budget(session, user, 200000)  # raised: their thresholds count again
+    await money.update_category(session, user, cafe.id, budget=200000)
+    assert await add(60000) == [("cafe", 80), (None, 80)]
 
 
 async def test_no_warning_for_an_income_a_past_month_or_without_a_budget(
