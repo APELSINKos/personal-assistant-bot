@@ -1,5 +1,5 @@
 import type { StreakUnit } from "../api/types";
-import type { AlertWords, Dict } from "./ru";
+import type { AlertWords, BudgetWords, Dict } from "./ru";
 
 function plural(n: number, one: string, other: string): string {
   return n === 1 ? one : other;
@@ -16,6 +16,7 @@ export const en: Dict = {
     calendar: "Calendar",
     habits: "Habits",
     notes: "Notes",
+    money: "Money",
     more: "More",
   },
   common: {
@@ -143,6 +144,24 @@ export const en: Dict = {
         ? `🚨 The ${which} has run out: ${spent} of ${budget}`
         : `⚠️ ${percent}% of the ${which} is spent: ${spent} of ${budget}`;
     },
+    prevMonth: "Previous month",
+    nextMonth: "Next month",
+    spent: "Spent",
+    budget: ({ budget, rest, over, perDay }: BudgetWords) =>
+      over
+        ? `of ${budget} · ${rest} over`
+        : `of ${budget} · ${rest} left${perDay === null ? "" : `, ${perDay} a day`}`,
+    income: (income: string, balance: string) => `Income ${income} · balance ${balance}`,
+    byCategory: "By category",
+    byDay: "By day",
+    ring: (shares: string) => `Spending by category: ${shares}`,
+    entriesWord: (count: number) => plural(count, "entry", "entries"),
+    days: (day: string, amount: string) => `Spending by day; the most on ${day}: ${amount}`,
+    entries: "Entries",
+    empty: "No entries this month.",
+    emptyCategory: "No entries in this category this month.",
+    showAll: (name: string) => `Show all the entries, not only “${name}”`,
+    deleteEntry: "Delete the entry",
   },
   more: {
     city: "City",

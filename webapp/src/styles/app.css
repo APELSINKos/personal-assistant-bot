@@ -403,7 +403,9 @@ a {
   inset: auto 0 0;
   z-index: 20;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  /* Six equal sections where their labels fit; a label that does not («Календарь» is 59 px at
+     11 px, more than a sixth of 360 px) widens its own one, and the others share what is left. */
+  grid-template-columns: repeat(6, minmax(max-content, 1fr));
   padding-bottom: var(--safe-bottom);
   border-top: 1px solid var(--line);
   background: var(--glass-strong);
@@ -418,9 +420,18 @@ a {
   justify-content: center;
   gap: 2px;
   min-height: var(--nav-height);
+  padding: 0 4px;
   color: var(--hint);
   font-size: 11px;
   font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Under 360 px the six labels with their padding fit only at 10 px. */
+@media (max-width: 359px) {
+  .tab {
+    font-size: 10px;
+  }
 }
 
 .tab--active {

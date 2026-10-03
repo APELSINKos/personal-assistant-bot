@@ -1,0 +1,228 @@
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useState } from "react";
+import { useDeleteEntry, useMoneyMonth } from "../api/money";
+import { useMe } from "../api/queries";
+import type { MoneyCategory, MoneyMonth } from "../api/types";
+import { Card } from "../components/Card";
+import { BudgetBar, DayBars, Ring } from "../components/MoneyCharts";
+import { Empty, ErrorState, Loader } from "../components/States";
+import { SwipeRow } from "../components/SwipeRow";
+import { useLang, useT } from "../i18n";
+import { dayMonth, localTodayIso, monthTitle } from "../lib/format";
+import {
+  addMonths, budgetText, byDay, entryDay, formatAmount, formatSigned, monthOf, ringParts, sliceColor,
+} from "../lib/money";
+
+type Categories = Map<number, MoneyCategory>;
+
+/** The month's money; «today» is the city's, so the screen waits for `/me` to name its zone. */
+export function MoneyScreen() {
+  const me = useMe();
+  if (me.isError) return <ErrorState onRetry={() => void me.refetch()} />;
+  if (me.isPending) return <Loader />;
+  return <MonthView today={localTodayIso(me.data.city.timezone)} />;
+}
+
+function MonthView({ today }: { today: string }) {
+  const t = useT();
+  const lang = useLang();
+  const current = monthOf(today);
+  const [shown, setShown] = useState(current);
+  const [filter, setFilter] = useState<number | null>(null);
+  const month = useMoneyMonth(shown);
+  const first = month.data?.first_month ?? null;
+  const go = (step: number) => {
+    setShown(addMonths(shown, step));
+    setFilter(null);
+  };
+  return (
+    <>
+      <header className="month-head money-head">
+        <button
+          type="button"
+          className="icon-button"
+          aria-label={t.money.prevMonth}
+          disabled={first === null || shown <= first}
+          onClick={() => go(-1)}
+        >
+          <ChevronLeft size={20} aria-hidden />
+        </button>
+        <h1 className="money-head__title">{monthTitle(`${shown}-01`, lang)}</h1>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label={t.money.nextMonth}
+          disabled={shown >= current}
+          onClick={() => go(1)}
+        >
+          <ChevronRight size={20} aria-hidden />
+        </button>
+      </header>
+      {month.isPending ? (
+        <Loader />
+      ) : month.isError ? (
+        <ErrorState onRetry={() => void month.refetch()} />
+      ) : (
+        <MonthBody data={month.data} today={today} filter={filter} onFilter={setFilter} />
+      )}
+    </>
+  );
+}
+
+function MonthBody({
+  data, today, filter, onFilter,
+}: { data: MoneyMonth; today: string; filter: number | null; onFilter: (id: number | null) => void }) {
+  const categories: Categories = new Map(data.categories.map((category) => [category.id, category]));
+  return (
+    <>
+      <Summary data={data} />
+      {data.spent > 0 && <ByCategory data={data} categories={categories} filter={filter} onFilter={onFilter} />}
+      {data.spent > 0 && <ByDay data={data} today={today} />}
+      <Entries data={data} categories={categories} today={today} filter={filter} onFilter={onFilter} />
+    </>
+  );
+}
+
+function Summary({ data }: { data: MoneyMonth }) {
+  const t = useT();
+  const lang = useLang();
+  return (
+    <Card index={0}>
+      <p className="money-summary__label">{t.money.spent}</p>
+      <p className="money-summary__spent">{formatAmount(data.spent, data.currency, lang)}</p>
+      {data.budget !== null && data.left !== null && (
+        <>
+          <BudgetBar spent={data.spent} budget={data.budget} />
+          <p className="money-summary__line muted">
+            {budgetText(data.budget, data.left, data.per_day, data.currency, lang, t)}
+          </p>
+        </>
+      )}
+      {data.income > 0 && (
+        <p className="money-summary__line muted">
+          {t.money.income(
+            formatAmount(data.income, data.currency, lang),
+            formatSigned(data.balance, data.currency, lang),
+          )}
+        </p>
+      )}
+    </Card>
+  );
+}
+
+function ByCategory({
+  data, categories, filter, onFilter,
+}: { data: MoneyMonth; categories: Categories; filter: number | null; onFilter: (id: number | null) => void }) {
+  const t = useT();
+  const lang = useLang();
+  const shares = data.expenses.map((item) => `${categories.get(item.category_id)?.name ?? ""} ${item.share}%`);
+  return (
+    <Card title={t.money.byCategory} index={1}>
+      <div className="money-ring">
+        <Ring
+          parts={ringParts(data.expenses)}
+          label={t.money.ring(shares.join(", "))}
+          count={String(data.entries.length)}
+          caption={t.money.entriesWord(data.entries.length)}
+        />
+      </div>
+      <ul className="legend">
+        {data.expenses.map((item, index) => {
+          const category = categories.get(item.category_id);
+          if (!category) return null;
+          const pressed = filter === category.id;
+          return (
+            <li key={category.id}>
+              <button
+                type="button"
+                className="legend__row"
+                aria-pressed={pressed}
+                onClick={() => onFilter(pressed ? null : category.id)}
+              >
+                <span className="legend__dot" style={{ background: sliceColor(index) }} aria-hidden />
+                <span className="legend__name">{`${category.emoji} ${category.name}`}</span>
+                <span className="legend__amount">{formatAmount(item.amount, data.currency, lang)}</span>
+                <span className="legend__share">{`${item.share}%`}</span>
+              </button>
+              {category.budget !== null && item.left !== null && (
+                <div className="legend__budget">
+                  <BudgetBar spent={item.amount} budget={category.budget} />
+                  <span className="muted">{budgetText(category.budget, item.left, null, data.currency, lang, t)}</span>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
+}
+
+function ByDay({ data, today }: { data: MoneyMonth; today: string }) {
+  const t = useT();
+  const lang = useLang();
+  const most = data.days.reduce<number>((best, value, index) => ((value ?? 0) > (data.days[best] ?? 0) ? index : best), 0);
+  const day = dayMonth(`${data.month}-${String(most + 1).padStart(2, "0")}`, lang);
+  return (
+    <Card title={t.money.byDay} index={2}>
+      <DayBars
+        days={data.days}
+        today={monthOf(today) === data.month ? Number(today.slice(8)) : 0}
+        label={t.money.days(day, formatAmount(data.days[most] ?? 0, data.currency, lang))}
+      />
+    </Card>
+  );
+}
+
+function Entries({
+  data, categories, today, filter, onFilter,
+}: {
+  data: MoneyMonth;
+  categories: Categories;
+  today: string;
+  filter: number | null;
+  onFilter: (id: number | null) => void;
+}) {
+  const t = useT();
+  const lang = useLang();
+  const remove = useDeleteEntry();
+  const chosen = filter === null ? undefined : categories.get(filter);
+  const entries = chosen ? data.entries.filter((entry) => entry.category_id === chosen.id) : data.entries;
+  return (
+    <section className="money-entries" aria-labelledby="money-entries">
+      <div className="money-entries__head">
+        <h2 id="money-entries" className="card__title">{t.money.entries}</h2>
+        {chosen && (
+          <button type="button" className="chip-button" aria-label={t.money.showAll(chosen.name)} onClick={() => onFilter(null)}>
+            {`${chosen.emoji} ${chosen.name} ✕`}
+          </button>
+        )}
+      </div>
+      {entries.length === 0 && <Empty text={chosen ? t.money.emptyCategory : t.money.empty} />}
+      {byDay(entries).map((group) => (
+        <div key={group.day}>
+          <h3 className="group__label">{entryDay(group.day, today, lang, t.calendar.words)}</h3>
+          {group.entries.map((entry) => {
+            const category = categories.get(entry.category_id);
+            if (!category) return null;
+            const income = category.kind === "income";
+            return (
+              <SwipeRow key={entry.id} onDelete={() => remove.mutate(entry.id)} deleteLabel={t.money.deleteEntry}>
+                <div className="money-entry">
+                  <span className="money-entry__emoji" aria-hidden>{category.emoji}</span>
+                  <span className="money-entry__text">
+                    <span className="money-entry__title">{entry.note || category.name}</span>
+                    {entry.note && <span className="money-entry__sub">{category.name}</span>}
+                  </span>
+                  <span className={income ? "money-entry__amount money-entry__amount--income" : "money-entry__amount"}>
+                    {formatAmount(entry.amount, data.currency, lang, income)}
+                  </span>
+                </div>
+              </SwipeRow>
+            );
+          })}
+        </div>
+      ))}
+    </section>
+  );
+}

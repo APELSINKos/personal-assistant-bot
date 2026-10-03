@@ -4,6 +4,7 @@ import { CalendarScreen } from "./screens/Calendar";
 import { HabitScreen } from "./screens/Habit";
 import { HabitForm } from "./screens/HabitForm";
 import { HabitsScreen } from "./screens/Habits";
+import { MoneyScreen } from "./screens/Money";
 import { MoreScreen } from "./screens/More";
 import { NoteEditor } from "./screens/NoteEditor";
 import { NotesScreen } from "./screens/Notes";
@@ -44,6 +45,7 @@ export const ROUTES: AppRoute[] = [
   { path: "/notes", component: NotesScreen },
   { path: "/notes/new", component: NoteEditor, hideNav: true },
   { path: "/notes/:id", component: NoteEditor, hideNav: true },
+  { path: "/money", component: MoneyScreen },
   { path: "/more", component: MoreScreen },
   { path: "/more/schedule", component: ScheduleScreen, parent: "/more" },
 ];

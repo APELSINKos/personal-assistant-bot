@@ -24,12 +24,23 @@ export interface AlertWords {
   budget: string;
 }
 
+/** A budget's line, each amount already formatted (lib/money.ts, budgetText). */
+export interface BudgetWords {
+  budget: string;
+  /** What is left, or what is overspent when `over`. */
+  rest: string;
+  over: boolean;
+  /** What is left for each day to the month's end; null for a past month or a category. */
+  perDay: string | null;
+}
+
 export const ru = {
   tabs: {
     today: "Сегодня",
     calendar: "Календарь",
     habits: "Привычки",
     notes: "Заметки",
+    money: "Деньги",
     more: "Ещё",
   },
   common: {
@@ -158,6 +169,24 @@ export const ru = {
         ? `🚨 Бюджет${which} на ${month} закончился: ${spent} из ${budget}`
         : `⚠️ Потрачено ${percent}\u00a0% бюджета${which} на ${month}: ${spent} из ${budget}`;
     },
+    prevMonth: "Предыдущий месяц",
+    nextMonth: "Следующий месяц",
+    spent: "Потрачено",
+    budget: ({ budget, rest, over, perDay }: BudgetWords) =>
+      over
+        ? `из ${budget} · перерасход ${rest}`
+        : `из ${budget} · осталось ${rest}${perDay === null ? "" : `, по ${perDay} в день`}`,
+    income: (income: string, balance: string) => `Доходы ${income} · баланс ${balance}`,
+    byCategory: "По категориям",
+    byDay: "По дням",
+    ring: (shares: string) => `Траты по категориям: ${shares}`,
+    entriesWord: (count: number) => plural(count, "запись", "записи", "записей"),
+    days: (day: string, amount: string) => `Траты по дням; больше всего — ${day}: ${amount}`,
+    entries: "Записи",
+    empty: "В этом месяце записей нет.",
+    emptyCategory: "В этой категории в этом месяце записей нет.",
+    showAll: (name: string) => `Показать все записи, не только «${name}»`,
+    deleteEntry: "Удалить запись",
   },
   more: {
     city: "Город",

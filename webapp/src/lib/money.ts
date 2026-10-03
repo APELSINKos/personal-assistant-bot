@@ -1,7 +1,7 @@
-import type { MoneyAlert } from "../api/types";
+import type { CategoryTotal, MoneyAlert, MoneyEntry } from "../api/types";
 import type { Lang } from "../i18n";
 import type { Dict } from "../i18n/ru";
-import { parseIsoDate } from "./format";
+import { daysBetween, parseIsoDate } from "./format";
 
 /** Joins the parts of an amount, so a line never breaks inside one. */
 export const NBSP = "\u00a0";
@@ -123,4 +123,76 @@ export function alertText(alert: MoneyAlert, day: string, currency: string, lang
     spent: formatAmount(alert.spent, currency, lang),
     budget: formatAmount(alert.budget, currency, lang),
   });
+}
+
+/** «из 30 000 ₽ · осталось 17 600 ₽, по 620 ₽ в день», or «из 30 000 ₽ · перерасход 3 000 ₽». */
+export function budgetText(
+  budget: number, left: number, perDay: number | null, currency: string, lang: Lang, t: Dict,
+): string {
+  const money = (amount: number) => formatAmount(amount, currency, lang);
+  return t.money.budget({
+    budget: money(budget),
+    rest: money(Math.abs(left)),
+    over: left < 0,
+    perDay: perDay === null ? null : money(perDay),
+  });
+}
+
+export type Tone = "ok" | "warning" | "over";
+
+/** A budget's bar: how much of it is spent (0–100) and its colour — amber from 80 %, red from 100 %. */
+export function budgetUse(spent: number, budget: number): { percent: number; tone: Tone } {
+  const share = (spent * 100) / budget;
+  return {
+    percent: Math.min(100, Math.round(share)),
+    tone: share >= 100 ? "over" : share >= 80 ? "warning" : "ok",
+  };
+}
+
+/** The ring's colours: the five largest categories in the habit palette's order, the others in
+ *  slate — as on the bot's report (money_cards.PALETTE). */
+export const SLICE_COLORS = [
+  "var(--habit-mint)", "var(--habit-sky)", "var(--habit-violet)", "var(--habit-rose)", "var(--habit-coral)",
+] as const;
+export const REST_COLOR = "var(--habit-slate)";
+
+/** The colour of the category that is `index`-th by its amount. */
+export function sliceColor(index: number): string {
+  return SLICE_COLORS[index] ?? REST_COLOR;
+}
+
+export interface RingPart {
+  /** A category's id; null for all the others together. */
+  id: number | null;
+  amount: number;
+  color: string;
+}
+
+/** The five largest expenses (the API sorts them), then «Остальное» for the others, if any. */
+export function ringParts(expenses: CategoryTotal[]): RingPart[] {
+  const parts: RingPart[] = expenses.slice(0, SLICE_COLORS.length).map((item, index) => ({
+    id: item.category_id, amount: item.amount, color: sliceColor(index),
+  }));
+  const rest = expenses.slice(SLICE_COLORS.length).reduce((sum, item) => sum + item.amount, 0);
+  return rest > 0 ? [...parts, { id: null, amount: rest, color: REST_COLOR }] : parts;
+}
+
+/** «Сегодня», «Вчера», or «пн, 28 сент.»: the heading of a day's entries. */
+export function entryDay(iso: string, today: string, lang: Lang, words: { today: string; yesterday: string }): string {
+  const away = daysBetween(iso, today);
+  if (away === 0) return words.today;
+  if (away === 1) return words.yesterday;
+  return new Intl.DateTimeFormat(lang, { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" })
+    .format(parseIsoDate(iso));
+}
+
+/** The entries in groups by day, in the order they come (the API sends the newest first). */
+export function byDay(entries: MoneyEntry[]): { day: string; entries: MoneyEntry[] }[] {
+  const days: { day: string; entries: MoneyEntry[] }[] = [];
+  for (const entry of entries) {
+    const last = days.at(-1);
+    if (last?.day === entry.day) last.entries.push(entry);
+    else days.push({ day: entry.day, entries: [entry] });
+  }
+  return days;
 }

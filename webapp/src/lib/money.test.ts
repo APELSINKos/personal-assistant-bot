@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { MoneyAlert } from "../api/types";
 import { dict } from "../i18n";
 import {
-  addMonths, alertText, amountText, CATEGORY_EMOJI, CURRENCIES, currencySign, formatAmount, formatSigned, monthName,
-  monthOf, parseAmount,
+  addMonths, alertText, amountText, budgetText, budgetUse, byDay, CATEGORY_EMOJI, CURRENCIES, currencySign, entryDay,
+  formatAmount, formatSigned, monthName, monthOf, parseAmount, ringParts, sliceColor,
 } from "./money";
 
 /** An amount as it shows: its spaces are no-break ones. */
@@ -99,5 +99,56 @@ describe("budget warnings", () => {
     expect(en({ ...cafe, name: "Eating out" })).toBe(
       "🚨 The “☕ Eating out” budget for October has run out: $5,300 of $5,000",
     );
+  });
+});
+
+describe("the month's parts", () => {
+  it("word a budget's rest, for each day or overspent", () => {
+    expect(budgetText(3000000, 1760000, 62000, "RUB", "ru", dict("ru"))).toBe(
+      `из ${shown("30 000 ₽")} · осталось ${shown("17 600 ₽")}, по ${shown("620 ₽")} в день`,
+    );
+    expect(budgetText(500000, -30000, null, "RUB", "ru", dict("ru"))).toBe(
+      `из ${shown("5 000 ₽")} · перерасход ${shown("300 ₽")}`,
+    );
+    expect(budgetText(3000000, 0, null, "USD", "en", dict("en"))).toBe("of $30,000 · $0 left");
+  });
+
+  it("colour a budget amber from 80 % and red from 100 %", () => {
+    expect(budgetUse(2370000, 3000000)).toEqual({ percent: 79, tone: "ok" });
+    expect(budgetUse(2400000, 3000000)).toEqual({ percent: 80, tone: "warning" });
+    expect(budgetUse(3000000, 3000000)).toEqual({ percent: 100, tone: "over" });
+    expect(budgetUse(4500000, 3000000)).toEqual({ percent: 100, tone: "over" });
+  });
+
+  it("ring the five largest categories and the others together", () => {
+    const expenses = [9, 8, 7, 6, 5, 4, 3].map((amount, index) => ({
+      category_id: index + 1, amount, share: 0, left: null,
+    }));
+    expect(ringParts(expenses)).toEqual([
+      { id: 1, amount: 9, color: "var(--habit-mint)" },
+      { id: 2, amount: 8, color: "var(--habit-sky)" },
+      { id: 3, amount: 7, color: "var(--habit-violet)" },
+      { id: 4, amount: 6, color: "var(--habit-rose)" },
+      { id: 5, amount: 5, color: "var(--habit-coral)" },
+      { id: null, amount: 7, color: "var(--habit-slate)" },
+    ]);
+    expect(ringParts(expenses.slice(0, 2)).map((part) => part.id)).toEqual([1, 2]);
+    expect(sliceColor(7)).toBe("var(--habit-slate)");
+  });
+
+  it("head each day of entries", () => {
+    const words = dict("ru").calendar.words;
+    expect(entryDay("2026-09-28", "2026-09-28", "ru", words)).toBe("Сегодня");
+    expect(entryDay("2026-09-27", "2026-09-28", "ru", words)).toBe("Вчера");
+    expect(entryDay("2026-09-25", "2026-09-28", "ru", words)).toBe("пт, 25 сент.");
+    expect(entryDay("2026-09-25", "2026-09-28", "en", dict("en").calendar.words)).toBe("Fri, Sep 25");
+  });
+
+  it("group the entries by day, in their order", () => {
+    const entry = (id: number, day: string) => ({ id, amount: 100, category_id: 1, note: "", day });
+    expect(byDay([entry(3, "2026-09-28"), entry(2, "2026-09-27"), entry(1, "2026-09-27")])).toEqual([
+      { day: "2026-09-28", entries: [entry(3, "2026-09-28")] },
+      { day: "2026-09-27", entries: [entry(2, "2026-09-27"), entry(1, "2026-09-27")] },
+    ]);
   });
 });
