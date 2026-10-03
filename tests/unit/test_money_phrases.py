@@ -64,6 +64,13 @@ def test_amounts_in_hundredths(number: str, thousands: bool, expected: int | Non
         ("250₽ кофе", Quick(25000, "кофе", None)),
         ("250", Quick(25000, "", None)),
         ("+5000", Quick(500000, "", True)),
+        ("1 200", Quick(120000, "", None)),  # one number with a group, not «200» noted «1»
+        ("+1 200", Quick(120000, "", True)),
+        ("15 000", Quick(1500000, "", None)),
+        ("12 345,50", Quick(1234550, "", None)),
+        ("1 200 ₽", Quick(120000, "", None)),
+        ("вчера 1 200", Quick(120000, "", None, days_ago=1)),
+        ("☕ 250", Quick(25000, "☕", None)),  # an emoji is a note
         ("вчера такси 300", Quick(30000, "такси", None, days_ago=1)),
         ("позавчера кофе 200", Quick(20000, "кофе", None, days_ago=2)),
         ("вчера 300", Quick(30000, "", None, days_ago=1)),
@@ -95,6 +102,10 @@ def test_amounts_in_hundredths(number: str, thousands: bool, expected: int | Non
         ("+30 минут", None),
         ("-5 кг", None),
         ("+2 кг", None),
+        ("+7 999 123-45-67", None),  # a phone number
+        ("+7 999 1234567", None),
+        ("8 999 123 45 67", None),
+        ("2 + 2 = 4", None),
     ],
 )
 def test_quick_phrases_in_roubles(text: str, expected: Quick | OtherCurrency | None) -> None:
@@ -122,6 +133,9 @@ def test_a_phrase_in_the_users_own_currency() -> None:
         ("business lunch", "cafe"),  # «bus» is a whole word only
         ("booking", None),
         ("кинопоиск", "subscriptions"),
+        ("премия", "salary"),
+        ("премиальные", "salary"),
+        ("премиум подписка", "subscriptions"),  # not a bonus
         ("кино", "fun"),
         ("xyz", None),
         ("", None),

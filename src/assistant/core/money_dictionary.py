@@ -54,7 +54,10 @@ STEMS: dict[str, tuple[str, ...]] = {
     "subscriptions": (
         "подписк", "spotify", "netflix", "youtube", "кинопоиск", "icloud", "subscription",
     ),
-    "salary": ("зарплат", "аванс", "преми", "оклад", "salary", "paycheck", "wage", "bonus"),
+    "salary": (
+        "зарплат", "аванс", "премия", "премии", "премию", "премией", "премиальн", "оклад",
+        "salary", "paycheck", "wage", "bonus",
+    ),
     "stipend": ("стипенд", "stipend", "scholarship", "грант", "grant"),
     "gifts_in": ("подарили",),
     "other_in": ("кэшбэк", "кешбэк", "кэшбек", "кешбек", "cashback", "возврат", "refund"),

@@ -3,7 +3,7 @@ from the words, and showing an amount in the user's currency.
 
 No AI: a small grammar and a word list (money_dictionary), like the reminder phrases. The amount
 goes at the end («кофе 250»), or first with a sign or a currency («+5000 стипендия», «250₽ кофе»),
-or first and bare when the next word names a category («250 кофе»).
+or first and bare when the next word names a category («250 кофе»), or alone («1 200»).
 """
 
 from __future__ import annotations
@@ -70,6 +70,9 @@ _AMOUNT = (
 _AT_END = re.compile(rf"^(?:(?P<body>.*?)\s+)?{_AMOUNT}$", re.IGNORECASE)
 _AT_START = re.compile(rf"^{_AMOUNT}(?:\s+(?P<body>.+))?$", re.IGNORECASE)
 _DATE_LIKE = re.compile(r"^(\d{1,2})\.(\d{2})$")
+# Only digits, signs and punctuation: before a number at the end that is part of the number
+# («1 200», «+7 999 1234567»), not a note.
+_NUMERIC_NOTE = re.compile(r"^[\d\s+\-−.,:;=*/×()]+$")
 
 
 @dataclass(frozen=True)
@@ -173,14 +176,18 @@ def _quick(
     if amount is None:
         return None
     note = " ".join(words)
+    if at_end and _NUMERIC_NOTE.match(note):
+        return None  # «1 200» is one number: it is read again from the start
     if not at_end:
-        if words and words[0].casefold() in UNITS:
-            return None  # «+2 кг», «-5 %»: a quantity, not money
-        # «250 кофе»: a bare number first is money only when the next word names a category.
+        if words and (words[0].casefold() in UNITS or words[0][0] in "0123456789(+-−"):
+            return None  # «+2 кг»: a quantity; «+7 999 123-45-67», «2 + 2 = 4»: not money
+        # «250 кофе»: a bare number first is money only when the next word names a category;
+        # alone it is an amount («15 000»).
         if (
             sign is None
             and named is None
-            and (amount < BARE_MINIMUM or not words or dictionary_guess(words[0]) is None)
+            and words
+            and (amount < BARE_MINIMUM or dictionary_guess(words[0]) is None)
         ):
             return None
     income = None if sign is None else sign == "+"
