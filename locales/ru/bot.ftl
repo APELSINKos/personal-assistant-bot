@@ -411,3 +411,21 @@ habit-color-ask = 🎨 И цвет — для карточки и приложе
 habit-rename-ask = ✍️ Новое название для «{ $name }» (до { $limit } символов):
 habit-renamed = ✅ Готово: «{ $name }».
 habit-cards-wait = ⏳ Слишком много карточек подряд — попробуй через { $seconds } с.
+
+## Money
+money-cat-groceries = Продукты
+money-cat-cafe = Кафе
+money-cat-transport = Транспорт
+money-cat-home = Дом
+money-cat-phone = Связь
+money-cat-health = Здоровье
+money-cat-clothes = Одежда
+money-cat-fun = Развлечения
+money-cat-study = Учёба
+money-cat-gifts = Подарки
+money-cat-subscriptions = Подписки
+money-cat-other = Другое
+money-cat-salary = Зарплата
+money-cat-stipend = Стипендия
+money-cat-gifts_in = Подарили
+money-cat-other_in = Другое

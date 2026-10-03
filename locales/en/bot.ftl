@@ -390,3 +390,21 @@ habit-color-ask = 🎨 And a color — for the card and the app:
 habit-rename-ask = ✍️ A new name for “{ $name }” (up to { $limit } characters):
 habit-renamed = ✅ Done: “{ $name }”.
 habit-cards-wait = ⏳ Too many cards in a row — try again in { $seconds } s.
+
+## Money
+money-cat-groceries = Groceries
+money-cat-cafe = Eating out
+money-cat-transport = Transport
+money-cat-home = Home
+money-cat-phone = Phone & internet
+money-cat-health = Health
+money-cat-clothes = Clothes
+money-cat-fun = Fun
+money-cat-study = Study
+money-cat-gifts = Gifts
+money-cat-subscriptions = Subscriptions
+money-cat-other = Other
+money-cat-salary = Salary
+money-cat-stipend = Stipend
+money-cat-gifts_in = Gifts received
+money-cat-other_in = Other
