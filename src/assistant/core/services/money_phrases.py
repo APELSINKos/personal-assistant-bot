@@ -176,10 +176,13 @@ def _quick(
     if not at_end:
         if words and words[0].casefold() in UNITS:
             return None  # «+2 кг», «-5 %»: a quantity, not money
-        if sign is None and named is None:
-            # «250 кофе»: a bare number first is money only when the next word names a category.
-            if amount < BARE_MINIMUM or not words or dictionary_guess(words[0]) is None:
-                return None
+        # «250 кофе»: a bare number first is money only when the next word names a category.
+        if (
+            sign is None
+            and named is None
+            and (amount < BARE_MINIMUM or not words or dictionary_guess(words[0]) is None)
+        ):
+            return None
     income = None if sign is None else sign == "+"
     return Quick(amount=amount, note=note, income=income, days_ago=days_ago)
 
