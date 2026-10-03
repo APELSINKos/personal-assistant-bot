@@ -118,6 +118,7 @@ async def test_cbr_history_over_30_days_cached() -> None:
         httpx.Response(200, content=b'<!DOCTYPE x [<!ENTITY a "a">]><ValCurs/>'),
         httpx.Response(200, content=b"<ValCurs>" + b" " * 300_000 + b"</ValCurs>"),
         httpx.Response(200, content=HISTORY.replace(b"83,4839", b"oops")),
+        httpx.Response(200, content=b'<ValCurs ID="R01235"/>'),  # no Record: not kept, asked again
     ],
 )
 async def test_cbr_history_errors_become_upstream_unavailable(answer: httpx.Response) -> None:

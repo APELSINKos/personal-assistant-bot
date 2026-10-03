@@ -170,6 +170,22 @@ async def test_a_warning_comes_once_per_threshold_and_month(
     assert await add(100, november) == []  # 80 was kept too
 
 
+async def test_an_entry_just_after_midnight_on_the_1st_counts_in_the_new_month(
+    session: AsyncSession, make_user: MakeUser
+) -> None:
+    user = await make_user()  # Moscow
+    await money.set_budget(session, user, 100000)
+    await spend(session, user, "cafe", 90000, date(2026, 9, 30))
+    night = datetime(2026, 9, 30, 21, 30, tzinfo=UTC)  # 00:30 on 1 October in Moscow
+    cafe = await preset(session, user, "cafe")
+    entry = await money.add_entry(session, user, amount=85000, category_id=cafe.id, now=night)
+    assert entry.day == date(2026, 10, 1)
+    october = await money_month.month(session, user, now=night)
+    assert (october.first, october.spent) == (date(2026, 10, 1), 85000)
+    found = await money_month.alerts_after(session, user, entry, night)
+    assert [(alert.threshold, alert.spent) for alert in found] == [(80, 85000)]  # not 175 000
+
+
 async def test_a_category_budget_warns_on_its_own(
     session: AsyncSession, make_user: MakeUser
 ) -> None:

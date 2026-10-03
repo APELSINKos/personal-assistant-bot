@@ -64,6 +64,8 @@ def _points(body: bytes) -> list[Point]:
         if not math.isfinite(value) or value <= 0:
             raise ValueError("bad rate")
         points.append(Point(day, value))
+    if not points:  # the bank quotes the currency today: no day at all is a fault, tried again
+        raise ValueError("no records")
     return sorted(points, key=lambda point: point.day)
 
 

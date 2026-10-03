@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from assistant.core.models import MoneyAlert, MoneyCategory, MoneyEntry, User
@@ -189,13 +190,19 @@ async def alerts_after(
         for threshold in THRESHOLDS:
             if spent * 100 < budget * threshold:
                 continue
-            ident = (user.id, key, 0 if scope is None else scope.id, threshold)
-            if await session.get(MoneyAlert, ident) is None:
-                session.add(
-                    MoneyAlert(
-                        user_id=user.id, month=key, category_id=ident[2], threshold=threshold
-                    )
+            # One row per budget, threshold and month: when the bot and the API reach it at the
+            # same moment, it is written and shown once, without an error.
+            written = await session.execute(
+                sqlite_insert(MoneyAlert)
+                .values(
+                    user_id=user.id,
+                    month=key,
+                    category_id=0 if scope is None else scope.id,
+                    threshold=threshold,
                 )
+                .on_conflict_do_nothing()
+            )
+            if written.rowcount:  # type: ignore[attr-defined]
                 fresh.append(threshold)
         if fresh:
             found.append(Alert(category=scope, threshold=max(fresh), spent=spent, budget=budget))
