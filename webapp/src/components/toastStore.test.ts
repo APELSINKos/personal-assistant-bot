@@ -28,6 +28,27 @@ describe("toastStore", () => {
     }
   });
 
+  it("keeps a budget warning on screen longer than the other toasts", () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useToasts());
+      act(() => {
+        toast({ kind: "success", text: "Сохранено" });
+        toast({ kind: "warning", text: "Потрачено 80 % бюджета" });
+      });
+      act(() => {
+        vi.advanceTimersByTime(4000);
+      });
+      expect(result.current.map((item) => item.kind)).toEqual(["warning"]);
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+      expect(result.current).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("cancels the pending timer itself, not just the visible list", () => {
     // A timer left running past clearToasts() would fire during a later, unrelated test and call
     // dismiss() outside any act(), producing act() warnings and cross-test state leakage — so

@@ -716,6 +716,10 @@ a.button {
   border-color: var(--accent);
 }
 
+.toast--warning {
+  border-color: var(--warning);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

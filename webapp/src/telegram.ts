@@ -138,7 +138,7 @@ export function onThemeChange(callback: () => void): () => void {
   return () => media.removeEventListener("change", callback);
 }
 
-export function haptic(kind: "tap" | "select" | "success" | "error"): void {
+export function haptic(kind: "tap" | "select" | "success" | "warning" | "error"): void {
   const feedback = supports("6.1") ? webApp()?.HapticFeedback : undefined;
   if (!feedback) return;
   if (kind === "tap") feedback.impactOccurred("light");

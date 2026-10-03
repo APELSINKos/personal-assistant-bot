@@ -13,6 +13,17 @@ function streakIn(count: number, unit: StreakUnit): string {
   return `${count} ${unit === "days" ? plural(count, "день", "дня", "дней") : plural(count, "неделя", "недели", "недель")}`;
 }
 
+/** A budget warning's parts, each already formatted (lib/money.ts, alertText). */
+export interface AlertWords {
+  threshold: number;
+  percent: number;
+  /** «☕ Кафе»; null for the budget of all expenses. */
+  name: string | null;
+  month: string;
+  spent: string;
+  budget: string;
+}
+
 export const ru = {
   tabs: {
     today: "Сегодня",
@@ -139,6 +150,14 @@ export const ru = {
     confirmDelete: "Удалить заметку?",
     delete: "Удалить заметку",
     add: "Добавить заметку",
+  },
+  money: {
+    alert: ({ threshold, percent, name, month, spent, budget }: AlertWords) => {
+      const which = name === null ? "" : ` «${name}»`;
+      return threshold >= 100
+        ? `🚨 Бюджет${which} на ${month} закончился: ${spent} из ${budget}`
+        : `⚠️ Потрачено ${percent}\u00a0% бюджета${which} на ${month}: ${spent} из ${budget}`;
+    },
   },
   more: {
     city: "Город",

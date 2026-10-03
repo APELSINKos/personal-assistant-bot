@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 export interface ToastInput {
-  kind: "error" | "success";
+  kind: "error" | "success" | "warning";
   code?: string;
   text?: string;
 }
@@ -10,7 +10,8 @@ export interface ToastItem extends ToastInput {
   id: number;
 }
 
-const LIFETIME_MS = 3500;
+// A budget warning is a sentence with two amounts: it stays on screen longer.
+const LIFETIME_MS: Record<ToastInput["kind"], number> = { error: 3500, success: 3500, warning: 6000 };
 const listeners = new Set<() => void>();
 const timers = new Map<number, ReturnType<typeof setTimeout>>();
 let items: ToastItem[] = [];
@@ -33,7 +34,7 @@ export function toast(input: ToastInput): void {
   nextId += 1;
   items = [...items, item].slice(-3);
   emit();
-  timers.set(item.id, setTimeout(() => dismiss(item.id), LIFETIME_MS));
+  timers.set(item.id, setTimeout(() => dismiss(item.id), LIFETIME_MS[item.kind]));
 }
 
 /** Clears all toasts and their pending timers — call between tests so state doesn't leak. */

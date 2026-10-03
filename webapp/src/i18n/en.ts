@@ -1,5 +1,5 @@
 import type { StreakUnit } from "../api/types";
-import type { Dict } from "./ru";
+import type { AlertWords, Dict } from "./ru";
 
 function plural(n: number, one: string, other: string): string {
   return n === 1 ? one : other;
@@ -135,6 +135,14 @@ export const en: Dict = {
     confirmDelete: "Delete the note?",
     delete: "Delete the note",
     add: "Add a note",
+  },
+  money: {
+    alert: ({ threshold, percent, name, month, spent, budget }: AlertWords) => {
+      const which = name === null ? `${month} budget` : `“${name}” budget for ${month}`;
+      return threshold >= 100
+        ? `🚨 The ${which} has run out: ${spent} of ${budget}`
+        : `⚠️ ${percent}% of the ${which} is spent: ${spent} of ${budget}`;
+    },
   },
   more: {
     city: "City",

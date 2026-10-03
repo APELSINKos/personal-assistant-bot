@@ -1,4 +1,4 @@
-import type { Habit, Me, Note, Reminder, ScheduleSource, Today } from "../api/types";
+import type { Habit, Me, MoneyCategory, MoneyMonth, Note, Reminder, ScheduleSource, Today } from "../api/types";
 
 export const me: Me = {
   id: 1,
@@ -8,6 +8,8 @@ export const me: Me = {
   city: { name: "Москва", lat: 55.75, lon: 37.62, timezone: "Europe/Moscow" },
   morning: { enabled: true, time: "08:00" },
   can_write: true,
+  currency: "RUB",
+  money_budget: null,
 };
 
 export const habit: Habit = {
@@ -48,6 +50,7 @@ export const today: Today = {
   has_schedule: false,
   lessons: [],
   week_label: null,
+  money: null,
 };
 
 export const note: Note = {
@@ -64,4 +67,44 @@ export const scheduleSource: ScheduleSource = {
   url: "https://english.mirea.ru/schedule/api/ical/1/4805",
   fetched_at: "2026-09-28T12:00:00Z", ok_at: "2026-09-28T12:00:00Z", error: null, stale: false,
   lesson_reminder_minutes: null, lessons_ahead: 36,
+};
+
+export const moneyCategories: MoneyCategory[] = [
+  { id: 1, kind: "expense", name: "Продукты", emoji: "🛒", hidden: false, can_hide: true, budget: null },
+  { id: 2, kind: "expense", name: "Кафе", emoji: "☕", hidden: false, can_hide: true, budget: 500000 },
+  { id: 3, kind: "expense", name: "Транспорт", emoji: "🚌", hidden: false, can_hide: true, budget: null },
+  { id: 4, kind: "expense", name: "Дом", emoji: "🏠", hidden: false, can_hide: true, budget: null },
+  { id: 5, kind: "expense", name: "Одежда", emoji: "👕", hidden: true, can_hide: true, budget: null },
+  { id: 6, kind: "expense", name: "Другое", emoji: "📦", hidden: false, can_hide: false, budget: null },
+  { id: 7, kind: "income", name: "Стипендия", emoji: "🎓", hidden: false, can_hide: true, budget: null },
+  { id: 8, kind: "income", name: "Другое", emoji: "💰", hidden: false, can_hide: false, budget: null },
+];
+
+/** September 2026 on the 28th: rent on the 1st, food and a taxi yesterday, coffee today. */
+export const moneyMonth: MoneyMonth = {
+  month: "2026-09",
+  first_month: "2026-08",
+  currency: "RUB",
+  spent: 1698050,
+  income: 300000,
+  balance: -1398050,
+  budget: 3000000,
+  left: 1301950,
+  per_day: 433983,
+  expenses: [
+    { category_id: 4, amount: 1500000, share: 88, left: null },
+    { category_id: 1, amount: 125000, share: 7, left: null },
+    { category_id: 2, amount: 43050, share: 3, left: 456950 },
+    { category_id: 3, amount: 30000, share: 2, left: null },
+  ],
+  incomes: [{ category_id: 7, amount: 300000, share: 0, left: null }],
+  days: [1500000, ...Array<number>(25).fill(0), 155000, 43050, null, null],
+  categories: moneyCategories,
+  entries: [
+    { id: 24, amount: 43050, category_id: 2, note: "кофе", day: "2026-09-28" },
+    { id: 23, amount: 30000, category_id: 3, note: "такси", day: "2026-09-27" },
+    { id: 22, amount: 125000, category_id: 1, note: "", day: "2026-09-27" },
+    { id: 21, amount: 300000, category_id: 7, note: "", day: "2026-09-25" },
+    { id: 20, amount: 1500000, category_id: 4, note: "аренда", day: "2026-09-01" },
+  ],
 };
