@@ -71,6 +71,11 @@ function Shell() {
   const current = ROUTES.find((route) => matchRoute(parser, route.path, location)[0]);
   const parent = current?.parent;
   useBackButton(parent ? () => navigate(parent) : null);
+  // A new screen starts at its top, not where the last one was left scrolled.
+  useEffect(() => {
+    const page = document.scrollingElement ?? document.documentElement;
+    page.scrollTop = 0;
+  }, [location]);
   return (
     <div className={current?.hideNav ? "app app--no-nav" : "app"}>
       {isDevSession() && <div className="dev-badge">{t.common.dev}</div>}

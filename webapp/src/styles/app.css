@@ -470,6 +470,13 @@ a {
   font-size: 16px;
 }
 
+/* A closed list ends a long currency name in «…» instead of cutting it mid-letter. */
+select.input {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* The browser's grey is unreadable on the dark glass. */
 .input::placeholder {
   color: var(--hint);
