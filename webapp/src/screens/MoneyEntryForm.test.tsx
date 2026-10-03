@@ -80,7 +80,22 @@ describe("Entry form", () => {
     fireEvent.change(screen.getByLabelText("Сумма"), { target: { value: "450" } });
     pressMainButton(app);
     await waitFor(() => expect(history.at(-1)).toBe("/money"));
-    expect(calls.find((call) => call.method === "PATCH")?.body).toEqual({ amount: "450", category_id: 2, note: "кофе" });
+    expect(calls.find((call) => call.method === "PATCH")?.body).toEqual({ amount: "450" });
+  });
+
+  it("sends nothing when nothing changed", async () => {
+    const { app, calls, history } = open("/money/24/edit", { "GET /money/entries/24": ENTRY });
+    expect(await screen.findByLabelText("Сумма")).toHaveValue("430,50");
+    pressMainButton(app);
+    await waitFor(() => expect(history.at(-1)).toBe("/money"));
+    expect(calls.some((call) => call.method === "PATCH")).toBe(false);
+  });
+
+  it("keeps an entry's own hidden category on offer after another is picked", async () => {
+    open("/money/25/edit", { "GET /money/entries/25": { ...ENTRY, id: 25, category_id: 5 } });
+    expect(await screen.findByRole("button", { name: /Одежда/ })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Кафе" }));
+    expect(screen.getByRole("button", { name: /Одежда/ })).toHaveAttribute("aria-pressed", "false");
   });
 
   it("deletes an entry after a confirmation", async () => {

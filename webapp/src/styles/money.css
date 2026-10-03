@@ -296,7 +296,7 @@
 .money-amount__sign {
   position: absolute;
   right: 14px;
-  color: var(--hint);
+  color: var(--text); /* the hint colour falls under AA on a field's glass over a card */
   font-weight: 700;
   pointer-events: none;
 }
@@ -318,7 +318,7 @@
 
 /* A category's budget: its name (two lines at most) and its amount on one line. */
 .field--inline {
-  grid-template-columns: minmax(0, 1fr) 120px;
+  grid-template-columns: minmax(0, 1fr) 156px; /* room for a budget in the millions */
   align-items: center;
   gap: 12px;
 }
@@ -437,7 +437,7 @@
 }
 
 .category-row__mark {
-  color: var(--hint);
+  color: var(--text);
   font-size: 13px;
 }
 

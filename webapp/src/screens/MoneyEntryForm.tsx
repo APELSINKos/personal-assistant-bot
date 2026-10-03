@@ -108,9 +108,9 @@ function EntryEditor({ entry, today, categories, currency }: EditorProps & { ent
   const dayValid = draft.day === initial.day || (draft.day >= oldest && draft.day <= today);
   const valid = amount !== null && draft.category !== null && dayValid;
   const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
-  // A hidden category is not offered, unless it is the entry's own.
+  // A hidden category is not offered, unless it is the entry's own (also after another is picked).
   const offered = categories.filter(
-    (category) => category.kind === draft.kind && (!category.hidden || category.id === draft.category),
+    (category) => category.kind === draft.kind && (!category.hidden || category.id === initial.category),
   );
 
   useClosingConfirmation(dirty);
@@ -122,10 +122,19 @@ function EntryEditor({ entry, today, categories, currency }: EditorProps & { ent
 
   const submit = () => {
     if (!valid || save.isPending || amount === null || draft.category === null) return;
-    const fields: MoneyEntryInput = { amount, category_id: draft.category, note: draft.note.trim(), day: draft.day };
     const done = { onSuccess: () => navigate("/money") };
-    if (!entry) save.mutate({ entry: fields }, done);
-    else save.mutate({ id: entry.id, entry: draft.day === entry.day ? { ...fields, day: undefined } : fields }, done);
+    if (!entry) {
+      save.mutate({ entry: { amount, category_id: draft.category, note: draft.note.trim(), day: draft.day } }, done);
+      return;
+    }
+    // Only what changed here: whatever changed meanwhile (in the bot) stays as it is.
+    const changed: Partial<MoneyEntryInput> = {};
+    if (amount !== parseAmount(initial.amount)) changed.amount = amount;
+    if (draft.category !== initial.category) changed.category_id = draft.category;
+    if (draft.note.trim() !== initial.note) changed.note = draft.note.trim();
+    if (draft.day !== initial.day) changed.day = draft.day;
+    if (Object.keys(changed).length === 0) navigate("/money");
+    else save.mutate({ id: entry.id, entry: changed }, done);
   };
   const onDelete = async () => {
     if (!entry || !(await confirmAction(t.money.confirmDelete))) return;

@@ -386,7 +386,11 @@ a {
   white-space: pre-wrap;
 }
 
-/* Floating add button */
+/* Floating add button, and the room it keeps after a list */
+.fab-room {
+  height: 64px;
+}
+
 .fab {
   position: fixed;
   right: 20px;
@@ -464,6 +468,12 @@ a {
   border-radius: var(--radius-field);
   background: var(--glass);
   font-size: 16px;
+}
+
+/* The browser's grey is unreadable on the dark glass. */
+.input::placeholder {
+  color: var(--hint);
+  opacity: 1;
 }
 
 .input:focus-visible,
