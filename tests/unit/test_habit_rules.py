@@ -72,6 +72,9 @@ FOUR_WEEKS |= week_of(d(7), 4, 5, 6)
         # the same with this week's goal met by Wednesday: it counts, 4 of 5
         (FOUR_WEEKS | week_of(d(0), 0, 1, 2), 3, d(28), WED, 80),
         ({}, 3, TODAY, TODAY, 0),
+        # daily, begun today and not marked yet: nothing done, 0 %; marked done: 100 %
+        ({}, 7, TODAY, TODAY, 0),
+        ({d(0): True}, 7, TODAY, TODAY, 100),
     ],
 )
 def test_year_percent(

@@ -38,6 +38,13 @@ beforeEach(() => {
 });
 
 describe("Habit screen", () => {
+  it("offers a retry instead of an endless wait when the user cannot be read", async () => {
+    const { calls } = mockApi({ "GET /me": { status: 404, body: { status: 404, code: "not_found" } }, "GET /habits/7": DETAIL });
+    renderWithApp(<HabitScreen />, { path: "/habits/7" });
+    expect(await screen.findByRole("button", { name: "Повторить" })).toBeInTheDocument();
+    expect(calls.map((call) => call.path)).toContain("/me");
+  });
+
   it("shows the habit, its tiles, its year and this month", async () => {
     show();
     expect(await screen.findByRole("heading", { level: 1, name: "Спорт" })).toBeInTheDocument();
