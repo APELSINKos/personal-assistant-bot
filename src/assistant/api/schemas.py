@@ -38,6 +38,8 @@ class MeOut(BaseModel):
     city: CityOut
     morning: MorningOut
     can_write: bool
+    currency: str  # ISO 4217, the user's accounts
+    money_budget: int | None  # a month's, in hundredths
 
 
 class MePatch(BaseModel):
@@ -46,6 +48,7 @@ class MePatch(BaseModel):
     language: Literal["auto", "ru", "en"] | None = None
     morning_enabled: bool | None = None
     morning_time: str | None = Field(default=None, max_length=5)
+    currency: str | None = Field(default=None, max_length=3)
 
 
 class CityIn(BaseModel):
@@ -138,6 +141,18 @@ class TodayLesson(BaseModel):
     ends_at: datetime
 
 
+class TodayMoneyOut(BaseModel):
+    """The money of the day for the «Сегодня» card; amounts in hundredths."""
+
+    currency: str
+    today: int
+    spent: int  # this month
+    budget: int | None
+    left: int | None
+    per_day: int | None
+    count: int  # this month's entries
+
+
 class TodayOut(BaseModel):
     date: date
     part_of_day: Literal["morning", "day", "evening", "night"]
@@ -150,6 +165,7 @@ class TodayOut(BaseModel):
     has_schedule: bool
     lessons: list[TodayLesson]
     week_label: str | None
+    money: TodayMoneyOut | None
 
 
 class NoteIn(BaseModel):
@@ -342,3 +358,130 @@ class GroupOut(BaseModel):
 class GroupsOut(BaseModel):
     groups: list[GroupOut]
     building: bool  # the directory is not ready: no full crawl finished, or too few groups
+
+
+# An amount as the app sends it: a decimal with a point, in the user's currency («430.50»).
+Amount = Annotated[str, Field(pattern=r"^\d{1,12}(\.\d{1,2})?$")]
+KindName = Literal["expense", "income"]
+DbId = Annotated[int, Field(ge=1, le=2**63 - 1)]
+
+
+class MoneyCategoryOut(BaseModel):
+    id: int
+    kind: KindName
+    name: str  # in the user's language
+    emoji: str
+    hidden: bool
+    can_hide: bool  # false for the «Другое» of each kind
+    budget: int | None  # a month's, in hundredths
+
+
+class MoneyEntryOut(BaseModel):
+    id: int
+    amount: int  # hundredths
+    category_id: int
+    note: str
+    day: date
+
+
+class CategoryTotalOut(BaseModel):
+    category_id: int
+    amount: int
+    share: int  # percent of the month's expenses; 0 for incomes
+    left: int | None  # what the category's budget leaves
+
+
+class MoneyMonthOut(BaseModel):
+    month: str  # «2026-10»
+    first_month: str | None  # the month of the oldest entry
+    currency: str
+    spent: int
+    income: int
+    balance: int
+    budget: int | None
+    left: int | None
+    per_day: int | None
+    expenses: list[CategoryTotalOut]  # the largest first
+    incomes: list[CategoryTotalOut]
+    days: list[int | None]  # spent on each day; None for the days still ahead
+    categories: list[MoneyCategoryOut]  # all of them, hidden ones too
+    entries: list[MoneyEntryOut]  # the month's, the newest first
+
+
+class MoneyEntryIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    amount: Amount
+    category_id: DbId
+    note: str = Field(default="", max_length=1_000)
+    day: date | None = None  # today when left out
+
+
+class MoneyEntryPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    amount: Amount | None = None
+    category_id: DbId | None = None
+    note: str | None = Field(default=None, max_length=1_000)
+    day: date | None = None
+
+
+class AlertOut(BaseModel):
+    category_id: int | None  # None: the budget of all expenses
+    emoji: str | None  # the category's
+    name: str | None  # the category's, in the user's language
+    threshold: int  # 80 or 100
+    spent: int
+    budget: int
+
+
+class MoneyEntrySaved(BaseModel):
+    entry: MoneyEntryOut
+    alerts: list[AlertOut]  # the budget warnings this change set off
+
+
+class MoneyCategoryIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: KindName
+    name: str = Field(max_length=1_000)
+    emoji: str = Field(max_length=16)
+
+
+class MoneyCategoryPatch(BaseModel):
+    """Every field may be left out; `budget: null` removes the budget."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, max_length=1_000)
+    emoji: str | None = Field(default=None, max_length=16)
+    hidden: bool | None = None
+    budget: Amount | None = None
+
+
+class BudgetIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    amount: Amount | None  # null removes the budget
+
+
+class CurrencyRateOut(BaseModel):
+    code: str
+    name: str  # in the user's language
+    value: float  # roubles for one unit
+    change: float
+
+
+class RatesAllOut(BaseModel):
+    date: date
+    currencies: list[CurrencyRateOut]  # USD, EUR and the user's currency first
+
+
+class RatePointOut(BaseModel):
+    day: date
+    value: float
+
+
+class RateHistoryOut(BaseModel):
+    code: str
+    points: list[RatePointOut]  # the oldest first; working days only
