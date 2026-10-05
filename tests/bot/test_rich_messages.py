@@ -54,7 +54,8 @@ def test_a_deeply_nested_rich_message_does_not_freeze_polling(settings: Settings
     bot = create_bot(settings)
     started = time.perf_counter()
     response = bot.session.check_response(bot, GetUpdates(), 200, updates(5))
-    # Validated as it is, depth 5 takes about 9 s, and every further level about 20 times more.
+    # Validated as it is, this payload (two rich messages, depth 5) takes about 20 s, and
+    # every further level about 20 times more.
     assert time.perf_counter() - started < 1
     [update] = response.result
     assert update.message is not None
