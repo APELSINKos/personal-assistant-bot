@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [2.5.1] — 2026-10-05
+
+### Исправлено
+
+- Сообщение с многократно вложенным оформлением (`rich_message`) больше не останавливает бота. aiogram 3.31.0 разбирает такое оформление тем дольше, чем глубже вложенность: каждый уровень примерно в двадцать раз дольше. Бот замирал вместе с напоминаниями ещё до обработчиков, а после перезапуска снова, на том же сообщении. Теперь это поле отбрасывается до разбора, и такое сообщение получает обычный ответ на всё, что не текст.
+
 ## [2.5.0] — 2026-10-04
 
 Финансы: траты одной фразой, бюджет, отчёт месяца и курсы ЦБ за 30 дней.
@@ -176,7 +182,8 @@
 
 Учебная версия, выполненная в рамках дисциплины «Тестирование, верификация и валидация ПО» (РТУ МИРЭА): погода с советами, «Мой день», напоминания, заметки, привычки, курсы ЦБ РФ и утренняя сводка на pyTelegramBotAPI. Материалы — в [docs/coursework](docs/coursework).
 
-[Unreleased]: https://github.com/APELSINKos/personal-assistant-bot/compare/v2.5.0...HEAD
+[Unreleased]: https://github.com/APELSINKos/personal-assistant-bot/compare/v2.5.1...HEAD
+[2.5.1]: https://github.com/APELSINKos/personal-assistant-bot/compare/v2.5.0...v2.5.1
 [2.5.0]: https://github.com/APELSINKos/personal-assistant-bot/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/APELSINKos/personal-assistant-bot/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/APELSINKos/personal-assistant-bot/compare/v2.2.0...v2.3.0

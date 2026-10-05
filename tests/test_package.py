@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_version_is_v2_5() -> None:
-    assert assistant.__version__.startswith("2.5.0")
+    assert assistant.__version__.startswith("2.5.1")
 
 
 def test_every_file_that_carries_the_version_agrees() -> None:
