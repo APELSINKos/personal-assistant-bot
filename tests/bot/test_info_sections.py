@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from aiogram.methods import AnswerCallbackQuery, SendMessage
 
-from assistant.bot.keyboards import MoneyCb, RatesCb, SettingsCb
+from assistant.bot.keyboards import CityCb, MoneyCb, RatesCb
 from tests.bot.fakes import callback_update, message_update
 
 NBSP = " "
@@ -12,8 +12,10 @@ async def test_weather(feed, fake) -> None:
     await feed(message_update("🌤 Погода"))
     [reply] = fake.of(SendMessage)
     assert reply.text.startswith("🌤 Москва: +10°C, малооблачно")
-    button = reply.reply_markup.inline_keyboard[0][0]
-    assert SettingsCb.unpack(button.callback_data).action == "city"
+    assert reply.text.endswith("\n\nДанные о погоде: open-meteo.com")
+    button = reply.reply_markup.inline_keyboard[-1][0]
+    assert button.text == "🏙 Города"
+    assert CityCb.unpack(button.callback_data) == CityCb(action="list", back="w")
 
 
 async def test_weather_unavailable(feed, fake, meteo) -> None:

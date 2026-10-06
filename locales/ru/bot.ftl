@@ -99,8 +99,22 @@ weather-now = { $emoji } { $city }: { $temp }, { $description }
 weather-feels = Ощущается как { $feels }, ветер { $wind } м/с
 weather-range = Сегодня: { $range }
 weather-unavailable = ⚠️ Не удалось получить погоду. Попробуй чуть позже.
-weather-change-city = 🏙 Сменить город
 weather-city-gone = Этого города уже нет в списке
+button-weather-now = 🌤 Сейчас
+button-hours = 🕐 По часам
+button-week = 📅 Неделя
+button-city-home = 🏠 { $city }
+weather-hours-title = 🕐 { $city } — по часам
+weather-hours-title-local = 🕐 { $city } — по часам (местное время)
+weather-hour = { $time } { $emoji } { $temp }
+weather-hour-chance = { $time } { $emoji } { $temp } 💧 { $chance } %
+weather-next-day = Завтра, { $date }
+weather-hours-none = Почасового прогноза сейчас нет.
+weather-week-title = 📅 { $city } — 7 дней
+weather-day = { $label } { $emoji } { $range }
+weather-day-chance = { $label } { $emoji } { $range } 💧 { $chance } %
+weather-days-none = Прогноза на неделю сейчас нет.
+weather-credit = Данные о погоде: open-meteo.com
 
 ## My day and the morning digest
 today-title = { $part ->

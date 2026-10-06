@@ -96,6 +96,17 @@ class CityCb(CallbackData, prefix="c"):
     token: str = ""  # for pick, the search the button belongs to
 
 
+class WeatherCb(CallbackData, prefix="w"):
+    """A view of the weather: now, by the hour or the week, of the home city or an extra one.
+    No date: a press shows the forecast as of the press."""
+
+    # The city buttons carry the view shown, where a forged longer value would not fit in 64
+    # bytes: such a button does not unpack and is answered as a stale one.
+    view: Annotated[str, Field(pattern="^(now|hours|week)$")]
+    city: Id = 0  # an extra city; 0 is the home city
+    new: int = 0  # 1 under the digest and «Мой день»: the view comes as a message of its own
+
+
 class RatesCb(CallbackData, prefix="x"):
     source: str
     target: str
@@ -177,6 +188,24 @@ def app_markup(t: Translator, url: str | None) -> InlineKeyboardMarkup | None:
         return None
     button = InlineKeyboardButton(text=t("open-app"), web_app=WebAppInfo(url=url))
     return InlineKeyboardMarkup(inline_keyboard=[[button]])
+
+
+# The views of the weather and the keys of their buttons.
+WEATHER_VIEWS = {"now": "button-weather-now", "hours": "button-hours", "week": "button-week"}
+
+
+def weather_views(
+    t: Translator, shown: str, city: int = 0, new: int = 0
+) -> list[InlineKeyboardButton]:
+    """The buttons of the two views besides `shown`, for the same city: «🕐 По часам» and
+    «📅 Неделя» under «🌤 Погода», the digest and «Мой день»."""
+    return [
+        InlineKeyboardButton(
+            text=t(key), callback_data=WeatherCb(view=view, city=city, new=new).pack()
+        )
+        for view, key in WEATHER_VIEWS.items()
+        if view != shown
+    ]
 
 
 def card_markup(t: Translator, card: int) -> InlineKeyboardMarkup:

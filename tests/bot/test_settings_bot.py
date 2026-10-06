@@ -13,7 +13,7 @@ from aiogram.methods import (
 from aiogram.types import ReplyKeyboardMarkup
 from sqlalchemy import select
 
-from assistant.bot.keyboards import CityCb, SettingsCb
+from assistant.bot.keyboards import CityCb, SettingsCb, WeatherCb
 from assistant.core.clients.openmeteo import City
 from assistant.core.models import Reminder, Repeat, User
 from assistant.core.services import cities, reminders
@@ -295,6 +295,8 @@ async def test_the_buttons_keep_where_the_sub_view_was_opened(
         if button.callback_data.startswith("c:")
     ]
     assert [(data.action, data.back) for data in packed] == [("del", "w"), ("add", "w")]
+    # «↩️ Назад» leads to the weather now, not to the settings.
+    assert view.reply_markup.inline_keyboard[-1][0].callback_data == WeatherCb(view="now").pack()
 
 
 async def test_a_forged_way_back_is_a_stale_button(feed, fake, session, make_user) -> None:
@@ -552,10 +554,9 @@ async def test_morning_time(feed, fake, session) -> None:
     assert (await session.get(User, 1)).morning_time == "07:05"
 
 
-async def test_weather_change_city_button_opens_the_dialog(feed, fake) -> None:
-    await feed(message_update("🌤 Погода"))
-    button = fake.of(SendMessage)[-1].reply_markup.inline_keyboard[0][0]
-    await feed(callback_update(button.callback_data))
+async def test_an_old_change_city_button_under_the_weather_still_works(feed, fake) -> None:
+    # «🏙 Сменить город» under a weather message sent before «🏙 Города» took its place.
+    await feed(callback_update(SettingsCb(action="city").pack()))
     assert fake.sent_texts()[-1] == "🏙 Напиши название города:"
 
 

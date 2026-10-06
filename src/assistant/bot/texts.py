@@ -18,12 +18,12 @@ from assistant.core.i18n import (
     format_weekday,
 )
 from assistant.core.models import Lesson, Reminder, ScheduleSource
-from assistant.core.services import reminders
+from assistant.core.services import reminders, weather
 from assistant.core.services.digest import TodayData
 from assistant.core.services.habits import Streak
 from assistant.core.services.phrases import Parsed
 from assistant.core.services.recurrence import describe, local_days
-from assistant.core.services.weather import Tip, WeatherNow
+from assistant.core.services.weather import Day, Forecast, Hour, Tip, WeatherNow
 from assistant.core.services.weather import describe as describe_weather
 from assistant.core.timeutil import to_local, utcnow
 
@@ -41,6 +41,11 @@ DAY_LESSONS_SHOWN = 10
 # calendars, and ten long ones next to the reminders would push «Мой день» and the morning digest
 # past the limit. 120 still leaves real MIREA lessons whole, room included.
 LESSON_NAME_LIMIT = 120
+# «🕐 По часам»: every hour from the next one, half a day ahead.
+HOURS_SHOWN = 12
+# A chance of rain or snow is worth a mention from this many percent on. The classes line has a
+# threshold of its own (weather.CLASSES_CHANCE).
+CHANCE_SHOWN = 20
 
 
 def utf16_len(text: str) -> int:
@@ -69,28 +74,123 @@ def tip_lines(tips: list[Tip], t: Translator) -> list[str]:
     return [t(tip.key, **tip.params) for tip in tips]
 
 
-def _now_line(weather: WeatherNow, t: Translator) -> str:
-    emoji, key = describe_weather(weather.code, weather.is_day)
+def _now_line(now: WeatherNow, t: Translator) -> str:
+    emoji, key = describe_weather(now.code, now.is_day)
     return t(
         "weather-now",
         emoji=emoji,
-        city=weather.city,
-        temp=temp(weather.temperature),
+        city=now.city,
+        temp=temp(now.temperature),
         description=t(key),
     )
 
 
+def _with_credit(lines: list[str], t: Translator) -> str:
+    """A view of the weather: its lines, then where the data come from. Open-Meteo's licence
+    (CC BY 4.0) asks for the source next to the data."""
+    return "\n".join([*lines, "", t("weather-credit")])
+
+
 def weather_text(now: WeatherNow, t: Translator) -> str:
+    """«🌤 Погода»: now, how it feels and the wind, today's range, every tip."""
     wind = NO_VALUE if now.wind is None else str(round(now.wind))
-    return "\n".join(
+    return _with_credit(
         [
             _now_line(now, t),
             t("weather-feels", feels=temp(now.feels_like), wind=wind),
             t("weather-range", range=temp_range(now.tmin, now.tmax)),
             "",
             *tip_lines(now.tips, t),
-        ]
+        ],
+        t,
     )
+
+
+def _chance_shown(chance: int | None) -> bool:
+    return chance is not None and chance >= CHANCE_SHOWN
+
+
+def _same_clock(forecast: Forecast, now: datetime, user_tz: str) -> bool:
+    """Whether the place's clock shows the user's time: the two offsets at the moment `now`. The
+    zone's utcoffset of a UTC moment, read as a wall time, would be off near a change of clocks."""
+    place = now.astimezone(forecast.tz).utcoffset()
+    return place == now.astimezone(ZoneInfo(user_tz)).utcoffset()
+
+
+def _hour_line(hour: Hour, t: Translator) -> str:
+    """«15:00 ☁️ +7°C», with «💧 40 %» from CHANCE_SHOWN on."""
+    emoji, _ = describe_weather(hour.code, hour.is_day)
+    values = {"time": hour.at.strftime("%H:%M"), "emoji": emoji, "temp": temp(hour.temperature)}
+    if _chance_shown(hour.precip_chance):
+        return t("weather-hour-chance", chance=hour.precip_chance, **values)
+    return t("weather-hour", **values)
+
+
+def _date_line(day: date, today: date, t: Translator) -> str:
+    """The line before the first hour of `day`: «Завтра, 6 октября». Twelve hours reach no
+    further than tomorrow; a later day comes only after hours missing from the forecast and is
+    named by its date alone."""
+    if day == today + timedelta(days=1):
+        return t("weather-next-day", date=format_day(day, t.lang))
+    return format_day(day, t.lang)
+
+
+def hours_text(forecast: Forecast, now: datetime, user_tz: str, t: Translator) -> str:
+    """«🕐 По часам» of the forecast's place at the moment `now` (aware) for a user who lives by
+    `user_tz`: the next HOURS_SHOWN hours on the place's clock, marked as local time when it
+    differs from the user's, with a date line before the first hour of the next day."""
+    local = weather.local_now(forecast, now)
+    title = "weather-hours-title"
+    if not _same_clock(forecast, now, user_tz):
+        title = "weather-hours-title-local"
+    lines = [t(title, city=forecast.now.city), ""]
+    hours = weather.next_hours(forecast, local, HOURS_SHOWN)
+    day = local.date()
+    for hour in hours:
+        if hour.at.date() != day:
+            day = hour.at.date()
+            lines.append(_date_line(day, local.date(), t))
+        lines.append(_hour_line(hour, t))
+    if not hours:
+        lines.append(t("weather-hours-none"))
+    return _with_credit(lines, t)
+
+
+def _week_label(day: date, today: date, t: Translator) -> str:
+    """«Сегодня», «Завтра», then «ср, 7 окт.»: a week needs neither «Послезавтра» nor a year."""
+    offset = (day - today).days
+    if offset == 0:
+        return t("day-today")
+    if offset == 1:
+        return t("day-tomorrow")
+    return format_short_day(day, t.lang)
+
+
+def _day_line(day: Day, today: date, t: Translator) -> str:
+    """«Сегодня ☁️ +2…+7°C», with «💧 80 %» from CHANCE_SHOWN on: the icon is the day's heaviest
+    weather, and the chance tells how likely it is to come."""
+    emoji, _ = describe_weather(day.code)
+    values = {
+        "label": _week_label(day.day, today, t),
+        "emoji": emoji,
+        "range": temp_range(day.tmin, day.tmax),
+    }
+    if _chance_shown(day.precip_chance):
+        return t("weather-day-chance", chance=day.precip_chance, **values)
+    return t("weather-day", **values)
+
+
+def week_text(forecast: Forecast, now: datetime, t: Translator) -> str:
+    """«📅 Неделя» of the forecast's place at the moment `now` (aware): up to seven days from the
+    place's today. Just after midnight a forecast kept from the day before has six; a forecast
+    whose every day lacks its minimum or maximum has none, and the view says so."""
+    today = weather.local_now(forecast, now).date()
+    lines = [t("weather-week-title", city=forecast.now.city), ""]
+    days = weather.days_from(forecast, today)
+    lines += [_day_line(day, today, t) for day in days]
+    if not days:
+        lines.append(t("weather-days-none"))
+    return _with_credit(lines, t)
 
 
 def _reminder_lines(data: TodayData, t: Translator, shown: int) -> list[str]:

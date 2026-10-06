@@ -17,6 +17,8 @@ from assistant.core.services.digest import TodayData
 from assistant.core.services.habits import HabitStats, Streak
 from assistant.core.services.money_month import Month
 from assistant.core.services.weather import Tip, WeatherNow
+from assistant.core.services.weather import parse as parse_forecast
+from tests.stubs import FORECAST_NOW, forecast_payload
 
 RU, EN = translator("ru"), translator("en")
 MSK = ZoneInfo("Europe/Moscow")
@@ -73,8 +75,11 @@ def test_weather_text() -> None:
         "Ощущается как +7°C, ветер 3 м/с\n"
         "Сегодня: +6…+13°C\n"
         "\n"
-        "🚲 Сегодня хороший день для велосипеда"
+        "🚲 Сегодня хороший день для велосипеда\n"
+        "\n"
+        "Данные о погоде: open-meteo.com"
     )
+    assert texts.weather_text(WEATHER, EN).endswith("\n\nWeather data: open-meteo.com")
 
 
 def test_weather_at_night_shows_the_moon_for_a_clear_sky() -> None:
@@ -83,6 +88,181 @@ def test_weather_at_night_shows_the_moon_for_a_clear_sky() -> None:
     cloudy = replace(night, code=3)
     assert texts.weather_text(cloudy, RU).startswith("☁️ Москва: +10°C, пасмурно\n")
     assert "🌙 Москва: +10°C" in texts.today_text(day_data(weather=night), "Alex", RU)
+
+
+# The stub forecast of Moscow, asked for at FORECAST_NOW: 10:00 there.
+FORECAST = parse_forecast(forecast_payload(), "Москва")
+
+
+def test_hours_text() -> None:
+    assert texts.hours_text(FORECAST, FORECAST_NOW, "Europe/Moscow", RU) == (
+        "🕐 Москва — по часам\n"
+        "\n"
+        "11:00 🌤 +11°C\n"
+        "12:00 🌤 +12°C\n"
+        "13:00 🌤 +13°C\n"
+        "14:00 🌤 +13°C\n"
+        "15:00 🌤 +13°C\n"
+        "16:00 🌤 +13°C\n"
+        "17:00 🌤 +12°C\n"
+        "18:00 🌤 +12°C\n"
+        "19:00 🌙 +11°C\n"
+        "20:00 🌙 +10°C\n"
+        "21:00 🌙 +9°C\n"
+        "22:00 🌙 +8°C\n"
+        "\n"
+        "Данные о погоде: open-meteo.com"
+    )
+
+
+def test_hours_across_midnight() -> None:
+    evening = datetime(2026, 9, 28, 20, 30, tzinfo=MSK)
+    lines = texts.hours_text(FORECAST, evening, "Europe/Moscow", RU).split("\n")
+    assert lines[2:7] == [
+        "21:00 🌙 +9°C",
+        "22:00 🌙 +8°C",
+        "23:00 🌙 +8°C",
+        "Завтра, 29 сентября",
+        "00:00 🌙 +7°C",
+    ]
+    assert lines[-3:] == ["08:00 🌤 +8°C", "", "Данные о погоде: open-meteo.com"]
+    # The date line comes first when every hour shown is tomorrow's.
+    late = datetime(2026, 9, 28, 23, 30, tzinfo=MSK)
+    lines = texts.hours_text(FORECAST, late, "Europe/Moscow", EN).split("\n")
+    assert lines[:4] == ["🕐 Москва — hourly", "", "Tomorrow, September 29", "00:00 🌙 +7°C"]
+    assert len(lines) == 4 + 11 + 2  # twelve hours
+
+
+def test_hours_at_the_end_of_the_forecast() -> None:
+    last = datetime(2026, 10, 4, 20, 30, tzinfo=MSK)  # three hours of the week are left
+    lines = texts.hours_text(FORECAST, last, "Europe/Moscow", RU).split("\n")
+    assert lines[2:] == [
+        "21:00 🌙 +9°C",
+        "22:00 🌙 +8°C",
+        "23:00 🌙 +8°C",
+        "",
+        "Данные о погоде: open-meteo.com",
+    ]
+    gone = datetime(2026, 10, 4, 23, 30, tzinfo=MSK)
+    lines = texts.hours_text(FORECAST, gone, "Europe/Moscow", RU).split("\n")
+    assert lines[2:] == ["Почасового прогноза сейчас нет.", "", "Данные о погоде: open-meteo.com"]
+    english = texts.hours_text(FORECAST, gone, "Europe/Moscow", EN)
+    assert english.split("\n")[2] == "No hourly forecast right now."
+
+
+def test_a_day_after_hours_missing_from_the_forecast_is_named_by_its_date() -> None:
+    data = forecast_payload()
+    data["hourly"]["temperature_2m"][14:48] = [None] * 34  # from 14:00 to the end of tomorrow
+    forecast = parse_forecast(data, "Москва")
+    lines = texts.hours_text(forecast, FORECAST_NOW, "Europe/Moscow", RU).split("\n")
+    assert lines[2:7] == [
+        "11:00 🌤 +11°C",
+        "12:00 🌤 +12°C",
+        "13:00 🌤 +13°C",
+        "30 сентября",
+        "00:00 🌙 +7°C",
+    ]
+
+
+def test_a_chance_of_rain_from_20_percent() -> None:
+    data = forecast_payload()
+    data["hourly"]["precipitation_probability"][11:14] = [19, 20, 40]  # 11:00 to 13:00
+    data["hourly"]["weather_code"][13] = 61
+    data["daily"]["precipitation_probability_max"][:3] = [19, 20, 80]
+    data["daily"]["weather_code"][2] = 63
+    forecast = parse_forecast(data, "Москва")
+    hours = texts.hours_text(forecast, FORECAST_NOW, "Europe/Moscow", RU).split("\n")
+    assert hours[2:5] == ["11:00 🌤 +11°C", "12:00 🌤 +12°C 💧 20 %", "13:00 🌧 +13°C 💧 40 %"]
+    english = texts.hours_text(forecast, FORECAST_NOW, "Europe/Moscow", EN).split("\n")
+    assert english[4] == "13:00 🌧 +13°C 💧 40%"
+    week = texts.week_text(forecast, FORECAST_NOW, RU).split("\n")
+    assert week[2:5] == [
+        "Сегодня 🌤 +6…+13°C",
+        "Завтра 🌤 +6…+13°C 💧 20 %",
+        "ср, 30 сент. 🌧 +6…+13°C 💧 80 %",
+    ]
+    assert texts.week_text(forecast, FORECAST_NOW, EN).split("\n")[4] == (
+        "Wed, 30 Sep 🌧 +6…+13°C 💧 80%"
+    )
+
+
+def test_hours_on_the_clock_of_another_zone_say_so() -> None:
+    omsk = parse_forecast(forecast_payload(zone="Asia/Omsk"), "Омск")
+    lines = texts.hours_text(omsk, FORECAST_NOW, "Europe/Moscow", RU).split("\n")
+    # Omsk's hours: 13:00 there is 10:00 in Moscow.
+    assert lines[:3] == ["🕐 Омск — по часам (местное время)", "", "14:00 🌤 +13°C"]
+    english = texts.hours_text(omsk, FORECAST_NOW, "Europe/Moscow", EN)
+    assert english.startswith("🕐 Омск — hourly (local time)\n")
+    # Another zone on the same clock is not another time.
+    istanbul = parse_forecast(forecast_payload(zone="Europe/Istanbul"), "Стамбул")
+    text = texts.hours_text(istanbul, FORECAST_NOW, "Europe/Moscow", RU)
+    assert text.startswith("🕐 Стамбул — по часам\n")
+
+
+def test_the_clocks_are_compared_at_the_moment_itself() -> None:
+    # At 01:30 UTC on 25 October Berlin's clocks are half an hour back on UTC+1, which Lagos
+    # keeps all year. Berlin's offset of 01:30 taken as its wall time would still be +2.
+    after = datetime(2026, 10, 25, 1, 30, tzinfo=UTC)
+    berlin = parse_forecast(forecast_payload(after, "Europe/Berlin"), "Берлин")
+    assert texts.hours_text(berlin, after, "Africa/Lagos", RU).startswith("🕐 Берлин — по часам\n")
+    before = datetime(2026, 10, 24, 12, 0, tzinfo=UTC)
+    berlin = parse_forecast(forecast_payload(before, "Europe/Berlin"), "Берлин")
+    title = texts.hours_text(berlin, before, "Africa/Lagos", RU).split("\n")[0]
+    assert title == "🕐 Берлин — по часам (местное время)"
+
+
+def test_week_text() -> None:
+    assert texts.week_text(FORECAST, FORECAST_NOW, RU) == (
+        "📅 Москва — 7 дней\n"
+        "\n"
+        "Сегодня 🌤 +6…+13°C\n"
+        "Завтра 🌤 +6…+13°C\n"
+        "ср, 30 сент. 🌤 +6…+13°C\n"
+        "чт, 1 окт. 🌤 +6…+13°C\n"
+        "пт, 2 окт. 🌤 +6…+13°C\n"
+        "сб, 3 окт. 🌤 +6…+13°C\n"
+        "вс, 4 окт. 🌤 +6…+13°C\n"
+        "\n"
+        "Данные о погоде: open-meteo.com"
+    )
+    assert texts.week_text(FORECAST, FORECAST_NOW, EN).split("\n")[:5] == [
+        "📅 Москва — 7 days",
+        "",
+        "Today 🌤 +6…+13°C",
+        "Tomorrow 🌤 +6…+13°C",
+        "Wed, 30 Sep 🌤 +6…+13°C",
+    ]
+
+
+def test_the_week_just_after_midnight_has_six_days() -> None:
+    # The answer kept since 23:50 still starts with the day before.
+    asked = datetime(2026, 9, 27, 23, 50, tzinfo=MSK)
+    forecast = parse_forecast(forecast_payload(asked), "Москва")
+    text = texts.week_text(forecast, datetime(2026, 9, 28, 0, 5, tzinfo=MSK), RU)
+    assert text.split("\n")[2:-2] == [
+        "Сегодня 🌤 +6…+13°C",
+        "Завтра 🌤 +6…+13°C",
+        "ср, 30 сент. 🌤 +6…+13°C",
+        "чт, 1 окт. 🌤 +6…+13°C",
+        "пт, 2 окт. 🌤 +6…+13°C",
+        "сб, 3 окт. 🌤 +6…+13°C",
+    ]
+
+
+def test_a_week_without_days_says_so() -> None:
+    # A day without its maximum is left out of the forecast, and here that is every day.
+    data = forecast_payload()
+    data["daily"]["temperature_2m_max"] = [None] * 7
+    forecast = parse_forecast(data, "Москва")
+    assert texts.week_text(forecast, FORECAST_NOW, RU).split("\n") == [
+        "📅 Москва — 7 дней",
+        "",
+        "Прогноза на неделю сейчас нет.",
+        "",
+        "Данные о погоде: open-meteo.com",
+    ]
+    english = texts.week_text(forecast, FORECAST_NOW, EN)
+    assert english.split("\n")[2] == "No forecast for the week right now."
 
 
 def test_today_text_full() -> None:

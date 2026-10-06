@@ -90,8 +90,22 @@ weather-now = { $emoji } { $city }: { $temp }, { $description }
 weather-feels = Feels like { $feels }, wind { $wind } m/s
 weather-range = Today: { $range }
 weather-unavailable = ⚠️ Couldn't get the weather. Please try again a bit later.
-weather-change-city = 🏙 Change city
 weather-city-gone = This city is no longer on your list
+button-weather-now = 🌤 Now
+button-hours = 🕐 Hourly
+button-week = 📅 Week
+button-city-home = 🏠 { $city }
+weather-hours-title = 🕐 { $city } — hourly
+weather-hours-title-local = 🕐 { $city } — hourly (local time)
+weather-hour = { $time } { $emoji } { $temp }
+weather-hour-chance = { $time } { $emoji } { $temp } 💧 { $chance }%
+weather-next-day = Tomorrow, { $date }
+weather-hours-none = No hourly forecast right now.
+weather-week-title = 📅 { $city } — 7 days
+weather-day = { $label } { $emoji } { $range }
+weather-day-chance = { $label } { $emoji } { $range } 💧 { $chance }%
+weather-days-none = No forecast for the week right now.
+weather-credit = Weather data: open-meteo.com
 
 ## My day and the morning digest
 today-title = { $part ->

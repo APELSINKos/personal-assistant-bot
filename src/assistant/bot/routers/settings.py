@@ -19,7 +19,7 @@ from aiogram.types import (
 
 from assistant.bot import replies
 from assistant.bot.context import Ctx
-from assistant.bot.keyboards import CityCb, SettingsCb, cancel_menu, main_menu, preview
+from assistant.bot.keyboards import CityCb, SettingsCb, WeatherCb, cancel_menu, main_menu, preview
 from assistant.bot.sections import section
 from assistant.bot.states import SettingsForm
 from assistant.core.clients.openmeteo import City
@@ -88,8 +88,8 @@ def cities_view(
     user: User, kept: Sequence[WeatherCity], back: str, t: Translator
 ) -> tuple[str, InlineKeyboardMarkup]:
     """«🏙 Города»: the home city and the extra ones, a button to remove each, «➕» while there is
-    room. `back` tells where the sub-view was opened from; its buttons carry it along, so a
-    redrawn sub-view still knows."""
+    room. `back` tells where the sub-view was opened from, where «↩️ Назад» leads; its buttons
+    carry it along, so a redrawn sub-view still knows."""
     lines = [t("cities-title"), "", t("cities-home", city=user.city), ""]
     if kept:
         lines += [t("cities-item", city=city.name) for city in kept]
@@ -107,7 +107,11 @@ def cities_view(
     if len(kept) < LIMITS.cities:
         add = CityCb(action="add", back=back).pack()
         rows.append([InlineKeyboardButton(text=t("button-add-city"), callback_data=add)])
-    rows.append([_button(t("button-back"), "back")])
+    if back == "w":  # the home city's weather now; without the forecast the sub-view stays
+        way_back = WeatherCb(view="now").pack()
+        rows.append([InlineKeyboardButton(text=t("button-back"), callback_data=way_back)])
+    else:
+        rows.append([_button(t("button-back"), "back")])
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
 
 
