@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from assistant.core.clients.cbr import Rate, Rates
 from assistant.core.errors import UpstreamUnavailable
 from assistant.core.services import digest, money, notes, schedule
+from tests.stubs import forecast_payload
 
 NOW = datetime(2026, 9, 28, 5, 0, tzinfo=UTC)  # 08:00 Moscow
 MIREA = (
@@ -19,20 +22,10 @@ class Meteo:
     def __init__(self, fail: bool = False) -> None:
         self.fail = fail
 
-    async def forecast(self, lat: float, lon: float) -> dict[str, object]:
+    async def forecast(self, lat: float, lon: float) -> dict[str, Any]:
         if self.fail:
             raise UpstreamUnavailable(service="open-meteo")
-        return {
-            "current": {
-                "time": "2026-09-28T08:00",
-                "temperature_2m": 9,
-                "weather_code": 1,
-                "apparent_temperature": 7,
-                "wind_speed_10m": 3,
-                "precipitation": 0,
-            },
-            "daily": {"temperature_2m_max": [13], "temperature_2m_min": [6]},
-        }
+        return forecast_payload(NOW, temperature=9)
 
 
 class Cbr:
@@ -70,6 +63,20 @@ async def test_today_survives_upstream_failure(session, make_user) -> None:
     user = await make_user()
     data = await digest.today(session, user, Meteo(fail=True), Cbr(), NOW)
     assert data.weather is None and data.rates is not None
+
+
+async def test_today_survives_a_forecast_it_cannot_read(session, make_user, caplog) -> None:
+    # Weather is not what «Мой день» is about: an answer the parser trips over is logged, without
+    # anything of the answer, and the day comes without weather.
+    class Garbled:
+        async def forecast(self, lat: float, lon: float) -> dict[str, Any]:
+            return {"timezone": "Secret/Place", "current": []}
+
+    user = await make_user()
+    with caplog.at_level(logging.WARNING):
+        data = await digest.today(session, user, Garbled(), Cbr(), NOW)
+    assert data.weather is None and data.rates is not None
+    assert "KeyError" in caplog.text and "Secret" not in caplog.text
 
 
 async def test_today_has_the_lessons_of_the_day(session, make_user) -> None:

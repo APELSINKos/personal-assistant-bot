@@ -36,7 +36,7 @@ wmo-snow = snow
 wmo-showers = showers
 wmo-snowfall = heavy snow
 wmo-storm = thunderstorm
-wmo-unknown = no precipitation
+wmo-unknown = no data
 tip-precip-now = { $kind ->
     [snow] 🌨 It's snowing now — put your hood on
    *[rain] 🌧 It's raining now — take an umbrella

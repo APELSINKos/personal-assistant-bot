@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import traceback
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -17,6 +19,8 @@ from assistant.core.services.habits import HabitStats, Streak
 from assistant.core.services.money_month import Month
 from assistant.core.services.weather import WeatherNow
 from assistant.core.timeutil import now_local, utcnow
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -51,9 +55,21 @@ def part_of_day(hour: int) -> str:
 
 
 async def _weather(meteo: OpenMeteoClient, user: User) -> WeatherNow | None:
+    """Today's weather, or None: the day is shown without it."""
     try:
         return await weather.current(meteo, user.city, user.lat, user.lon)
     except UpstreamUnavailable:
+        return None
+    except Exception as error:
+        # An answer the parser trips over must not cost the user the whole day. Only where it
+        # tripped goes to the log: the answer itself tells where the user is.
+        place = traceback.extract_tb(error.__traceback__)[-1]
+        log.warning(
+            "the forecast could not be read: %s in %s, line %s",
+            type(error).__name__,
+            place.name,
+            place.lineno,
+        )
         return None
 
 

@@ -73,7 +73,7 @@ def me_out(user: User) -> MeOut:
 
 
 def weather_out(now: WeatherNow, t: Translator) -> WeatherOut:
-    emoji, key = describe_weather(now.code)
+    emoji, key = describe_weather(now.code, now.is_day)
     return WeatherOut(
         city=now.city,
         temperature=now.temperature,

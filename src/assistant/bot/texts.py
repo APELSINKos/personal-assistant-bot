@@ -70,7 +70,7 @@ def tip_lines(tips: list[Tip], t: Translator) -> list[str]:
 
 
 def _now_line(weather: WeatherNow, t: Translator) -> str:
-    emoji, key = describe_weather(weather.code)
+    emoji, key = describe_weather(weather.code, weather.is_day)
     return t(
         "weather-now",
         emoji=emoji,

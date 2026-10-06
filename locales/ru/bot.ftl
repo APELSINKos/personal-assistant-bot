@@ -37,7 +37,7 @@ wmo-snow = снег
 wmo-showers = ливень
 wmo-snowfall = снегопад
 wmo-storm = гроза
-wmo-unknown = без осадков
+wmo-unknown = нет данных
 tip-precip-now = { $kind ->
     [snow] 🌨 Сейчас идёт снег — надень капюшон
    *[rain] 🌧 Сейчас идёт дождь — возьми зонт

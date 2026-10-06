@@ -77,6 +77,14 @@ def test_weather_text() -> None:
     )
 
 
+def test_weather_at_night_shows_the_moon_for_a_clear_sky() -> None:
+    night = replace(WEATHER, is_day=False)
+    assert texts.weather_text(night, RU).startswith("🌙 Москва: +10°C, малооблачно\n")
+    cloudy = replace(night, code=3)
+    assert texts.weather_text(cloudy, RU).startswith("☁️ Москва: +10°C, пасмурно\n")
+    assert "🌙 Москва: +10°C" in texts.today_text(day_data(weather=night), "Alex", RU)
+
+
 def test_today_text_full() -> None:
     assert texts.today_text(day_data(), "Alex", RU) == (
         "🌅 Доброе утро, Alex!\n"

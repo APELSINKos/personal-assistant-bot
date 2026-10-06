@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime
 
 from assistant.core.models import Reminder, ReminderStatus
 from assistant.core.services import habits, notes
+from tests.stubs import forecast_payload
 
 
 async def test_today_collects_everything(client, auth, session, make_user) -> None:
@@ -53,6 +54,12 @@ async def test_today_speaks_english(client, auth) -> None:
     body = (await client.get("/api/today", headers=auth(lang="en"))).json()
     assert body["weather"]["description"] == "partly cloudy"
     assert body["weather"]["tips"] == ["🚲 A great day for a bike ride"]
+
+
+async def test_the_weather_card_shows_the_moon_at_night(client, auth, meteo) -> None:
+    meteo.forecast_data = forecast_payload(is_day=0)
+    weather = (await client.get("/api/today", headers=auth())).json()["weather"]
+    assert (weather["emoji"], weather["description"]) == ("🌙", "малооблачно")
 
 
 async def test_today_survives_upstream_failures(client, auth, meteo, cbr) -> None:
