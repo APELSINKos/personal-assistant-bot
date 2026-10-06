@@ -653,6 +653,13 @@ a.button {
   background: var(--glass);
 }
 
+/* The app's own ring, drawn inside the row: the results stand one under another, and a ring outside
+   would run into the next one. The browser's default ring is nearly invisible in the dark theme. */
+.result:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 /* A city search's results keep the focus while a city saves, so they are off by aria-disabled. */
 .result:disabled,
 .result[aria-disabled="true"] {
