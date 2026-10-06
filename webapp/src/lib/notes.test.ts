@@ -9,7 +9,7 @@ describe("an item of a checklist", () => {
     expect(cleanItem("  молоко\t2 л  ")).toBe("молоко 2 л");
     expect(cleanItem("хлеб\r\nбелый")).toBe("хлеб белый");
     // Every control character is a space, the C1 ones and DEL too; a no-break space is white space.
-    expect(cleanItem("a\u0000b\u007fc\u0085d\u009fe 　f")).toBe("a b c d e f");
+    expect(cleanItem("a\u0000b\u007fc\u0085d\u009fe\u00a0\u3000f")).toBe("a b c d e f");
     expect(cleanItem(" \t\n ")).toBe("");
     // Emoji and their joiners stay whole.
     expect(cleanItem(" 👩‍👩‍👧 ☑️ ")).toBe("👩‍👩‍👧 ☑️");

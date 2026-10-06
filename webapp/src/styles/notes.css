@@ -107,7 +107,7 @@
   width: var(--done);
   height: 100%;
   border-radius: inherit;
-  background: var(--accent);
+  background: var(--accent-text); /* 3:1 against the track in the light theme too */
 }
 
 /* The editor: the title and the 📌 on one line. */
@@ -125,8 +125,9 @@
 }
 
 /* The 📌 is the button's only sign, so it is never faded, and its ring is --hint, not the faint
-   --line: a control's parts need 3:1 against the page. Not pinned, the pin is grey; pinned, in its
-   own colours on a tinted --accent ring. */
+   --line: a control's parts need 3:1 against the page. The state is told by the ring's shape, not
+   by colour alone: not pinned, a grey pin in a thin dashed ring; pinned, the pin in its own colours
+   in a thick solid ring of --accent-text on a tint. */
 .pin-toggle {
   display: grid;
   flex: none;
@@ -134,7 +135,7 @@
   width: 44px;
   height: 44px;
   padding: 0;
-  border: 1px solid var(--hint);
+  border: 1px dashed var(--hint);
   border-radius: var(--radius-pill);
   background: transparent;
   font-size: 20px;
@@ -147,7 +148,7 @@
 }
 
 .pin-toggle--on {
-  border-color: var(--accent);
+  border: 2px solid var(--accent-text);
   background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 

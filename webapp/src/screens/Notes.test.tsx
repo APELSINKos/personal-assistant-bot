@@ -143,6 +143,24 @@ describe("Notes", () => {
     expect(history.at(-1)).toBe("/notes/11");
   });
 
+  it("brings a card back to its first lines once the keyboard's focus leaves its text", async () => {
+    // Addresses past the sixth line: the browser scrolls the clamped text to show a focused one.
+    installTelegram();
+    const text = `${"Строка\n".repeat(8)}https://example.com/a https://example.com/b`;
+    mockApi({ "GET /notes": [{ ...note, text }, call] });
+    renderWithApp(<NotesScreen />, { path: "/notes" });
+    const first = await screen.findByRole("button", { name: "https://example.com/a" });
+    const paragraph = first.closest("p") as HTMLParagraphElement;
+    Object.defineProperty(paragraph, "scrollTop", { value: 0, writable: true });
+
+    act(() => first.focus());
+    paragraph.scrollTop = 120;
+    act(() => screen.getByRole("button", { name: "https://example.com/b" }).focus());
+    expect(paragraph.scrollTop).toBe(120); // still inside the text: the next address shows
+    act(() => screen.getByRole("searchbox").focus());
+    expect(paragraph.scrollTop).toBe(0); // the focus has left: the card starts at the top again
+  });
+
   it("dims «+» at 50 notes and says why instead of opening a new note", async () => {
     const app = installTelegram();
     const fifty = Array.from({ length: 50 }, (_, index) => ({ ...note, id: index + 1, text: `Заметка ${index + 1}` }));

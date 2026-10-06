@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, type FocusEvent } from "react";
 import { Link } from "wouter";
 import { useDeleteNote, useNotes } from "../api/queries";
 import type { Note } from "../api/types";
@@ -16,6 +16,16 @@ import { fold, searchNotes } from "../lib/search";
 import { confirmAction, haptic } from "../telegram";
 
 /**
+ * An address past the sixth line scrolls the clamped text when it takes the keyboard's focus. Once
+ * the focus leaves the text, the card shows its first lines again.
+ */
+function backToTop(event: FocusEvent<HTMLParagraphElement>) {
+  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+    event.currentTarget.scrollTop = 0;
+  }
+}
+
+/**
  * A note in the list. The card opens the note by a link stretched over all of it, and each address
  * in the text is a button above that link: a tap on an address opens the address, not the note.
  * A checklist shows its title and how much of it is checked.
@@ -31,7 +41,7 @@ function NoteCard({ note }: { note: Note }) {
         className="note-card__open"
         aria-labelledby={total > 0 ? `${textId} ${progressId}` : textId}
       />
-      <p className="note-card__text" id={textId}>
+      <p className="note-card__text" id={textId} onBlur={backToTop}>
         {note.pinned && "📌 "}
         <LinkedText text={note.text} />
       </p>
