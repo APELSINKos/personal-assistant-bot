@@ -6,6 +6,7 @@ from __future__ import annotations
 import secrets
 from collections.abc import Sequence
 from dataclasses import asdict
+from typing import Any
 
 from aiogram import Bot, F, Router
 from aiogram.types import (
@@ -33,6 +34,10 @@ AUTO = "auto"
 # Joins the search id and the index in a city button's value. Not ":" — that is the
 # separator of the packed callback data itself.
 PICK_JOIN = "-"
+# The data keys of a choice between namesakes: the search's id and the places found. Each
+# dialog has its own, so a choice made while adding a city never sets the home one.
+HOME_CHOICE = ("search", "cities")
+ADD_CHOICE = ("add_search", "add_cities")
 
 
 def _button(text: str, action: str, value: str = "") -> InlineKeyboardButton:
@@ -207,24 +212,57 @@ async def _save_city(ctx: Ctx, city: City) -> bool:
     return True
 
 
-async def got_city(message: Message, ctx: Ctx) -> None:
+async def _searched(message: Message, ctx: Ctx) -> tuple[str, list[City]] | None:
+    """The typed name and the places found for it — one step for the home city and for a city
+    to add. None when it has answered already: the name is empty or too long (the dialog waits
+    for another), or the search is unavailable (the dialog is over)."""
     name = (message.text or "").strip()
     if not 1 <= len(name) <= LIMITS.city_length:
         await message.answer(ctx.t("city-bad-name", limit=LIMITS.city_length))
-        return
+        return None
     try:
         found = await ctx.meteo.search(name, ctx.lang)
     except UpstreamUnavailable:
         await ctx.state.clear()
         await message.answer(ctx.t("city-unavailable"), reply_markup=main_menu(ctx.t))
+        return None
+    return name, found
+
+
+async def _offer(ctx: Ctx, found: Sequence[City], keys: tuple[str, str]) -> str:
+    """Keep the places of a choice under the dialog's keys and return the id of this search,
+    which its buttons carry."""
+    # A new id per search: a button from an earlier list must not pick from this one.
+    search = secrets.token_hex(4)
+    search_key, list_key = keys
+    await ctx.state.update_data({search_key: search, list_key: [asdict(city) for city in found]})
+    return search
+
+
+def _chosen(
+    data: dict[str, Any], search: str, index: str | int, keys: tuple[str, str]
+) -> City | None:
+    """The place a choice button names, or None for a button of an older list or one that
+    names no place of it."""
+    search_key, list_key = keys
+    if not search or search != data.get(search_key):  # a button from an older list is stale
+        return None
+    try:
+        return City(**data[list_key][int(index)])
+    except (TypeError, ValueError, LookupError):
+        return None
+
+
+async def got_city(message: Message, ctx: Ctx) -> None:
+    searched = await _searched(message, ctx)
+    if searched is None:
         return
+    name, found = searched
     if len(found) == 1 and await _save_city(ctx, found[0]):
         await message.answer(ctx.t("city-saved", city=found[0].name), reply_markup=main_menu(ctx.t))
         return
     if len(found) > 1:
-        # A new id per search: a button from an earlier list must not pick from this one.
-        search = secrets.token_hex(4)
-        await ctx.state.update_data(search=search, cities=[asdict(city) for city in found])
+        search = await _offer(ctx, found, HOME_CHOICE)
         rows = [
             [_button(city_label(city), "pick", f"{search}{PICK_JOIN}{index}")]
             for index, city in enumerate(found)
@@ -237,14 +275,8 @@ async def got_city(message: Message, ctx: Ctx) -> None:
 
 
 async def on_pick(query: CallbackQuery, callback_data: SettingsCb, ctx: Ctx, bot: Bot) -> None:
-    data = await ctx.state.get_data()
     search, _, index = callback_data.value.partition(PICK_JOIN)
-    city: City | None = None
-    if search and search == data.get("search"):  # a button from an older list is stale
-        try:
-            city = City(**data["cities"][int(index)])
-        except (TypeError, ValueError, LookupError):
-            city = None
+    city = _chosen(await ctx.state.get_data(), search, index, HOME_CHOICE)
     if city is None or not await _save_city(ctx, city):
         await query.answer(ctx.t("stale-button"))
         return
@@ -305,8 +337,8 @@ async def _add_city(ctx: Ctx, city: City) -> tuple[str, ReplyKeyboardMarkup | No
 
 
 async def got_added_city(message: Message, ctx: Ctx) -> None:
-    """A city to add, searched for as the home one. The search and the choice keep their own
-    data keys and buttons: the home city's would make the chosen place the new home."""
+    """A city to add, searched for as the home one. The choice keeps its own data keys and
+    buttons: the home city's would make the chosen place the new home."""
     if len(await cities.list_for(ctx.session, ctx.user.id)) >= LIMITS.cities:
         # The list filled up in the app while the question waited: nothing can be added, so
         # nothing is searched for. If it fills up during the search, cities.add refuses.
@@ -315,20 +347,12 @@ async def got_added_city(message: Message, ctx: Ctx) -> None:
             ctx.t("cities-limit", limit=LIMITS.cities), reply_markup=main_menu(ctx.t)
         )
         return
-    name = (message.text or "").strip()
-    if not 1 <= len(name) <= LIMITS.city_length:
-        await message.answer(ctx.t("city-bad-name", limit=LIMITS.city_length))
+    searched = await _searched(message, ctx)
+    if searched is None:
         return
-    try:
-        found = await ctx.meteo.search(name, ctx.lang)
-    except UpstreamUnavailable:
-        await ctx.state.clear()
-        await message.answer(ctx.t("city-unavailable"), reply_markup=main_menu(ctx.t))
-        return
+    name, found = searched
     if len(found) > 1:
-        # A new id per search: a button from an earlier list must not pick from this one.
-        search = secrets.token_hex(4)
-        await ctx.state.update_data(add_search=search, add_cities=[asdict(city) for city in found])
+        search = await _offer(ctx, found, ADD_CHOICE)
         rows = [
             [
                 InlineKeyboardButton(
@@ -352,13 +376,7 @@ async def got_added_city(message: Message, ctx: Ctx) -> None:
 
 async def on_pick_city(query: CallbackQuery, callback_data: CityCb, ctx: Ctx, bot: Bot) -> None:
     data = await ctx.state.get_data()
-    city: City | None = None
-    token = callback_data.token
-    if token and token == data.get("add_search"):  # a button from an older list is stale
-        try:
-            city = City(**data["add_cities"][callback_data.id])
-        except (TypeError, ValueError, LookupError):
-            city = None
+    city = _chosen(data, callback_data.token, callback_data.id, ADD_CHOICE)
     if city is None:
         await query.answer(ctx.t("stale-button"))
         return
