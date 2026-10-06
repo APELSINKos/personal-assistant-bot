@@ -25,6 +25,13 @@ class CityOut(BaseModel):
     timezone: str
 
 
+class FoundCityOut(CityOut):
+    """A place the search found. Its GeoNames id goes back with PUT /me/city and POST
+    /me/cities: by it a city is known as one already kept."""
+
+    geo_id: int | None = None
+
+
 class MorningOut(BaseModel):
     enabled: bool
     time: str
@@ -51,6 +58,10 @@ class MePatch(BaseModel):
     currency: str | None = Field(default=None, max_length=3)
 
 
+# A GeoNames id as SQLite's INTEGER keeps it: signed, 64 bits.
+GeoId = Annotated[int, Field(ge=1, le=2**63 - 1)]
+
+
 class CityIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -58,6 +69,33 @@ class CityIn(BaseModel):
     lat: float = Field(ge=-90, le=90)
     lon: float = Field(ge=-180, le=180)
     timezone: str = Field(min_length=1, max_length=64)
+    # The search result's: the new home leaves the extra cities by it, as by its coordinates.
+    geo_id: GeoId | None = None
+
+
+class WeatherCityIn(BaseModel):
+    """An extra city of the weather: a place of GET /cities as it came."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=100)
+    admin: str | None = Field(default=None, max_length=100)
+    country: str | None = Field(default=None, max_length=100)
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    timezone: str = Field(min_length=1, max_length=64)
+    geo_id: GeoId | None = None
+
+
+class WeatherCityOut(BaseModel):
+    id: int
+    name: str
+    admin: str | None
+    country: str | None
+    lat: float
+    lon: float
+    timezone: str
+    geo_id: int | None
 
 
 class WeatherOut(BaseModel):
@@ -71,6 +109,56 @@ class WeatherOut(BaseModel):
     tmin: float | None
     tmax: float | None
     tips: list[str]
+
+
+class ForecastCityOut(BaseModel):
+    id: int  # 0: the home city
+    name: str
+    home: bool
+
+
+class ForecastNowOut(BaseModel):
+    temperature: float | None
+    feels_like: float | None
+    wind: float | None
+    gusts: float | None
+    humidity: float | None  # percent
+    is_day: bool
+    emoji: str  # the moon at night
+    description: str
+    # The chance of the hour going on: the label at now rounded up to the hour.
+    precip_chance: int | None
+
+
+class ForecastHourOut(BaseModel):
+    time: str  # "HH:MM", the label
+    emoji: str
+    description: str
+    temperature: float
+    precip_chance: int | None  # of the hour before the label
+
+
+class ForecastDayOut(BaseModel):
+    date: date
+    emoji: str  # of the day's heaviest weather
+    description: str
+    tmin: float
+    tmax: float
+    precip_chance: int | None
+
+
+class ForecastOut(BaseModel):
+    """A city's forecast. Every time and date is on the city's clock; the app shows them as
+    they are."""
+
+    city: ForecastCityOut
+    now: ForecastNowOut
+    tips: list[str]
+    hours: list[ForecastHourOut]  # up to 23 after now; a missing hour is left out
+    days: list[ForecastDayOut]  # up to 7 from the city's today
+    sunrise: str | None  # "HH:MM" of days[0]; None on a polar day or night too
+    sunset: str | None
+    polar: Literal["night", "day"] | None
 
 
 class RateOut(BaseModel):
@@ -153,6 +241,25 @@ class TodayMoneyOut(BaseModel):
     count: int  # this month's entries
 
 
+class ClassesWeatherOut(BaseModel):
+    """The weather of the way to the first class and home after the last one, on the user's
+    clock. It is the whole day's: the app hides the parts that are over."""
+
+    start: str  # "HH:MM", the first class begins
+    start_temp: float | None  # None: no forecast for that hour
+    start_chance: int | None  # None under 30 % too
+    end: str  # the last class ends
+    end_temp: float | None
+    end_chance: int | None
+
+
+class PinnedNoteOut(BaseModel):
+    id: int
+    text: str  # whole: the app cuts it
+    done: int  # a checklist's checked items; 0 of 0 for a note without items
+    total: int
+
+
 class TodayOut(BaseModel):
     date: date
     part_of_day: Literal["morning", "day", "evening", "night"]
@@ -166,19 +273,55 @@ class TodayOut(BaseModel):
     lessons: list[TodayLesson]
     week_label: str | None
     money: TodayMoneyOut | None
+    tomorrow: ForecastDayOut | None  # from 17:00 on the user's clock, with the weather
+    classes_weather: ClassesWeatherOut | None  # None without today's classes or the forecast
+    pinned_notes: list[PinnedNoteOut]  # the first three, in the order of the notes
 
 
 class NoteIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    text: str = Field(max_length=10_000)
+    text: str = Field(max_length=10_000)  # a checklist's title
+    # No bounds on the items here: the service measures each one after trimming it and gives
+    # the limits the app knows (422 for an item's length, 409 for their number).
+    items: list[str] = Field(default_factory=list)
+    pinned: bool = False
+
+
+class NotePatch(BaseModel):
+    """At least one of the two."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str | None = Field(default=None, max_length=10_000)
+    pinned: bool | None = None
+
+
+class NoteItemIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str  # measured by the service after trimming, as NoteIn.items
+
+
+class NoteItemPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    done: bool  # set, not switched: a second request changes nothing
+
+
+class NoteItemOut(BaseModel):
+    id: int
+    text: str
+    done: bool
 
 
 class NoteOut(BaseModel):
     id: int
     text: str
+    pinned: bool
+    items: list[NoteItemOut]  # in the order they were added
     created_at: datetime
-    updated_at: datetime
+    updated_at: datetime  # the text's last change: pins and items leave it
 
 
 RepeatName = Literal["none", "daily", "weekly", "monthly"]

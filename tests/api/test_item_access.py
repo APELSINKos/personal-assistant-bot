@@ -7,6 +7,11 @@ def _item_paths(item_id: int | str) -> list[tuple[str, str, dict[str, object] | 
     return [
         ("PATCH", f"/api/notes/{item_id}", {"text": "x"}),
         ("DELETE", f"/api/notes/{item_id}", None),
+        ("POST", f"/api/notes/{item_id}/items", {"text": "x"}),
+        ("PATCH", f"/api/notes/{item_id}/items/{item_id}", {"done": True}),
+        ("DELETE", f"/api/notes/{item_id}/items/{item_id}", None),
+        ("DELETE", f"/api/notes/{item_id}/items?done=true", None),
+        ("DELETE", f"/api/me/cities/{item_id}", None),
         ("DELETE", f"/api/reminders/{item_id}", None),
         ("DELETE", f"/api/habits/{item_id}", None),
         ("PUT", f"/api/habits/{item_id}/marks/2026-09-28", {"done": True}),

@@ -1,16 +1,24 @@
-"""The user's profile and settings, and the city search that feeds them."""
+"""The user's profile and settings, the extra cities of the weather, and the city search that
+feeds them."""
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
 
-from assistant.api.deps import CurrentUser, Session, State
-from assistant.api.schemas import CityIn, CityOut, MeOut, MePatch
-from assistant.api.views import me_out, user_language
-from assistant.core.services import money, users
+from assistant.api.deps import CurrentUser, ItemId, Session, State
+from assistant.api.schemas import (
+    CityIn,
+    FoundCityOut,
+    MeOut,
+    MePatch,
+    WeatherCityIn,
+    WeatherCityOut,
+)
+from assistant.api.views import found_city_out, me_out, user_language, weather_city_out
+from assistant.core.clients.openmeteo import City
+from assistant.core.services import cities, money, users
 
 router = APIRouter(tags=["profile"])
 
@@ -33,8 +41,18 @@ async def patch_me(body: MePatch, user: CurrentUser, db: Session) -> MeOut:
 
 
 @router.put("/me/city", response_model=MeOut)
-async def put_city(body: CityIn, user: CurrentUser, db: Session) -> MeOut:
-    await users.set_city(db, user, body.name, body.lat, body.lon, body.timezone)
+async def put_city(body: CityIn, user: CurrentUser, db: Session, state: State) -> MeOut:
+    """A new home city. When it is one of the extra cities, that one leaves the list."""
+    await users.set_city(
+        db,
+        user,
+        body.name,
+        body.lat,
+        body.lon,
+        body.timezone,
+        now=state.clock(),
+        geo_id=body.geo_id,
+    )
     await db.commit()
     return me_out(user)
 
@@ -49,11 +67,31 @@ async def allow_write(user: CurrentUser, db: Session) -> MeOut:
     return me_out(user)
 
 
-@router.get("/cities", response_model=list[CityOut])
+@router.get("/me/cities", response_model=list[WeatherCityOut])
+async def list_cities(user: CurrentUser, db: Session) -> list[WeatherCityOut]:
+    return [weather_city_out(city) for city in await cities.list_for(db, user.id)]
+
+
+@router.post("/me/cities", response_model=WeatherCityOut, status_code=201)
+async def add_city(body: WeatherCityIn, user: CurrentUser, db: Session) -> WeatherCityOut:
+    """An extra city for the weather; the home city and the time of everything stay."""
+    added = await cities.add(db, user, City(**body.model_dump()))
+    await db.commit()
+    return weather_city_out(added)
+
+
+@router.delete("/me/cities/{city_id}", status_code=204)
+async def delete_city(city_id: ItemId, user: CurrentUser, db: Session) -> Response:
+    await cities.delete(db, user.id, city_id)
+    await db.commit()
+    return Response(status_code=204)
+
+
+@router.get("/cities", response_model=list[FoundCityOut])
 async def search_cities(
     q: Annotated[str, Query(min_length=2, max_length=50)],
     user: CurrentUser,
     state: State,
-) -> list[CityOut]:
+) -> list[FoundCityOut]:
     found = await state.meteo.search(q.strip(), user_language(user))
-    return [CityOut(**asdict(city)) for city in found]
+    return [found_city_out(city) for city in found]
