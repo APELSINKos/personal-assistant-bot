@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from babel.dates import format_date, format_datetime
 
+from assistant.bot.keyboards import preview
 from assistant.bot.money_texts import money, month_name
 from assistant.core.clients.cbr import Rates
 from assistant.core.i18n import (
@@ -21,6 +22,7 @@ from assistant.core.models import Lesson, Reminder, ScheduleSource
 from assistant.core.services import reminders, weather
 from assistant.core.services.digest import TodayData
 from assistant.core.services.habits import Streak
+from assistant.core.services.notes import NoteView
 from assistant.core.services.phrases import Parsed
 from assistant.core.services.recurrence import describe, local_days
 from assistant.core.services.weather import Day, Forecast, Hour, Tip, WeatherNow
@@ -46,6 +48,10 @@ HOURS_SHOWN = 12
 # A chance of rain or snow is worth a mention from this many percent on. The classes line has a
 # threshold of its own (weather.CLASSES_CHANCE).
 CHANCE_SHOWN = 20
+# «Мой день» tells of tomorrow's weather from this hour of the user's evening until midnight.
+TOMORROW_FROM = 17
+# A pinned note in «Мой день» is one short line: the start of its text.
+PINNED_PREVIEW = 40
 
 
 def utf16_len(text: str) -> int:
@@ -74,15 +80,14 @@ def tip_lines(tips: list[Tip], t: Translator) -> list[str]:
     return [t(tip.key, **tip.params) for tip in tips]
 
 
-def _now_line(now: WeatherNow, t: Translator) -> str:
+def _now_values(now: WeatherNow, t: Translator) -> dict[str, object]:
+    """The weather now as its lines name it: «🌤 Москва: +10°C, малооблачно», the moon at night."""
     emoji, key = describe_weather(now.code, now.is_day)
-    return t(
-        "weather-now",
-        emoji=emoji,
-        city=now.city,
-        temp=temp(now.temperature),
-        description=t(key),
-    )
+    return {"emoji": emoji, "city": now.city, "temp": temp(now.temperature), "description": t(key)}
+
+
+def _now_line(now: WeatherNow, t: Translator) -> str:
+    return t("weather-now", **_now_values(now, t))
 
 
 def _with_credit(lines: list[str], t: Translator) -> str:
@@ -293,7 +298,73 @@ def _money_morning(data: TodayData, t: Translator) -> list[str]:
     return [t("morning-money", yesterday=yesterday, left=left, per_day=per_day)]
 
 
+def _way(temperature: float | None, chance: int | None, t: Translator) -> str:
+    """«+6°C», or «+6°C, 💧 70 %» when rain or snow is likely on the way."""
+    if chance is None:
+        return temp(temperature)
+    return t("classes-temp-chance", temp=temp(temperature), chance=chance)
+
+
+def _classes_lines(data: TodayData, t: Translator) -> list[str]:
+    """The weather on the way to today's classes and back: «🎓 На пары (09:00): +3°C · после пар
+    (16:20): +6°C, 💧 70 %». Once the first class has begun, or without the forecast's hour of
+    its start, only the way back; nothing once the last class is over or without the hour of its
+    end. «Now» is the moment the day was gathered at."""
+    if data.forecast is None or not data.lessons:
+        return []
+    start = min(lesson.starts_at for lesson in data.lessons)
+    end = max(lesson.ends_at for lesson in data.lessons)
+    now = data.local_now
+    if now >= end:
+        return []
+    # The times are shown on the user's clock, the one local_now is on: a ZoneInfo, whose str is
+    # the zone's name.
+    way = weather.classes_weather(data.forecast, start, end, str(now.tzinfo))
+    if way is None:
+        return []
+    back = _way(way.end_temp, way.end_chance, t)
+    finish = way.end.strftime("%H:%M")
+    if now >= start or way.start_temp is None:
+        return [t("classes-weather-after", end=finish, end_weather=back)]
+    there = _way(way.start_temp, way.start_chance, t)
+    return [
+        t(
+            "classes-weather",
+            start=way.start.strftime("%H:%M"),
+            start_weather=there,
+            end=finish,
+            end_weather=back,
+        )
+    ]
+
+
+def _tomorrow_lines(data: TodayData, t: Translator) -> list[str]:
+    """«Завтра: ☁️ +2…+7°C, 💧 80 %»: in the evening, from TOMORROW_FROM on the user's clock,
+    tomorrow's weather, when the forecast has that day."""
+    if data.forecast is None or data.local_now.hour < TOMORROW_FROM:
+        return []
+    day = weather.tomorrow(data.forecast, data.local_now.date())
+    if day is None:
+        return []
+    emoji, _ = describe_weather(day.code)
+    values = {"emoji": emoji, "range": temp_range(day.tmin, day.tmax)}
+    if _chance_shown(day.precip_chance):
+        return [t("today-tomorrow-chance", chance=day.precip_chance, **values)]
+    return [t("today-tomorrow", **values)]
+
+
+def _pinned_line(note: NoteView, t: Translator) -> str:
+    """«📌 Пароль от wifi: hunter2»; a checklist with its progress, «📌 Покупки ✅ 2/5»."""
+    text = preview(note.text, PINNED_PREVIEW)
+    if note.total:
+        text = t("note-progress", text=text, done=note.done, total=note.total)
+    return t("today-pinned", text=text)
+
+
 def today_text(data: TodayData, name: str, t: Translator) -> str:
+    """«Мой день»: the weather now with the first tip, the way to the classes, tomorrow in the
+    evening and the data's source; the day's reminders, classes, habits and money; the notes with
+    the pinned ones; the rates."""
     return _within_limit(data, lambda shown, lessons: _today(data, name, t, shown, lessons))
 
 
@@ -307,6 +378,10 @@ def _today(data: TodayData, name: str, t: Translator, shown: int, lessons: int) 
     if data.weather is not None:
         lines.append(_now_line(data.weather, t))
         lines += tip_lines(data.weather.tips[:1], t)
+        lines += _classes_lines(data, t)
+        lines += _tomorrow_lines(data, t)
+        # Right under the weather: Open-Meteo's licence asks for the source next to the data.
+        lines.append(t("weather-credit"))
     else:
         lines.append(t("today-weather-unavailable"))
     lines += ["", t("today-reminders", count=len(data.reminders))]
@@ -320,12 +395,24 @@ def _today(data: TodayData, name: str, t: Translator, shown: int, lessons: int) 
         lines.append(streak_line(data.best_streak, t))
     lines += _money_today(data, t)
     lines.append(t("today-notes", count=data.notes_count))
+    lines += [_pinned_line(note, t) for note in data.pinned]
     if data.rates is not None:
         lines.append(_rates_line(data.rates, data.currency, t))
     return "\n".join(lines)
 
 
+def _morning_weather_line(now: WeatherNow, t: Translator) -> str:
+    """«☁️ Москва: +4°C, пасмурно · днём до +9°C»: now and the day's highest; the line of now
+    alone when the forecast has no highest for today."""
+    if now.tmax is None:
+        return _now_line(now, t)
+    return t("morning-weather", max=temp(now.tmax), **_now_values(now, t))
+
+
 def morning_text(data: TodayData, name: str, t: Translator) -> str:
+    """The morning digest: the weather now with the day's highest, every tip, the way to the
+    classes and the data's source; the day's reminders and classes; habits, money and rates.
+    Never tomorrow: the day has only begun."""
     return _within_limit(data, lambda shown, lessons: _morning(data, name, t, shown, lessons))
 
 
@@ -337,14 +424,10 @@ def _morning(data: TodayData, name: str, t: Translator, shown: int, lessons: int
         "",
     ]
     if data.weather is not None:
-        lines.append(
-            t(
-                "morning-weather",
-                city=data.weather.city,
-                range=temp_range(data.weather.tmin, data.weather.tmax),
-            )
-        )
+        lines.append(_morning_weather_line(data.weather, t))
         lines += tip_lines(data.weather.tips, t)
+        lines += _classes_lines(data, t)
+        lines.append(t("weather-credit"))
     else:
         lines.append(t("today-weather-unavailable"))
     lines += ["", t("morning-reminders", count=len(data.reminders))]

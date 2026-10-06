@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import replace
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -11,12 +12,13 @@ from assistant.bot.routers.habits import habits_view
 from assistant.bot.routers.notes import notes_view
 from assistant.bot.routers.reminders import reminders_view
 from assistant.core.clients.cbr import Rate, Rates
-from assistant.core.i18n import format_day, translator
+from assistant.core.i18n import Translator, format_day, translator
 from assistant.core.models import Habit, Lesson, Note, Reminder, Repeat, User
 from assistant.core.services.digest import TodayData
 from assistant.core.services.habits import HabitStats, Streak
 from assistant.core.services.money_month import Month
-from assistant.core.services.weather import Tip, WeatherNow
+from assistant.core.services.notes import Item, NoteView
+from assistant.core.services.weather import Forecast, Tip, WeatherNow
 from assistant.core.services.weather import parse as parse_forecast
 from tests.stubs import FORECAST_NOW, forecast_payload
 
@@ -272,6 +274,7 @@ def test_today_text_full() -> None:
         "\n"
         "🌤 Москва: +10°C, малооблачно\n"
         "🚲 Сегодня хороший день для велосипеда\n"
+        "Данные о погоде: open-meteo.com\n"
         "\n"
         "📌 На сегодня 1 напоминание:\n"
         "• 12:30 — встреча\n"
@@ -330,8 +333,9 @@ def test_morning_text() -> None:
         "☀️ Доброе утро, Alex!\n"
         "📅 28 сентября, понедельник\n"
         "\n"
-        "🌡 Москва: +6…+13°C\n"
+        "🌤 Москва: +10°C, малооблачно · днём до +13°C\n"
         "🚲 Сегодня хороший день для велосипеда\n"
+        "Данные о погоде: open-meteo.com\n"
         "\n"
         "📌 Сегодня:\n"
         "• 12:30 — встреча\n"
@@ -351,6 +355,244 @@ def test_morning_text_minimal() -> None:
         "🌤 Погода временно недоступна\n"
         "\n"
         "📌 На сегодня напоминаний нет"
+    )
+
+
+def test_the_digest_tells_the_weather_now_and_the_days_highest() -> None:
+    english = texts.morning_text(day_data(), "Alex", EN).split("\n")
+    assert english[3] == "🌤 Москва: +10°C, partly cloudy · up to +13°C today"
+    night = replace(WEATHER, code=0, is_day=False, temperature=-3.6, tmax=1.2)
+    lines = texts.morning_text(day_data(weather=night), "Alex", RU).split("\n")
+    assert lines[3] == "🌙 Москва: -4°C, ясно · днём до +1°C"
+    # Without today's highest the line of now alone.
+    plain = replace(WEATHER, tmax=None)
+    assert texts.morning_text(day_data(weather=plain), "Alex", RU).split("\n")[3] == (
+        "🌤 Москва: +10°C, малооблачно"
+    )
+
+
+def at(clock: str) -> datetime:
+    """28 September at this time of Moscow."""
+    return datetime.combine(date(2026, 9, 28), time.fromisoformat(clock), MSK)
+
+
+def lesson_at(
+    start: str, end: str, title: str = "Физика", kind: str = "ЛК", room: str = "А-16"
+) -> Lesson:
+    """A lesson of 28 September between two times of Moscow, in UTC as the stored ones are."""
+    return Lesson(
+        uid=f"{start}-{end}",
+        starts_at=at(start).astimezone(UTC),
+        ends_at=at(end).astimezone(UTC),
+        title=title,
+        kind=kind,
+        room=room,
+    )
+
+
+def forecast_with(chances: dict[int, int], *, tomorrow: int = 0) -> Forecast:
+    """The stub forecast of Moscow with these chances of rain at today's labels (17 tells of
+    16:00–17:00) and, with a chance tomorrow, rain tomorrow."""
+    data = forecast_payload()
+    for label, chance in chances.items():
+        data["hourly"]["precipitation_probability"][label] = chance
+    if tomorrow:
+        data["daily"]["weather_code"][1] = 61
+        data["daily"]["precipitation_probability_max"][1] = tomorrow
+    return parse_forecast(data, "Москва")
+
+
+# Classes from 09:00 to 16:20 in Moscow, and rain likely on the way home: 16:20–17:00.
+CLASSES = [
+    lesson_at("09:00", "10:30"),
+    lesson_at("14:50", "16:20", "Разработка баз данных", "ПР", "И-212-б"),
+]
+RAIN_HOME = forecast_with({17: 70}, tomorrow=80)
+WAY = "🎓 На пары (09:00): +9°C · после пар (16:20): +13°C, 💧 70 %"
+WAY_BACK = "🎓 После пар (16:20): +13°C, 💧 70 %"
+
+
+def classes_day(
+    clock: str, forecast: Forecast = RAIN_HOME, lessons: list[Lesson] = CLASSES
+) -> TodayData:
+    return day_data(local_now=at(clock), forecast=forecast, has_schedule=True, lessons=lessons)
+
+
+def way_lines(text: str) -> list[str]:
+    return [line for line in text.split("\n") if line.startswith(("🎓 На пары", "🎓 После пар"))]
+
+
+@pytest.mark.parametrize(
+    ("clock", "line"),
+    [
+        ("08:00", WAY),
+        ("08:59", WAY),
+        ("09:00", WAY_BACK),  # the first class has begun: the way back alone
+        ("16:19", WAY_BACK),
+        ("16:20", None),  # the last one is over
+        ("23:00", None),
+    ],
+)
+def test_the_way_to_the_classes_and_back(clock: str, line: str | None) -> None:
+    data = classes_day(clock)
+    for render in (texts.today_text, texts.morning_text):
+        assert way_lines(render(data, "Alex", RU)) == ([line] if line else [])
+
+
+def test_the_way_tells_of_rain_from_30_percent_and_in_english() -> None:
+    forecast = forecast_with({9: 30, 17: 70})  # 08:00–09:00 and 16:00–17:00
+    assert way_lines(texts.today_text(classes_day("08:00", forecast), "Alex", RU)) == [
+        "🎓 На пары (09:00): +9°C, 💧 30 % · после пар (16:20): +13°C, 💧 70 %"
+    ]
+    english = texts.morning_text(classes_day("08:00", forecast), "Alex", EN).split("\n")
+    assert "🎓 To classes (09:00): +9°C, 💧 30% · after (16:20): +13°C, 💧 70%" in english
+    later = texts.today_text(classes_day("10:00", forecast), "Alex", EN).split("\n")
+    assert "🎓 After classes (16:20): +13°C, 💧 70%" in later
+    dry = forecast_with({9: 29, 17: 29})
+    assert way_lines(texts.today_text(classes_day("08:00", dry), "Alex", RU)) == [
+        "🎓 На пары (09:00): +9°C · после пар (16:20): +13°C"
+    ]
+
+
+def test_the_way_without_the_forecasts_hour_of_its_start_or_its_end() -> None:
+    data = forecast_payload()
+    data["hourly"]["precipitation_probability"][17] = 70
+    data["hourly"]["temperature_2m"][9] = None  # no hour from 09:00: the way there is unknown
+    no_start = parse_forecast(data, "Москва")
+    assert way_lines(texts.today_text(classes_day("08:00", no_start), "Alex", RU)) == [WAY_BACK]
+    data["hourly"]["temperature_2m"][16] = None  # nor the one 16:20 falls in: no line at all
+    no_end = parse_forecast(data, "Москва")
+    for render in (texts.today_text, texts.morning_text):
+        assert way_lines(render(classes_day("08:00", no_end), "Alex", RU)) == []
+
+
+def test_no_way_without_classes_or_the_forecast() -> None:
+    assert way_lines(texts.today_text(classes_day("08:00", lessons=[]), "Alex", RU)) == []
+    no_forecast = day_data(has_schedule=True, lessons=CLASSES)
+    assert way_lines(texts.morning_text(no_forecast, "Alex", RU)) == []
+
+
+def test_the_way_is_found_on_the_forecasts_clock_and_told_on_the_users() -> None:
+    # A forecast three hours ahead of the user's clock: 09:00 in Moscow is its 12:00.
+    omsk = parse_forecast(forecast_payload(zone="Asia/Omsk"), "Омск")
+    assert way_lines(texts.today_text(classes_day("08:00", omsk), "Alex", RU)) == [
+        "🎓 На пары (09:00): +12°C · после пар (16:20): +11°C"
+    ]
+
+
+def tomorrow_lines(text: str) -> list[str]:
+    return [line for line in text.split("\n") if line.startswith(("Завтра", "Tomorrow"))]
+
+
+@pytest.mark.parametrize(
+    ("clock", "shown"), [("00:00", False), ("16:59", False), ("17:00", True), ("23:59", True)]
+)
+def test_my_day_tells_of_tomorrow_in_the_evening(clock: str, shown: bool) -> None:
+    data = day_data(local_now=at(clock), forecast=RAIN_HOME)
+    lines = tomorrow_lines(texts.today_text(data, "Alex", RU))
+    assert lines == (["Завтра: 🌧 +6…+13°C, 💧 80 %"] if shown else [])
+    assert tomorrow_lines(texts.morning_text(data, "Alex", RU)) == []  # the digest never does
+
+
+def test_tomorrow_tells_of_its_chance_from_20_percent() -> None:
+    def tomorrow(forecast: Forecast, t: Translator) -> list[str]:
+        data = day_data(local_now=at("18:00"), forecast=forecast)
+        return tomorrow_lines(texts.today_text(data, "Alex", t))
+
+    assert tomorrow(forecast_with({}), RU) == ["Завтра: 🌤 +6…+13°C"]
+    assert tomorrow(forecast_with({}, tomorrow=19), RU) == ["Завтра: 🌧 +6…+13°C"]
+    assert tomorrow(forecast_with({}, tomorrow=20), RU) == ["Завтра: 🌧 +6…+13°C, 💧 20 %"]
+    assert tomorrow(forecast_with({}, tomorrow=20), EN) == ["Tomorrow: 🌧 +6…+13°C, 💧 20%"]
+    # A forecast without tomorrow has no line.
+    assert tomorrow(parse_forecast(forecast_payload(days=1), "Москва"), RU) == []
+
+
+def note_view(text: str, checks: Sequence[bool] = ()) -> NoteView:
+    moment = datetime(2026, 9, 28, 5, 0, tzinfo=UTC)
+    items = [Item(id=n, text=f"пункт {n}", done=done) for n, done in enumerate(checks, 1)]
+    return NoteView(
+        id=1, text=text, pinned_at=moment, created_at=moment, updated_at=moment, items=items
+    )
+
+
+PINNED = [
+    note_view("Пароль от wifi:\nhunter2"),
+    note_view("Покупки", [True, True, False, False, False]),
+    note_view("Записать маму к врачу на следующей неделе, лучше утром"),
+]
+
+
+def test_my_day_shows_the_pinned_notes_under_their_count() -> None:
+    lines = texts.today_text(day_data(pinned=PINNED), "Alex", RU).split("\n")
+    notes = lines.index("📝 Заметок: 4")
+    assert lines[notes + 1 :] == [
+        "📌 Пароль от wifi: hunter2",
+        "📌 Покупки ✅ 2/5",
+        "📌 Записать маму к врачу на следующей неде…",  # 39 characters and «…»
+        "💵 84,20 ₽ · 💶 96,67 ₽",
+    ]
+    english = texts.today_text(day_data(pinned=PINNED), "Alex", EN).split("\n")
+    assert english[english.index("📝 Notes: 4") + 2] == "📌 Покупки ✅ 2/5"
+    assert "Покупки" not in texts.morning_text(day_data(pinned=PINNED), "Alex", RU)
+
+
+def test_my_day_in_the_evening_with_all_of_its_weather() -> None:
+    data = day_data(
+        local_now=at("17:30"),
+        part_of_day="evening",
+        forecast=forecast_with({20: 60}, tomorrow=80),  # 19:00–20:00
+        has_schedule=True,
+        lessons=[lesson_at("18:00", "19:30")],
+        pinned=PINNED[:2],
+    )
+    assert texts.today_text(data, "Alex", RU) == (
+        "🌆 Добрый вечер, Alex!\n"
+        "📅 Сегодня, 28 сентября, понедельник\n"
+        "\n"
+        "🌤 Москва: +10°C, малооблачно\n"
+        "🚲 Сегодня хороший день для велосипеда\n"
+        "🎓 На пары (18:00): +12°C · после пар (19:30): +11°C, 💧 60 %\n"
+        "Завтра: 🌧 +6…+13°C, 💧 80 %\n"
+        "Данные о погоде: open-meteo.com\n"
+        "\n"
+        "📌 На сегодня 1 напоминание:\n"
+        "• 12:30 — встреча\n"
+        "🎓 Пары:\n"
+        "• 18:00–19:30 ЛК Физика · А-16\n"
+        "🎯 Привычки: 1 из 3\n"
+        "🔥 Лучшая серия: «Спорт» — 5 дней\n"
+        "📝 Заметок: 4\n"
+        "📌 Пароль от wifi: hunter2\n"
+        "📌 Покупки ✅ 2/5\n"
+        "💵 84,20 ₽ · 💶 96,67 ₽"
+    )
+    english = texts.today_text(data, "Alex", EN).split("\n")
+    assert english[5:8] == [
+        "🎓 To classes (18:00): +12°C · after (19:30): +11°C, 💧 60%",
+        "Tomorrow: 🌧 +6…+13°C, 💧 80%",
+        "Weather data: open-meteo.com",
+    ]
+
+
+def test_the_digest_with_the_way_to_the_classes() -> None:
+    assert texts.morning_text(classes_day("08:00"), "Alex", RU) == (
+        "☀️ Доброе утро, Alex!\n"
+        "📅 28 сентября, понедельник\n"
+        "\n"
+        "🌤 Москва: +10°C, малооблачно · днём до +13°C\n"
+        "🚲 Сегодня хороший день для велосипеда\n"
+        "🎓 На пары (09:00): +9°C · после пар (16:20): +13°C, 💧 70 %\n"
+        "Данные о погоде: open-meteo.com\n"
+        "\n"
+        "📌 Сегодня:\n"
+        "• 12:30 — встреча\n"
+        "🎓 Пары:\n"
+        "• 09:00–10:30 ЛК Физика · А-16\n"
+        "• 14:50–16:20 ПР Разработка баз данных · И-212-б\n"
+        "\n"
+        "🎯 Привычек на сегодня: 3 — не забудь отметить\n"
+        "🔥 Лучшая серия: «Спорт» — 5 дней\n"
+        "💵 84,20 ₽ · 💶 96,67 ₽"
     )
 
 
@@ -501,27 +743,47 @@ TIPS = [
 
 
 def fullest_day() -> TodayData:
-    """Every field at its maximum, the reminders made of emoji (two UTF-16 units each)."""
+    """Every field at its maximum, the reminders and the pinned notes made of emoji (two UTF-16
+    units each). At 17:00 with classes from 18:00 and rain likely all week: both parts of the way
+    to the classes, and «Мой день» tells of tomorrow."""
     long = Lesson(
         uid="u",
-        starts_at=LESSON.starts_at,
-        ends_at=LESSON.ends_at,
+        starts_at=at("18:00").astimezone(UTC),
+        ends_at=at("21:40").astimezone(UTC),
         title="Т" * 200,
         kind="ДОПДОПЛК",  # 8 characters, the most a kind keeps
         room="А" * 100,
     )
     due = datetime(2026, 9, 28, 9, 30, tzinfo=UTC)
+    rainy = forecast_payload()
+    rainy["hourly"]["precipitation_probability"] = [100] * 7 * 24
+    rainy["daily"]["precipitation_probability_max"] = [100] * 7
+    rainy["daily"]["weather_code"] = [61] * 7  # 🌧, two units
+    forecast = parse_forecast(rainy, "Г" * 100)
+    checklist = note_view("🎉" * 500, [True] * 20)
     return day_data(
-        weather=replace(WEATHER, city="Г" * 100, tips=TIPS),
+        local_now=at("17:00"),
+        part_of_day="evening",
+        weather=replace(forecast.now, tips=TIPS),
+        forecast=forecast,
         reminders=[Reminder(text="🎉" * 200, due_at=due) for _ in range(20)],
         habits_total=10,
         habits_done=10,
         best_streak=Streak("П" * 50, 3650, "days"),
         notes_count=50,
+        pinned=[checklist] * 3,
         has_schedule=True,
         lessons=[long] * 12,
         week_label="Н" * 40,
     )
+
+
+FULLEST_LESSON = "• 18:00–21:40 "
+FULLEST_WAY = {
+    "ru": "🎓 На пары (18:00): +12°C, 💧 100 % · после пар (21:40): +9°C, 💧 100 %",
+    "en": "🎓 To classes (18:00): +12°C, 💧 100% · after (21:40): +9°C, 💧 100%",
+}
+FULLEST_TOMORROW = {"ru": "Завтра: 🌧 +6…+13°C, 💧 100 %", "en": "Tomorrow: 🌧 +6…+13°C, 💧 100%"}
 
 
 @pytest.mark.parametrize("t", [RU, EN], ids=["ru", "en"])
@@ -531,10 +793,22 @@ def test_my_day_and_the_digest_fit_telegram_however_full_the_day(t, render) -> N
     assert utf16(text) <= BUDGET
     lines = text.splitlines()
     assert "Ж" * 64 in lines[0] and "Г" * 100 in lines[3]  # the header and the weather stay
+    # So do the weather's other lines and, in «Мой день», the pinned notes.
+    my_day = render is texts.today_text
+    assert lines[4 : lines.index("", 3)] == [
+        *texts.tip_lines(TIPS[:1] if my_day else TIPS, t),
+        FULLEST_WAY[t.lang],
+        *([FULLEST_TOMORROW[t.lang]] if my_day else []),
+        t("weather-credit"),
+    ]
+    if my_day:
+        notes = lines.index(t("today-notes", count=50))
+        pinned = t("note-progress", text="🎉" * 39 + "…", done=20, total=20)
+        assert lines[notes + 1 : notes + 4] == [t("today-pinned", text=pinned)] * 3
     reminders = [index for index, line in enumerate(lines) if line.endswith("🎉")]
     assert 0 < len(reminders) < texts.DAY_REMINDERS_SHOWN  # cut from the end, first
     assert lines[reminders[-1] + 1] == t("list-more", count=20 - len(reminders))
-    lessons = [line for line in lines if line.startswith("• 12:40–14:10")]
+    lessons = [line for line in lines if line.startswith(FULLEST_LESSON)]
     assert len(lessons) == texts.DAY_LESSONS_SHOWN and t("list-more", count=2) in lines
 
 
@@ -546,7 +820,7 @@ def test_the_lessons_are_cut_once_no_reminder_is_left(t, render, monkeypatch) ->
     assert utf16(text) <= 1500
     lines = text.splitlines()
     assert not any(line.endswith("🎉") for line in lines) and t("list-more", count=20) in lines
-    lessons = [index for index, line in enumerate(lines) if line.startswith("• 12:40–14:10")]
+    lessons = [index for index, line in enumerate(lines) if line.startswith(FULLEST_LESSON)]
     assert 0 < len(lessons) < texts.DAY_LESSONS_SHOWN
     assert lines[lessons[-1] + 1] == t("list-more", count=12 - len(lessons))
 

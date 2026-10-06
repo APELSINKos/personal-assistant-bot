@@ -208,6 +208,19 @@ def weather_views(
     ]
 
 
+def today_markup(
+    t: Translator, weather: bool, url: str | None = None
+) -> InlineKeyboardMarkup | None:
+    """The buttons under «Мой день» and the morning digest: when the weather is shown, the home
+    city's hours and week, each as a message of its own that leaves this one whole; below them
+    the app, when it has an address."""
+    rows = [weather_views(t, "now", new=1)] if weather else []
+    app = app_markup(t, url)
+    if app is not None:
+        rows += app.inline_keyboard
+    return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
+
+
 def card_markup(t: Translator, card: int) -> InlineKeyboardMarkup:
     """`card` ties every button to the draft that was current when it was sent."""
 

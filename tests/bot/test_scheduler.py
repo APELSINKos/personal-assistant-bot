@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, date, datetime, timedelta
+from typing import Any
 
 import pytest
 from aiogram.exceptions import (
@@ -13,16 +14,20 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
     TelegramServerError,
 )
-from aiogram.methods import SendMessage
+from aiogram.methods import EditMessageText, SendMessage
 from sqlalchemy import select
 
 from assistant.bot import scheduler as scheduler_module
-from assistant.bot.keyboards import FireCb
+from assistant.bot.keyboards import FireCb, WeatherCb
 from assistant.bot.replies import NO_PREVIEW
+from assistant.bot.routers import weather as weather_router
 from assistant.bot.scheduler import Scheduler
+from assistant.core.clients.cbr import Rates
 from assistant.core.models import FsmState, Habit, Reminder, ReminderStatus, Repeat, ShareCard
 from assistant.core.services import reminders
 from assistant.core.services.recurrence import Rule
+from tests.bot.fakes import callback_update
+from tests.stubs import FORECAST_NOW, StubCbr, StubMeteo
 
 NOW = datetime(2026, 9, 28, 12, 0, tzinfo=UTC)  # 15:00 in Moscow
 METHOD = SendMessage(chat_id=1, text="x")
@@ -223,6 +228,138 @@ async def test_digest_retries_after_network_error_inside_the_window(
     assert (await reload(session, user)).last_morning_date is None
     assert await scheduler.send_digests(AT_0015) == 1
     assert (await reload(session, user)).last_morning_date == date(2026, 9, 28)
+
+
+AT_0800 = datetime(2026, 9, 28, 5, 0, tzinfo=UTC)  # the usual digest's time in Moscow
+UNAVAILABLE = "🌤 Погода временно недоступна"
+
+
+def buttons(message) -> list[list[str]]:
+    return [[button.text for button in row] for row in message.reply_markup.inline_keyboard]
+
+
+async def test_the_digest_brings_the_forecast_buttons_without_a_preview(
+    scheduler, make_user, fake, feed, monkeypatch
+) -> None:
+    monkeypatch.setattr(weather_router, "clock", lambda: FORECAST_NOW)
+    await make_user()
+    assert await scheduler.send_digests(AT_0800) == 1
+    [digest] = fake.of(SendMessage)
+    assert digest.text.split("\n")[3:6] == [
+        "🌤 Москва: +10°C, малооблачно · днём до +13°C",
+        "🚲 Сегодня хороший день для велосипеда",
+        "Данные о погоде: open-meteo.com",
+    ]
+    assert digest.link_preview_options.is_disabled
+    assert buttons(digest) == [["🕐 По часам", "📅 Неделя"]]
+    hours = digest.reply_markup.inline_keyboard[0][0].callback_data
+    assert hours == WeatherCb(view="hours", new=1).pack()
+    # A press sends the hours as a message of its own: the digest stays as it is.
+    await feed(callback_update(hours))
+    assert fake.of(EditMessageText) == []
+    assert fake.of(SendMessage)[-1].text.startswith("🕐 Москва — по часам\n\n11:00 🌤 +11°C\n")
+
+
+async def test_the_digest_waits_ten_minutes_for_the_weather(
+    scheduler, session, make_user, fake, meteo, caplog
+) -> None:
+    user = await make_user()
+    meteo.fail = True
+    # Every tick of the first ten minutes asks again and sends nothing.
+    for moment in (AT_0800, AT_0800 + timedelta(seconds=20), AT_0800 + timedelta(seconds=599)):
+        assert await scheduler.send_digests(moment) == 0
+    assert fake.calls == [] and (await reload(session, user)).last_morning_date is None
+    assert "not delivered" not in caplog.text  # waiting is no failure
+    # Then the digest goes without the weather: neither its source nor its buttons.
+    assert await scheduler.send_digests(AT_0800 + timedelta(minutes=10)) == 1
+    [digest] = fake.of(SendMessage)
+    assert digest.text.split("\n")[3:5] == [UNAVAILABLE, ""]
+    assert "open-meteo.com" not in digest.text and digest.reply_markup is None
+    assert digest.link_preview_options.is_disabled
+    assert (await reload(session, user)).last_morning_date == date(2026, 9, 28)
+
+
+async def test_the_weather_back_within_the_wait_comes_with_the_digest(
+    scheduler, make_user, fake, meteo
+) -> None:
+    await make_user()
+    meteo.fail = True
+    assert await scheduler.send_digests(AT_0800) == 0
+    meteo.fail = False
+    assert await scheduler.send_digests(AT_0800 + timedelta(seconds=20)) == 1  # the next tick
+    [digest] = fake.of(SendMessage)
+    assert digest.text.split("\n")[3] == "🌤 Москва: +10°C, малооблачно · днём до +13°C"
+    assert buttons(digest) == [["🕐 По часам", "📅 Неделя"]]
+
+
+async def test_a_digest_late_in_its_window_does_not_wait(scheduler, make_user, fake, meteo) -> None:
+    # The bot was down at 08:00 and is back at 08:30: the window is still open, the wait is over.
+    await make_user()
+    meteo.fail = True
+    assert await scheduler.send_digests(AT_0800 + timedelta(minutes=30)) == 1
+    assert fake.sent_texts()[0].split("\n")[3] == UNAVAILABLE
+
+
+async def test_the_wait_of_a_window_across_midnight(
+    scheduler, session, make_user, fake, meteo
+) -> None:
+    user = await make_user(morning_time="23:55")
+    meteo.fail = True
+    at_2355 = datetime(2026, 9, 28, 20, 55, tzinfo=UTC)
+    for moment in (at_2355, at_2355 + timedelta(minutes=9)):  # 00:04 of the next day
+        assert await scheduler.send_digests(moment) == 0
+    assert await scheduler.send_digests(at_2355 + timedelta(minutes=10)) == 1
+    assert (await reload(session, user)).last_morning_date == date(2026, 9, 28)
+
+
+class CountingCbr(StubCbr):
+    """Counts the requests for the day's rates: every reading of the day makes one."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.requests = 0
+
+    async def daily(self) -> Rates:
+        self.requests += 1
+        return await super().daily()
+
+
+async def test_a_waiting_digest_asks_for_nothing_but_the_weather(
+    bot, sessionmaker, make_user, fake, meteo
+) -> None:
+    # The bank's mirror may hang while Open-Meteo is down. Were the rates asked for, every
+    # waiting digest would cost every tick a timeout, and the reminders would wait behind them.
+    cbr = CountingCbr()
+    scheduler = Scheduler(bot, sessionmaker, meteo, cbr, clock=lambda: NOW)
+    await make_user(id=1)
+    await make_user(id=2)
+    meteo.fail = True
+    for moment in (AT_0800, AT_0800 + timedelta(seconds=20)):
+        assert await scheduler.send_digests(moment) == 0
+    assert cbr.requests == 0  # and so the day was not read at all
+    meteo.fail = False
+    assert await scheduler.send_digests(AT_0800 + timedelta(seconds=40)) == 2
+    assert cbr.requests == 2
+
+
+class OneForecast(StubMeteo):
+    """One forecast, then failures: the kept forecast went stale and Open-Meteo is down."""
+
+    async def forecast(self, lat: float, lon: float) -> dict[str, Any]:
+        data = await super().forecast(lat, lon)
+        self.fail = True
+        return data
+
+
+async def test_the_weather_lost_before_the_day_is_read_still_waits(
+    bot, sessionmaker, session, make_user, fake, cbr
+) -> None:
+    scheduler = Scheduler(bot, sessionmaker, OneForecast(), cbr, clock=lambda: NOW)
+    user = await make_user()
+    assert await scheduler.send_digests(AT_0800) == 0
+    assert fake.calls == [] and (await reload(session, user)).last_morning_date is None
+    assert await scheduler.send_digests(AT_0800 + timedelta(minutes=10)) == 1
+    assert fake.sent_texts()[0].split("\n")[3] == UNAVAILABLE
 
 
 async def test_digest_skips_disabled_blocked_and_out_of_window(

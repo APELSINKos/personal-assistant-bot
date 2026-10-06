@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from datetime import date
 from pathlib import Path
 
@@ -11,15 +12,27 @@ from assistant.core import i18n
 LOCALES = Path(__file__).resolve().parents[2] / "locales"
 
 
-def _keys(lang: str) -> set[str]:
-    resource = FluentParser().parse((LOCALES / lang / "bot.ftl").read_text(encoding="utf-8"))
+def _keys(lang: str, locales: Path = LOCALES) -> set[str]:
+    resource = FluentParser().parse((locales / lang / "bot.ftl").read_text(encoding="utf-8"))
     junk = [entry for entry in resource.body if isinstance(entry, ast.Junk)]
     assert not junk, f"syntax errors in {lang}/bot.ftl: {junk[0].annotations}"
-    return {entry.id.name for entry in resource.body if isinstance(entry, ast.Message)}
+    names = [entry.id.name for entry in resource.body if isinstance(entry, ast.Message)]
+    # Fluent keeps the first of two messages with one key and drops the other without a word,
+    # so an edit of the second copy would change nothing.
+    twice = sorted(name for name, count in Counter(names).items() if count > 1)
+    assert not twice, f"keys defined twice in {lang}/bot.ftl: {twice}"
+    return set(names)
 
 
 def test_every_key_exists_in_every_language() -> None:
     assert _keys("ru") == _keys("en")
+
+
+def test_a_key_defined_twice_is_an_error(tmp_path: Path) -> None:
+    (tmp_path / "ru").mkdir()
+    (tmp_path / "ru" / "bot.ftl").write_text("a = 1\nb = 2\na = 3\n", encoding="utf-8")
+    with pytest.raises(AssertionError, match=r"twice in ru/bot\.ftl: \['a'\]"):
+        _keys("ru", tmp_path)
 
 
 @pytest.mark.parametrize(

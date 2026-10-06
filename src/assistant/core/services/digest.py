@@ -58,8 +58,9 @@ def part_of_day(hour: int) -> str:
     return "night"
 
 
-async def _forecast(meteo: OpenMeteoClient, user: User) -> Forecast | None:
-    """The home city's forecast, or None: the day is shown without weather."""
+async def home_forecast(meteo: OpenMeteoClient, user: User) -> Forecast | None:
+    """The home city's forecast, or None: the day is shown without weather. The scheduler asks
+    for it alone first while a morning digest may still wait for the weather."""
     try:
         return await weather.forecast(meteo, user.city, user.lat, user.lon)
     except UpstreamUnavailable:
@@ -92,7 +93,7 @@ async def today(
     now: datetime | None = None,
 ) -> TodayData:
     moment = now or utcnow()
-    forecast, rates = await asyncio.gather(_forecast(meteo, user), _rates(cbr))
+    forecast, rates = await asyncio.gather(home_forecast(meteo, user), _rates(cbr))
     items = await habits.list_with_stats(session, user, moment)
     local = now_local(user.timezone, moment)
     source = await schedule.get_source(session, user.id)

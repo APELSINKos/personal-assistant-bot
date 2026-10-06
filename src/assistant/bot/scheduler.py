@@ -27,7 +27,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from assistant.bot import texts
-from assistant.bot.keyboards import fired_markup
+from assistant.bot.keyboards import fired_markup, today_markup
+from assistant.bot.replies import NO_PREVIEW
 from assistant.core.clients.calendars import Calendars
 from assistant.core.clients.cbr import CbrClient
 from assistant.core.clients.openmeteo import OpenMeteoClient
@@ -44,6 +45,10 @@ FSM_TTL = timedelta(hours=24)
 CLEANUP_EVERY = timedelta(hours=1)
 ALERTS_KEPT = timedelta(days=2)  # sent lesson alerts are remembered this long
 REFRESH_BATCH = 2  # sources per refresh pass, a download each: stop() waits for the pass in flight
+# For this many minutes of its window a digest without the weather waits for it, tried again at
+# every tick: one failure of Open-Meteo at 08:00 must not cost the weather to everyone whose
+# digest is due at that minute. Past them the digest goes without it.
+WEATHER_WAIT_MINUTES = 10
 
 
 @dataclass(frozen=True)
@@ -302,6 +307,8 @@ class Scheduler:
                 # One broken user must not stop the others; their own session is gone already.
                 log.exception("morning digest for user %s failed", user.id)
                 continue
+            if delivery is None:
+                continue  # waits for the weather: a later tick sends it
             if not delivery.ok:
                 log.warning("morning digest for user %s not delivered: %s", user.id, delivery.error)
             sent += int(delivery.ok)
@@ -309,15 +316,31 @@ class Scheduler:
                 break
         return sent
 
-    async def _digest(self, user_id: int, day: date, now: datetime) -> Delivery:
+    async def _digest(self, user_id: int, day: date, now: datetime) -> Delivery | None:
+        """Send the digest of `day`. None: the weather is not there yet and the digest waits for
+        it (WEATHER_WAIT_MINUTES), so nothing is sent or remembered."""
         async with self._sessionmaker() as session:
             user = await session.get(User, user_id)
             if user is None:
                 return Delivery(False, permanent=True, error="user is gone")
+            local = now_local(user.timezone, now)
+            waits = digest_window_date(local, user.morning_time, WEATHER_WAIT_MINUTES) == day
+            # A digest that may still wait asks for its weather first and alone, so waiting costs
+            # a tick one forecast request, and nothing during Open-Meteo's pause. The rates and
+            # the reads of the day, asked again at every tick for every waiting digest, would
+            # hold up the reminders of the ticks to come (the bank's mirror may hang as well).
+            # The day below finds the forecast in the client's cache.
+            if waits and await digest.home_forecast(self._meteo, user) is None:
+                return None
             t = _translator(user)
             data = await digest.today(session, user, self._meteo, self._cbr, now)
+            if waits and data.weather is None:
+                return None  # the kept forecast went stale just then and failed to come again
             delivery = await self._send(
-                user.id, texts.morning_text(data, user.first_name or t("friend"), t)
+                user.id,
+                texts.morning_text(data, user.first_name or t("friend"), t),
+                today_markup(t, data.weather is not None),
+                link_preview_options=NO_PREVIEW,
             )
             if delivery.ok or delivery.permanent:
                 user.last_morning_date = day

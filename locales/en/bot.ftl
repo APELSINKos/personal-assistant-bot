@@ -116,6 +116,11 @@ today-title = { $part ->
     }, { $name }!
 today-date = 📅 Today, { $weekday }, { $date }
 today-weather-unavailable = 🌤 Weather is temporarily unavailable
+classes-weather = 🎓 To classes ({ $start }): { $start_weather } · after ({ $end }): { $end_weather }
+classes-weather-after = 🎓 After classes ({ $end }): { $end_weather }
+classes-temp-chance = { $temp }, 💧 { $chance }%
+today-tomorrow = Tomorrow: { $emoji } { $range }
+today-tomorrow-chance = Tomorrow: { $emoji } { $range }, 💧 { $chance }%
 today-reminders = { $count ->
         [0] 📌 No reminders for today
         [one] 📌 { $count } reminder for today:
@@ -139,10 +144,11 @@ today-streak-weeks = 🔥 Best streak: “{ $name }” — { $count } { $count -
        *[other] weeks
     }
 today-notes = 📝 Notes: { $count }
+today-pinned = 📌 { $text }
 today-rates = 💵 { $usd } ₽ · 💶 { $eur } ₽
 morning-title = ☀️ Good morning, { $name }!
 morning-date = 📅 { $weekday }, { $date }
-morning-weather = 🌡 { $city }: { $range }
+morning-weather = { $emoji } { $city }: { $temp }, { $description } · up to { $max } today
 morning-reminders = { $count ->
         [0] 📌 No reminders for today
        *[other] 📌 Today:
@@ -173,6 +179,7 @@ note-ask = ✍️ Send the text of the note (up to { $limit } characters):
 hint-note = Send the text of the note.
 note-bad-text = A note is text from 1 to { $limit } characters. Try again:
 note-saved = ✅ Note saved.
+note-progress = { $text } ✅ { $done }/{ $total }
 
 ## Reminders
 reminders-empty = ⏰ No active reminders. Tap “➕ Add” to create one.

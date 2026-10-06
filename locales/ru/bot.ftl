@@ -125,6 +125,11 @@ today-title = { $part ->
     }, { $name }!
 today-date = 📅 Сегодня, { $date }, { $weekday }
 today-weather-unavailable = 🌤 Погода временно недоступна
+classes-weather = 🎓 На пары ({ $start }): { $start_weather } · после пар ({ $end }): { $end_weather }
+classes-weather-after = 🎓 После пар ({ $end }): { $end_weather }
+classes-temp-chance = { $temp }, 💧 { $chance } %
+today-tomorrow = Завтра: { $emoji } { $range }
+today-tomorrow-chance = Завтра: { $emoji } { $range }, 💧 { $chance } %
 today-reminders = { $count ->
         [0] 📌 На сегодня напоминаний нет
         [one] 📌 На сегодня { $count } напоминание:
@@ -151,10 +156,11 @@ today-streak-weeks = 🔥 Лучшая серия: «{ $name }» — { $count } 
        *[many] недель
     }
 today-notes = 📝 Заметок: { $count }
+today-pinned = 📌 { $text }
 today-rates = 💵 { $usd } ₽ · 💶 { $eur } ₽
 morning-title = ☀️ Доброе утро, { $name }!
 morning-date = 📅 { $date }, { $weekday }
-morning-weather = 🌡 { $city }: { $range }
+morning-weather = { $emoji } { $city }: { $temp }, { $description } · днём до { $max }
 morning-reminders = { $count ->
         [0] 📌 На сегодня напоминаний нет
        *[other] 📌 Сегодня:
@@ -185,6 +191,7 @@ note-ask = ✍️ Напиши текст заметки (до { $limit } сим
 hint-note = Напиши текст заметки.
 note-bad-text = Заметка — это текст от 1 до { $limit } символов. Попробуй ещё раз:
 note-saved = ✅ Заметка сохранена.
+note-progress = { $text } ✅ { $done }/{ $total }
 
 ## Reminders
 reminders-empty = ⏰ Активных напоминаний нет. Нажми «➕ Добавить», чтобы создать.
