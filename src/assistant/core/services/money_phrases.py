@@ -73,6 +73,13 @@ _DATE_LIKE = re.compile(r"^(\d{1,2})\.(\d{2})$")
 # Only digits, signs, currency signs and punctuation: before a number at the end that is part
 # of the amount («1 200», «$1 200», «+7 999 1234567»), not a note.
 _NUMERIC_NOTE = re.compile(rf"^[\d\s+\-−.,:;=*/×(){_SIGNS}]+$")
+# A phone number at the end of a phrase is not money: «тел 8 999 123 45 67» is not 67 ₽, nor
+# «кофе 250 тел 8 999» 8 999 ₽. «телефон» and «phone» alone are still the category's words:
+# «телефон 500», «телефон 1 200».
+PHONE_WORDS = frozenset({"тел", "тел.", "телефон", "номер", "моб", "моб.", "tel", "phone"})
+PHONE_STARTS = frozenset({"8", "7", "+7"})
+_PHONE_TAIL = re.compile(r"\d{3} \d{2} \d{2}")  # «… 123 45 67»: the last digits of a number
+_GROUP = re.compile(r"\+?\d+")
 
 
 @dataclass(frozen=True)
@@ -137,6 +144,24 @@ def _trim(words: list[str], at_end: bool) -> list[str]:
     return words
 
 
+def _phone_at_end(phrase: str) -> bool:
+    """The phrase ends with a phone number: the tail of one («… 123 45 67»: 3, 2 and 2 digits,
+    the last bare), or a phone word and then at least two groups of digits, the first «8», «7»
+    or «+7» («тел 8 999»). The groups are the words as typed, not the amount's grouping:
+    «+7 999» is two groups here, «+7» and «999»."""
+    words = phrase.split()
+    if _PHONE_TAIL.fullmatch(" ".join(words[-3:])):
+        return True
+    groups = 0
+    while groups < len(words) and _GROUP.fullmatch(words[-1 - groups]):
+        groups += 1
+    return (
+        2 <= groups < len(words)
+        and words[-1 - groups].casefold() in PHONE_WORDS
+        and words[-groups] in PHONE_STARTS
+    )
+
+
 def parse_quick(text: str, currency: str) -> Quick | OtherCurrency | None:
     """An expense or income in a chat message, or None when the message is something else."""
     phrase = text.strip()
@@ -146,6 +171,8 @@ def parse_quick(text: str, currency: str) -> Quick | OtherCurrency | None:
     days_ago = DAYS_AGO.get(first.casefold(), 0)
     if days_ago:
         phrase = rest.strip()
+    if _phone_at_end(phrase):
+        return None
     for pattern, at_end in ((_AT_END, True), (_AT_START, False)):
         match = pattern.match(phrase)
         if match is None:

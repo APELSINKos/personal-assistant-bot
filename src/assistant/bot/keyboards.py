@@ -80,7 +80,10 @@ class FireCb(CallbackData, prefix="f"):
 
     action: str
     id: Id
-    at: int  # the reported firing, in minutes since the epoch
+    # The reported firing, in minutes since the epoch, before 2101-01-01 UTC: a forged one out
+    # of range does not unpack and is answered as a stale button, instead of failing to become
+    # a datetime.
+    at: Annotated[int, Field(ge=0, lt=68_899_680)]
 
 
 class HabitCb(CallbackData, prefix="h"):

@@ -18,6 +18,7 @@ from tests.bot.fakes import callback_update, tg_user
 
 NOW = datetime(2026, 9, 28, 12, 0, tzinfo=UTC)  # 15:00 in Moscow
 AT = int(NOW.timestamp() // 60)
+STALE = "Эта кнопка устарела — открой раздел заново из меню."
 _ids = itertools.count(5000)
 
 
@@ -107,6 +108,19 @@ async def test_stale_fired_buttons_change_nothing(feed, fake, session, make_user
     assert fake.of(AnswerCallbackQuery)[-1].text == "Этого уже нет."
     await session.refresh(reminder)
     assert reminder.status is ReminderStatus.CANCELLED
+
+
+async def test_a_forged_moment_is_a_stale_button(feed, fake, session, make_user) -> None:
+    """A firing before the epoch or from 2101 on does not unpack (the far one could not even
+    become a datetime): the button is stale, the reminder and its buttons stay as they were."""
+    reminder = await fired_one_off(session, make_user)
+    for at in (-1, 68_899_680, 99_999_999_999):
+        await feed(callback_update(f"f:done:{reminder.id}:{at}"))
+        assert fake.of(AnswerCallbackQuery)[-1].text == STALE
+    assert fake.of(EditMessageReplyMarkup) == []
+    await session.refresh(reminder)
+    assert reminder.status is ReminderStatus.SENT
+    assert FireCb.unpack("f:done:1:68899679").at == 68_899_679  # 2100-12-31 23:59 UTC
 
 
 async def test_pressing_someone_elses_live_reminder_changes_nothing(

@@ -1,25 +1,36 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
+import pytest
 from aiogram.methods import AnswerCallbackQuery, EditMessageText, GetMe, SendPhoto
 from aiogram.types import Update
 from aiogram.types import User as TgUser
 from sqlalchemy import select
 
 from assistant.bot.keyboards import HabitCb
+from assistant.bot.routers import habits as habits_router
 from assistant.bot.routers.habits import habit_view
-from assistant.core.i18n import translator, weekday_short
+from assistant.core import timeutil
+from assistant.core.i18n import translator
 from assistant.core.models import Habit, HabitMark, User
 from assistant.core.services import habits
 from assistant.core.services.habits import HabitStats
-from assistant.core.timeutil import local_today, utcnow
 from tests.bot.fakes import callback_update, message_update
 
 RU, EN = translator("ru"), translator("en")
 STALE = "Эта кнопка устарела — открой раздел заново из меню."
 GONE = "Этого уже нет."
 TODAY = date(2026, 10, 2)
+# 00:30 on TODAY in Moscow, still 1 October in UTC: the day is the user's.
+NOW = datetime(2026, 10, 1, 21, 30, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def frozen_clock(monkeypatch) -> None:
+    monkeypatch.setattr(habits_router, "clock", lambda: NOW)
+    # The router passes its `now` on everywhere: a fallback to the real clock fails the test.
+    monkeypatch.setattr(timeutil, "utcnow", lambda: pytest.fail("the real clock was read"))
 
 
 def press(action: str, habit_id: int = 0, value: str = "") -> Update:
@@ -55,9 +66,22 @@ def stats(habit: Habit, **values: object) -> HabitStats:
 
 async def make_habit(session, make_user, *, days_old: int = 0, name: str = "Спорт") -> Habit:
     user = await make_user()
-    habit = await habits.create(session, user, name, utcnow() - timedelta(days=days_old))
+    habit = await habits.create(session, user, name, NOW - timedelta(days=days_old))
     await session.commit()
     return habit
+
+
+def new_card(emoji: str = "🎯") -> str:
+    """The card of a daily habit begun on TODAY, a Friday: its week has three days left."""
+    return (
+        f"{emoji} Спорт\n"
+        "Каждый день · с 2 октября\n"
+        "\n"
+        "🔥 Серия: 0 дней\n"
+        "🏆 Рекорд: 0 дней\n"
+        "📊 За год: 0%\n"
+        "📅 Эта неделя: 0 из 3"
+    )
 
 
 def test_a_habits_card_tells_its_goal_streak_record_year_and_week() -> None:
@@ -97,21 +121,19 @@ def test_a_habits_card_tells_its_goal_streak_record_year_and_week() -> None:
 async def test_the_list_opens_a_habits_card(feed, fake, session, make_user) -> None:
     habit = await make_habit(session, make_user)
     await feed(press("open", habit.id))
-    assert fake.of(EditMessageText)[-1].text.startswith("🎯 Спорт\nКаждый день · с ")
+    assert fake.of(EditMessageText)[-1].text == new_card()
     await feed(press("list"))
     assert fake.of(EditMessageText)[-1].text.startswith("🎯 Твои привычки (1/10):")
 
 
 async def test_past_days_change_a_mark_round_the_circle(feed, fake, session, make_user) -> None:
     habit = await make_habit(session, make_user, days_old=3)
-    today = local_today("Europe/Moscow")
     await feed(press("days", habit.id))
-    days = [today - timedelta(days=back) for back in range(3, -1, -1)]  # never before the habit
     assert buttons(fake) == [
-        [f"{weekday_short(day.weekday(), 'ru')} {day.day} ⬜" for day in days],
+        ["вт 29 ⬜", "ср 30 ⬜", "чт 1 ⬜", "пт 2 ⬜"],  # never before the habit
         ["↩️ Назад"],
     ]
-    habit_id, yesterday = habit.id, today - timedelta(days=1)
+    habit_id, yesterday = habit.id, date(2026, 10, 1)
     for expected in (True, False, None):
         await feed(press("day", habit_id, yesterday.isoformat()))
         done = await session.scalar(
@@ -124,11 +146,10 @@ async def test_past_days_change_a_mark_round_the_circle(feed, fake, session, mak
 
 async def test_a_forged_or_too_early_day_is_refused(feed, fake, session, make_user) -> None:
     habit = await make_habit(session, make_user, days_old=3)
-    today = local_today("Europe/Moscow")
-    for value in ("2020-01-01", "garbage", (today + timedelta(days=1)).isoformat()):
+    for value in ("2020-01-01", "garbage", "2026-10-03"):  # 3 October is tomorrow
         await feed(press("day", habit.id, value))
         assert last_answer(fake).text == STALE
-    await feed(press("day", habit.id, (today - timedelta(days=5)).isoformat()))  # before the habit
+    await feed(press("day", habit.id, "2026-09-27"))  # before the habit
     assert last_answer(fake).text == STALE
     assert (await session.scalars(select(HabitMark))).all() == []
 
@@ -165,7 +186,7 @@ async def test_emoji_and_colour_come_from_the_set(feed, fake, session, make_user
     await feed(press("color", habit.id, "violet"))
     await session.refresh(habit)
     assert (habit.emoji, habit.color) == ("🏃", "violet")
-    assert fake.of(EditMessageText)[-1].text.startswith("🏃 Спорт\n")
+    assert fake.of(EditMessageText)[-1].text == new_card("🏃")
     for action, forged in (("emoji", "32"), ("emoji", "-1"), ("emoji", "x"), ("color", "red")):
         await feed(press(action, habit.id, forged))
         assert last_answer(fake).text == STALE
@@ -177,7 +198,7 @@ async def test_a_habit_is_renamed_from_its_card(feed, fake, session, make_user) 
     habit = await make_habit(session, make_user)
     owner = await session.get(User, habit.user_id)
     assert owner is not None
-    await habits.create(session, owner, "Вода")
+    await habits.create(session, owner, "Вода", now=NOW)
     await session.commit()
     await feed(press("rename", habit.id))
     assert fake.sent_texts()[-1] == "✍️ Новое название для «Спорт» (до 50 символов):"
@@ -218,12 +239,11 @@ async def test_a_deleted_habits_buttons_say_so(feed, fake, session, make_user) -
     habit = await make_habit(session, make_user)
     await habits.delete(session, habit.user_id, habit.id)
     await session.commit()
-    today = local_today("Europe/Moscow").isoformat()
     for action, value in (
         ("open", ""),
         ("map", ""),
         ("days", ""),
-        ("day", today),
+        ("day", TODAY.isoformat()),
         ("goal", ""),
         ("setgoal", "3"),
         ("style", ""),

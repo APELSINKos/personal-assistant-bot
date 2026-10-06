@@ -13,7 +13,8 @@ from assistant.core.i18n import SUPPORTED, translator
 
 log = logging.getLogger(__name__)
 COMMANDS = ("start", "app", "settings", "help", "cancel")
-# Seconds per request: a slow Telegram must not hold up the start of polling for long.
+# Seconds per request: one that hangs must not use up all the time the profile gets in the
+# background (CONFIGURE_TIMEOUT in bot/__main__.py).
 REQUEST_TIMEOUT = 10
 
 
