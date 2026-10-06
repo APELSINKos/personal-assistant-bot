@@ -8,11 +8,11 @@ from sqlalchemy import update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from assistant.core.config import LIMITS, get_settings
+from assistant.core.config import get_settings
 from assistant.core.errors import InvalidInput
 from assistant.core.i18n import SUPPORTED
 from assistant.core.models import User
-from assistant.core.services import reminders
+from assistant.core.services import cities, reminders
 from assistant.core.timeutil import is_valid_timezone, parse_hhmm, utcnow
 
 
@@ -86,14 +86,19 @@ async def set_city(
     lon: float,
     timezone: str,
     now: datetime | None = None,
+    *,
+    geo_id: int | None = None,
 ) -> None:
-    cleaned = name.strip()
-    if not 1 <= len(cleaned) <= LIMITS.city_length * 2 or not is_valid_timezone(timezone):
+    """Change the home city. When it is one of the extra cities (the same GeoNames id of the
+    search result, or the same place), that city leaves the list in the same transaction."""
+    cleaned = cities.clean_name(name)
+    if not 1 <= len(cleaned) <= cities.NAME_LENGTH or not is_valid_timezone(timezone):
         raise InvalidInput(field="city", reason="invalid")
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
         raise InvalidInput(field="city", reason="invalid")
     previous_tz = user.timezone
     user.city, user.lat, user.lon, user.timezone = cleaned, lat, lon, timezone
+    await cities.remove_place(session, user.id, lat, lon, geo_id)
     if previous_tz != timezone:
         await reminders.reschedule_repeating(session, user, now, previous_tz=previous_tz)
     await session.flush()
