@@ -382,6 +382,14 @@ def chance_after(forecast: Forecast, local: datetime) -> int | None:
     return label.precip_chance if label is not None else None
 
 
+def chance_on_the_way_back(forecast: Forecast, local: datetime) -> int | None:
+    """The chance of rain or snow on the way back from classes that end at `local`: the first
+    label after the end, whose hour holds the time just after it — 16:20 → 17:00 (16:20–17:00),
+    17:00 → 18:00. The label 17:00 itself tells of 16:00–17:00, the last hour of class."""
+    label = next((hour for hour in forecast.hours if local < hour.at <= local + HOUR), None)
+    return label.precip_chance if label is not None else None
+
+
 def tomorrow(forecast: Forecast, today: date) -> Day | None:
     following = today + timedelta(days=1)
     return next((day for day in forecast.days if day.day == following), None)
@@ -420,7 +428,7 @@ def classes_weather(
         start_chance=_worth_saying(chance_after(forecast, start)) if first is not None else None,
         end=ends_at.astimezone(zone).replace(tzinfo=None),
         end_temp=last.temperature,
-        end_chance=_worth_saying(chance_after(forecast, end)),
+        end_chance=_worth_saying(chance_on_the_way_back(forecast, end)),
     )
 
 

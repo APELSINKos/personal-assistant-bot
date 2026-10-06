@@ -22,6 +22,7 @@ from assistant.core.services.weather import (
     Tip,
     WeatherNow,
     chance_after,
+    chance_on_the_way_back,
     classes_weather,
     current,
     days_from,
@@ -537,6 +538,18 @@ def test_chance_after_takes_the_label_rounded_up() -> None:
     assert chance_after(forecast, local(23, 30, days=6)) is None  # no label after the week
 
 
+def test_the_way_back_takes_the_first_label_after_the_end() -> None:
+    # The way home begins when the last class ends: 16:20 → the label 17:00 (16:20–17:00);
+    # an end at 17:00 → the label 18:00, as the label 17:00 tells of the last hour of class.
+    data = forecast_payload()
+    chances = data["hourly"]["precipitation_probability"]
+    chances[16], chances[17], chances[18] = 10, 40, 80
+    forecast = read(data)
+    assert chance_on_the_way_back(forecast, local(16, 20)) == 40
+    assert chance_on_the_way_back(forecast, local(17)) == 80
+    assert chance_on_the_way_back(forecast, local(23, 30, days=6)) is None  # no label after it
+
+
 def test_tomorrow() -> None:
     forecast = read(forecast_payload())
     following = tomorrow(forecast, TODAY)
@@ -562,6 +575,19 @@ def test_classes_weather_takes_the_hours_of_the_way() -> None:
         end_temp=6.0,
         end_chance=70,
     )
+
+
+def test_classes_that_end_on_the_hour_take_the_next_hour_for_the_way_home() -> None:
+    # Classes until 17:00: the way home is 17:00–18:00, the label 18:00. Rain during the last
+    # hour of class (the label 17:00) is not rain on the way.
+    data = forecast_payload()
+    chances = data["hourly"]["precipitation_probability"]
+    chances[17], chances[18] = 90, 0
+    found = classes_weather(read(data), moment(9), moment(17), "Europe/Moscow")
+    assert found is not None and (found.end, found.end_chance) == (local(17), None)
+    chances[17], chances[18] = 10, 80
+    found = classes_weather(read(data), moment(9), moment(17), "Europe/Moscow")
+    assert found is not None and (found.end, found.end_chance) == (local(17), 80)
 
 
 def test_classes_weather_leaves_out_a_chance_under_30() -> None:
