@@ -19,7 +19,7 @@ from assistant.core.i18n import (
     format_weekday,
 )
 from assistant.core.models import Lesson, Reminder, ScheduleSource
-from assistant.core.services import reminders, weather
+from assistant.core.services import digest, reminders, weather
 from assistant.core.services.digest import TodayData
 from assistant.core.services.habits import Streak
 from assistant.core.services.notes import NoteView
@@ -48,8 +48,6 @@ HOURS_SHOWN = 12
 # A chance of rain or snow is worth a mention from this many percent on. The classes line has a
 # threshold of its own (weather.CLASSES_CHANCE).
 CHANCE_SHOWN = 20
-# «Мой день» tells of tomorrow's weather from this hour of the user's evening until midnight.
-TOMORROW_FROM = 17
 # A pinned note in «Мой день» is one short line: the start of its text.
 PINNED_PREVIEW = 40
 
@@ -310,18 +308,14 @@ def _classes_lines(data: TodayData, t: Translator) -> list[str]:
     (16:20): +6°C, 💧 70 %». Once the first class has begun, or without the forecast's hour of
     its start, only the way back; nothing once the last class is over or without the hour of its
     end. «Now» is the moment the day was gathered at."""
-    if data.forecast is None or not data.lessons:
-        return []
-    start = min(lesson.starts_at for lesson in data.lessons)
-    end = max(lesson.ends_at for lesson in data.lessons)
+    span = digest.classes_span(data)
     now = data.local_now
-    if now >= end:
+    if span is None or now >= span[1]:
         return []
-    # The times are shown on the user's clock, the one local_now is on: a ZoneInfo, whose str is
-    # the zone's name.
-    way = weather.classes_weather(data.forecast, start, end, str(now.tzinfo))
+    way = digest.classes_weather(data)
     if way is None:
         return []
+    start, _ = span
     back = _way(way.end_temp, way.end_chance, t)
     finish = way.end.strftime("%H:%M")
     if now >= start or way.start_temp is None:
@@ -339,11 +333,9 @@ def _classes_lines(data: TodayData, t: Translator) -> list[str]:
 
 
 def _tomorrow_lines(data: TodayData, t: Translator) -> list[str]:
-    """«Завтра: ☁️ +2…+7°C, 💧 80 %»: in the evening, from TOMORROW_FROM on the user's clock,
-    tomorrow's weather, when the forecast has that day."""
-    if data.forecast is None or data.local_now.hour < TOMORROW_FROM:
-        return []
-    day = weather.tomorrow(data.forecast, data.local_now.date())
+    """«Завтра: ☁️ +2…+7°C, 💧 80 %»: tomorrow's weather in the evening of the user's day, when
+    the forecast has that day (digest.tomorrow_weather)."""
+    day = digest.tomorrow_weather(data)
     if day is None:
         return []
     emoji, _ = describe_weather(day.code)

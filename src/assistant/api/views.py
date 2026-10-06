@@ -59,7 +59,7 @@ from assistant.core.models import (
     WeatherCity,
 )
 from assistant.core.money_style import OTHER
-from assistant.core.services import money, reminders, schedule, weather
+from assistant.core.services import digest, money, reminders, schedule, weather
 from assistant.core.services.digest import TodayData
 from assistant.core.services.habits import HabitDetail, HabitStats
 from assistant.core.services.money_month import Alert, CategoryTotal, Month
@@ -71,8 +71,6 @@ from assistant.core.timeutil import to_local
 
 # The hours after «now» in the forecast: the app's strip of 24 hours begins with «now» itself.
 STRIP_HOURS = 23
-# «Завтра» is shown from this hour of the user's clock to midnight, as in «Мой день».
-TOMORROW_FROM = 17
 
 
 def user_language(user: User) -> str:
@@ -280,23 +278,14 @@ def reminder_out(reminder: Reminder, tz: str, t: Translator) -> ReminderOut:
 
 
 def _tomorrow(data: TodayData, t: Translator) -> ForecastDayOut | None:
-    """Tomorrow's weather in the evening of the user's day, when the forecast has that day."""
-    if data.forecast is None or data.local_now.hour < TOMORROW_FROM:
-        return None
-    day = weather.tomorrow(data.forecast, data.local_now.date())
+    """Tomorrow's weather in the evening of the user's day, as in «Мой день»."""
+    day = digest.tomorrow_weather(data)
     return day_out(day, t) if day is not None else None
 
 
-def _classes_weather(data: TodayData, tz: str) -> ClassesWeatherOut | None:
+def _classes_weather(data: TodayData) -> ClassesWeatherOut | None:
     """The way to today's first class and back from the last one, whatever the time now."""
-    if data.forecast is None or not data.lessons:
-        return None
-    found = weather.classes_weather(
-        data.forecast,
-        min(lesson.starts_at for lesson in data.lessons),
-        max(lesson.ends_at for lesson in data.lessons),
-        tz,
-    )
+    found = digest.classes_weather(data)
     if found is None:
         return None
     return ClassesWeatherOut(
@@ -313,8 +302,8 @@ def pinned_note_out(note: NoteView) -> PinnedNoteOut:
     return PinnedNoteOut(id=note.id, text=note.text, done=note.done, total=note.total)
 
 
-def today_out(data: TodayData, tz: str, t: Translator) -> TodayOut:
-    """«Сегодня» of the user whose zone is `tz`: the zone of data.local_now."""
+def today_out(data: TodayData, t: Translator) -> TodayOut:
+    """«Сегодня» of the user, on the clock data.local_now is on."""
     zone = data.local_now.tzinfo
     return TodayOut(
         date=data.local_now.date(),
@@ -369,7 +358,7 @@ def today_out(data: TodayData, tz: str, t: Translator) -> TodayOut:
         if data.money is not None
         else None,
         tomorrow=_tomorrow(data, t),
-        classes_weather=_classes_weather(data, tz),
+        classes_weather=_classes_weather(data),
         pinned_notes=[pinned_note_out(note) for note in data.pinned],
     )
 

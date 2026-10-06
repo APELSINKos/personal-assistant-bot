@@ -17,7 +17,7 @@ router = APIRouter(tags=["today"])
 @router.get("/today", response_model=TodayOut)
 async def get_today(user: CurrentUser, db: Session, state: State) -> TodayOut:
     data = await digest.today(db, user, state.meteo, state.cbr, state.clock())
-    return today_out(data, user.timezone, user_translator(user))
+    return today_out(data, user_translator(user))
 
 
 @router.get("/weather", response_model=ForecastOut)

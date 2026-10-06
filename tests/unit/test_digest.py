@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,7 @@ import pytest
 
 from assistant.core.clients.cbr import Rate, Rates
 from assistant.core.errors import UpstreamUnavailable
+from assistant.core.models import Lesson
 from assistant.core.services import digest, money, notes, schedule
 from tests.stubs import forecast_payload
 
@@ -122,6 +124,45 @@ async def test_today_has_the_lessons_of_the_day(session, make_user) -> None:
     ]
     monday = await digest.today(session, user, Meteo(), Cbr(), NOW)
     assert monday.has_schedule and monday.lessons == []  # a connected day without lessons
+
+
+async def test_tomorrow_comes_from_17_on_the_users_clock(session, make_user) -> None:
+    # One rule for «Мой день» and «Сегодня»: the bot and the API both read it from here.
+    user = await make_user()
+    morning = await digest.today(session, user, Meteo(), Cbr(), NOW)  # 08:00 Moscow
+    assert digest.tomorrow_weather(morning) is None
+    evening = await digest.today(session, user, Meteo(), Cbr(), NOW + timedelta(hours=9))
+    assert evening.local_now.hour == digest.TOMORROW_FROM == 17
+    day = digest.tomorrow_weather(evening)
+    assert day is not None and day.day == date(2026, 9, 29)
+    assert digest.tomorrow_weather(replace(evening, forecast=None)) is None
+
+
+async def test_the_way_to_classes_spans_the_first_start_and_the_last_end(
+    session, make_user
+) -> None:
+    user = await make_user()
+    data = await digest.today(session, user, Meteo(), Cbr(), NOW)  # 08:00 Moscow
+    assert (digest.classes_span(data), digest.classes_weather(data)) == (None, None)
+    late = Lesson(
+        uid="b",
+        starts_at=NOW + timedelta(hours=5),  # 13:00 Moscow
+        ends_at=NOW + timedelta(hours=6, minutes=30),  # 14:30
+        title="Физика",
+    )
+    early = Lesson(
+        uid="a",
+        starts_at=NOW + timedelta(hours=1),  # 09:00
+        ends_at=NOW + timedelta(hours=2, minutes=30),
+        title="Химия",
+    )
+    day = replace(data, lessons=[late, early])
+    assert digest.classes_span(day) == (early.starts_at, late.ends_at)
+    way = digest.classes_weather(day)
+    # The whole day's answer on the user's clock, whatever the time now.
+    assert way is not None
+    assert (way.start, way.end) == (datetime(2026, 9, 28, 9, 0), datetime(2026, 9, 28, 14, 30))
+    assert digest.classes_weather(replace(day, forecast=None)) is None
 
 
 async def test_today_has_the_money_of_today_yesterday_and_the_month(session, make_user) -> None:
