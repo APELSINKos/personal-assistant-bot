@@ -45,9 +45,20 @@ OLD_LABELS = {"rates": "money"}
 
 
 class NoteCb(CallbackData, prefix="n"):
+    # A new button gets a new action, never a new field: a field would make every button already
+    # in the chats stale. "del", the «🗑 N» of the lists before 2.6, asks first now, as "delask".
     action: str
     id: Id = 0
     page: int = 0
+
+
+class NoteItemCb(CallbackData, prefix="ni"):
+    """An item's button on a note's card. It carries the state to set rather than switching: an
+    old card's button never undoes a check made in the app."""
+
+    note: Id
+    id: Id
+    done: Annotated[int, Field(ge=0, le=1)]  # 1: check the item, 0: uncheck it
 
 
 class ReminderCb(CallbackData, prefix="r", sep="|"):

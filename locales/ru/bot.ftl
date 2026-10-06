@@ -178,20 +178,32 @@ rates-bad-amount = Нужно число больше нуля и не боль�
 rates-result = 💱 { $amount } { $source } = { $result } { $target }
 
 ## Lists
-list-item = { $number }. { $text }
 button-add = ➕ Добавить
 button-delete-item = 🗑 { $number }. { $text }
 deleted = 🗑 Удалено
 
 ## Notes
-notes-empty = 📝 Заметок пока нет. Нажми «➕ Добавить», чтобы создать первую.
+notes-empty = 📝 Заметок пока нет. Нажми «➕ Заметка» или «☑️ Список», чтобы создать первую.
 notes-title = 📝 Твои заметки ({ $count }/{ $limit }):
 notes-limit = Достигнут лимит — { $limit } заметок. Удали лишние.
 note-ask = ✍️ Напиши текст заметки (до { $limit } символов):
 hint-note = Напиши текст заметки.
 note-bad-text = Заметка — это текст от 1 до { $limit } символов. Попробуй ещё раз:
 note-saved = ✅ Заметка сохранена.
+note-line = { $number }. { $text }
+note-line-pinned = { $number }. 📌 { $text }
 note-progress = { $text } ✅ { $done }/{ $total }
+note-card-pinned = 📌 { $text }
+button-add-note = ➕ Заметка
+item-open = ⬜ { $text }
+item-done = ✅ { $text }
+button-clear-done = 🧹 Убрать отмеченные
+button-pin = 📌 Закрепить
+button-unpin = 📌 Открепить
+button-delete-note = 🗑 Удалить
+button-back-notes = ↩️ К заметкам
+note-delete-ask = 🗑 Удалить заметку «{ $text }»?
+pinned-limit = Закрепить можно не больше { $limit } заметок — открепи одну
 
 ## Reminders
 reminders-empty = ⏰ Активных напоминаний нет. Нажми «➕ Добавить», чтобы создать.

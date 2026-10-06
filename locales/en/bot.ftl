@@ -166,20 +166,32 @@ rates-bad-amount = I need a number above zero and up to one billion, e.g. 100 or
 rates-result = 💱 { $amount } { $source } = { $result } { $target }
 
 ## Lists
-list-item = { $number }. { $text }
 button-add = ➕ Add
 button-delete-item = 🗑 { $number }. { $text }
 deleted = 🗑 Deleted
 
 ## Notes
-notes-empty = 📝 No notes yet. Tap “➕ Add” to create the first one.
+notes-empty = 📝 No notes yet. Tap “➕ Note” or “☑️ List” to create the first one.
 notes-title = 📝 Your notes ({ $count }/{ $limit }):
 notes-limit = You've reached the limit of { $limit } notes. Delete some first.
 note-ask = ✍️ Send the text of the note (up to { $limit } characters):
 hint-note = Send the text of the note.
 note-bad-text = A note is text from 1 to { $limit } characters. Try again:
 note-saved = ✅ Note saved.
+note-line = { $number }. { $text }
+note-line-pinned = { $number }. 📌 { $text }
 note-progress = { $text } ✅ { $done }/{ $total }
+note-card-pinned = 📌 { $text }
+button-add-note = ➕ Note
+item-open = ⬜ { $text }
+item-done = ✅ { $text }
+button-clear-done = 🧹 Remove checked
+button-pin = 📌 Pin
+button-unpin = 📌 Unpin
+button-delete-note = 🗑 Delete
+button-back-notes = ↩️ To notes
+note-delete-ask = 🗑 Delete the note “{ $text }”?
+pinned-limit = You can pin up to { $limit } notes — unpin one first
 
 ## Reminders
 reminders-empty = ⏰ No active reminders. Tap “➕ Add” to create one.

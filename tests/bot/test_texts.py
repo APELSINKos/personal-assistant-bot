@@ -13,7 +13,7 @@ from assistant.bot.routers.notes import notes_view
 from assistant.bot.routers.reminders import reminders_view
 from assistant.core.clients.cbr import Rate, Rates
 from assistant.core.i18n import Translator, format_day, translator
-from assistant.core.models import Habit, Lesson, Note, Reminder, Repeat, User
+from assistant.core.models import Habit, Lesson, Reminder, Repeat, User
 from assistant.core.services.digest import TodayData
 from assistant.core.services.habits import HabitStats, Streak
 from assistant.core.services.money_month import Month
@@ -841,7 +841,11 @@ def test_a_day_or_a_week_of_emoji_titles_fits_telegram(t) -> None:
 @pytest.mark.parametrize("t", [RU, EN], ids=["ru", "en"])
 def test_every_list_fits_telegram_at_its_maxima(t) -> None:
     due = datetime(2026, 9, 28, 9, 30, tzinfo=UTC)
-    notes = [Note(id=n, user_id=1, text="🎉" * 500) for n in range(1, 51)]
+    # The longest page of notes: five pinned checklists of 500 emoji with 20 items each.
+    checklist = [Item(n, "🎉" * 100, True) for n in range(1, 21)]
+    notes = [
+        NoteView(n, "🎉" * 500, due if n <= 5 else None, due, due, checklist) for n in range(1, 51)
+    ]
     pending = [
         Reminder(id=n, user_id=1, text="🎉" * 200, due_at=due, repeat=Repeat.NONE)
         for n in range(1, 21)
@@ -863,7 +867,11 @@ def test_every_list_fits_telegram_at_its_maxima(t) -> None:
         for n in range(1, 11)
     ]
     page, _ = notes_view(notes, 0, t)
-    assert utf16(page) <= BUDGET and page.endswith(f"\n…\n\n{t('page', current=1, total=10)}")
+    # A note's line keeps 100 characters, so the page is never cut: the title, five notes, the
+    # page line.
+    lines = page.splitlines()
+    assert utf16(page) <= BUDGET and len(lines) == 9
+    assert all("📌" in line for line in lines[2:7]) and lines[-1] == t("page", current=1, total=10)
     user = User(id=1, timezone="Europe/Moscow")
     assert utf16(reminders_view(pending, 0, user, t)[0]) <= BUDGET
     assert utf16(habits_view(stats, t)[0]) <= BUDGET
