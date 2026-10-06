@@ -17,7 +17,8 @@ from assistant.core.models import Lesson, Reminder, User
 from assistant.core.services import habits, money_month, notes, reminders, schedule, weather
 from assistant.core.services.habits import HabitStats, Streak
 from assistant.core.services.money_month import Month
-from assistant.core.services.weather import WeatherNow
+from assistant.core.services.notes import NoteView
+from assistant.core.services.weather import Forecast, WeatherNow
 from assistant.core.timeutil import now_local, utcnow
 
 log = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ log = logging.getLogger(__name__)
 class TodayData:
     local_now: datetime
     part_of_day: str
-    weather: WeatherNow | None
+    weather: WeatherNow | None  # the forecast's now
     reminders: list[Reminder]
     habits: list[HabitStats]
     habits_done: int
@@ -42,6 +43,9 @@ class TodayData:
     spent_today: int = 0
     spent_yesterday: int = 0
     currency: str = "RUB"
+    # The home city's forecast, None without weather: tomorrow and the way to the classes.
+    forecast: Forecast | None = None
+    pinned: list[NoteView] = field(default_factory=list)  # the first pinned notes, with items
 
 
 def part_of_day(hour: int) -> str:
@@ -54,10 +58,10 @@ def part_of_day(hour: int) -> str:
     return "night"
 
 
-async def _weather(meteo: OpenMeteoClient, user: User) -> WeatherNow | None:
-    """Today's weather, or None: the day is shown without it."""
+async def _forecast(meteo: OpenMeteoClient, user: User) -> Forecast | None:
+    """The home city's forecast, or None: the day is shown without weather."""
     try:
-        return await weather.current(meteo, user.city, user.lat, user.lon)
+        return await weather.forecast(meteo, user.city, user.lat, user.lon)
     except UpstreamUnavailable:
         return None
     except Exception as error:
@@ -88,7 +92,7 @@ async def today(
     now: datetime | None = None,
 ) -> TodayData:
     moment = now or utcnow()
-    weather_now, rates = await asyncio.gather(_weather(meteo, user), _rates(cbr))
+    forecast, rates = await asyncio.gather(_forecast(meteo, user), _rates(cbr))
     items = await habits.list_with_stats(session, user, moment)
     local = now_local(user.timezone, moment)
     source = await schedule.get_source(session, user.id)
@@ -102,7 +106,7 @@ async def today(
     return TodayData(
         local_now=local,
         part_of_day=part_of_day(local.hour),
-        weather=weather_now,
+        weather=forecast.now if forecast is not None else None,
         reminders=await reminders.today_for(session, user, moment),
         habits=items,
         habits_done=sum(1 for item in items if item.done_today),
@@ -117,4 +121,6 @@ async def today(
         spent_today=month.days[local.day - 1] or 0,
         spent_yesterday=await money_month.spent_on(session, user, yesterday),
         currency=user.currency,
+        forecast=forecast,
+        pinned=await notes.pinned(session, user.id),
     )

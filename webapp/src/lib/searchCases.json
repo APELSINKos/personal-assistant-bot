@@ -1,0 +1,40 @@
+[
+  { "text": "Пароль от WiFi", "items": [], "query": "wifi", "match": true },
+  { "text": "Пароль от WiFi", "items": [], "query": "ПАРОЛЬ", "match": true },
+  { "text": "Пароль от WiFi", "items": [], "query": "  wifi   пароль ", "match": true },
+  { "text": "Пароль от WiFi", "items": [], "query": "wifi роутер", "match": false },
+  { "text": "Елка", "items": [], "query": "ёлка", "match": true },
+  { "text": "ЁЛКА", "items": [], "query": "елка", "match": true },
+  { "text": "Купить ёлку и игрушки", "items": [], "query": "ЕЛК", "match": true },
+  { "text": "Всё взять", "items": [], "query": "все", "match": true },
+  { "text": "Ёжик в тумане", "items": [], "query": "ежик туман", "match": true },
+  { "text": "Straße 5", "items": [], "query": "straße", "match": true },
+  { "text": "Straße 5", "items": [], "query": "STRASSE", "match": false },
+  { "text": "ΣΑΣ", "items": [], "query": "σας", "match": true },
+  { "text": "ΣΑΣ", "items": [], "query": "σασ", "match": false },
+  { "text": "Покупки", "items": ["молоко", "Хлеб"], "query": "хлеб", "match": true },
+  { "text": "Покупки", "items": ["молоко", "Хлеб"], "query": "покупки молоко", "match": true },
+  { "text": "Покупки", "items": ["молоко", "хлеб"], "query": "сыр", "match": false },
+  { "text": "Покупки мол", "items": ["око"], "query": "молоко", "match": false },
+  {
+    "text": "Скидки тут (https://example.com/sale)",
+    "items": [],
+    "query": "example.com/sale",
+    "match": true
+  },
+  {
+    "text": "Скидки тут (https://example.com/sale)",
+    "items": [],
+    "query": "скидки sale",
+    "match": true
+  },
+  {
+    "text": "Ссылки",
+    "items": ["Каталог (https://shop.example/c)"],
+    "query": "shop.example",
+    "match": true
+  },
+  { "text": "Позвонить маме\nв субботу", "items": [], "query": "маме суббот", "match": true },
+  { "text": "Meeting notes", "items": ["Agenda", "Follow-ups"], "query": "FOLLOW", "match": true },
+  { "text": "Meeting notes", "items": ["Agenda"], "query": "minutes", "match": false }
+]

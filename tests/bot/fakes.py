@@ -10,7 +10,7 @@ from typing import Any
 from aiogram import Bot
 from aiogram.client.session.base import BaseSession
 from aiogram.methods import EditMessageText, SendMessage, TelegramMethod
-from aiogram.types import CallbackQuery, Chat, Message, Update, User
+from aiogram.types import CallbackQuery, Chat, Message, MessageEntity, Update, User
 
 _ids = itertools.count(1000)
 
@@ -79,6 +79,7 @@ def message_update(
     chat_type: str = "private",
     sticker: bool = False,
     document: dict[str, Any] | None = None,
+    entities: list[MessageEntity] | None = None,
 ) -> Update:
     extra: dict[str, Any] = {}
     if document is not None:
@@ -100,6 +101,7 @@ def message_update(
         chat=chat,
         from_user=tg_user(user_id, lang),
         text=text,
+        entities=entities,
         **extra,
     )
     return Update(update_id=next(_ids), message=msg)

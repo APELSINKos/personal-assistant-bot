@@ -4,12 +4,13 @@ from datetime import UTC, date, datetime
 
 from assistant.core.models import Reminder, ReminderStatus
 from assistant.core.services import habits, notes
+from tests.api.conftest import NOW
 from tests.stubs import forecast_payload
 
 
 async def test_today_collects_everything(client, auth, session, make_user) -> None:
     user = await make_user(id=1)
-    await notes.create(session, 1, "молоко")
+    await notes.create(session, 1, "молоко", now=NOW)
     habit = await habits.create(session, user, "Спорт", now=datetime(2026, 9, 27, 9, tzinfo=UTC))
     await habits.set_mark(
         session, user, habit.id, date(2026, 9, 27), True, now=datetime(2026, 9, 28, 12, tzinfo=UTC)

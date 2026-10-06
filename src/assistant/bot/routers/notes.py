@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from datetime import datetime
+
 from aiogram import Bot, F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
@@ -21,11 +24,15 @@ from assistant.bot.states import NoteForm
 from assistant.core.config import LIMITS
 from assistant.core.errors import InvalidInput, LimitReached
 from assistant.core.i18n import Translator
-from assistant.core.models import Note
 from assistant.core.services import notes
+from assistant.core.services.notes import NoteView
+from assistant.core.timeutil import utcnow
+
+# Replaced in tests to freeze time.
+clock: Callable[[], datetime] = utcnow
 
 
-def notes_view(items: list[Note], page: int, t: Translator) -> tuple[str, InlineKeyboardMarkup]:
+def notes_view(items: list[NoteView], page: int, t: Translator) -> tuple[str, InlineKeyboardMarkup]:
     add = [InlineKeyboardButton(text=t("button-add"), callback_data=NoteCb(action="add").pack())]
     if not items:
         return t("notes-empty"), InlineKeyboardMarkup(inline_keyboard=[add])
@@ -52,7 +59,7 @@ def notes_view(items: list[Note], page: int, t: Translator) -> tuple[str, Inline
 
 
 async def _view(ctx: Ctx, page: int) -> tuple[str, InlineKeyboardMarkup]:
-    return notes_view(await notes.all_for(ctx.session, ctx.user.id), page, ctx.t)
+    return notes_view(await notes.list_for(ctx.session, ctx.user.id), page, ctx.t)
 
 
 @section("notes")
@@ -85,8 +92,11 @@ async def on_add(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
 
 
 async def save_note(message: Message, ctx: Ctx) -> None:
+    # A note keeps only text, so a hidden link is written out as «words (address)»; the length
+    # limit holds for the text with its addresses.
+    text = notes.expand_links(message.text or "", message.entities)
     try:
-        await notes.create(ctx.session, ctx.user.id, message.text or "")
+        await notes.create(ctx.session, ctx.user.id, text, now=clock())
     except InvalidInput:
         await message.answer(ctx.t("note-bad-text", limit=LIMITS.note_length))
         return

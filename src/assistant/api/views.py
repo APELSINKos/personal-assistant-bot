@@ -38,12 +38,13 @@ from assistant.api.schemas import (
 )
 from assistant.core.clients.cbr import Point, Rates
 from assistant.core.i18n import Translator, resolve_language, translator
-from assistant.core.models import MoneyCategory, MoneyEntry, Note, Reminder, ScheduleSource, User
+from assistant.core.models import MoneyCategory, MoneyEntry, Reminder, ScheduleSource, User
 from assistant.core.money_style import OTHER
 from assistant.core.services import money, reminders, schedule
 from assistant.core.services.digest import TodayData
 from assistant.core.services.habits import HabitDetail, HabitStats
 from assistant.core.services.money_month import Alert, CategoryTotal, Month
+from assistant.core.services.notes import NoteView
 from assistant.core.services.recurrence import Rule, describe
 from assistant.core.services.weather import WeatherNow
 from assistant.core.services.weather import describe as describe_weather
@@ -129,7 +130,7 @@ def habit_detail_out(detail: HabitDetail) -> HabitDetailOut:
     )
 
 
-def note_out(note: Note) -> NoteOut:
+def note_out(note: NoteView) -> NoteOut:
     return NoteOut(
         id=note.id, text=note.text, created_at=note.created_at, updated_at=note.updated_at
     )

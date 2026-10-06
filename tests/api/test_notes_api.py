@@ -15,6 +15,14 @@ async def test_note_lifecycle(client, auth) -> None:
     assert (await client.get("/api/notes", headers=auth())).json() == []
 
 
+async def test_the_newest_note_comes_first_stamped_by_the_app_clock(client, auth) -> None:
+    for text in ("первая", "вторая"):
+        created = await client.post("/api/notes", json={"text": text}, headers=auth())
+        assert created.json()["created_at"] == "2026-09-28T12:00:00Z"  # tests/api/conftest NOW
+    listed = await client.get("/api/notes", headers=auth())
+    assert [note["text"] for note in listed.json()] == ["вторая", "первая"]
+
+
 async def test_note_validation_and_limit(client, auth) -> None:
     too_long = await client.post("/api/notes", json={"text": "я" * 501}, headers=auth())
     assert too_long.status_code == 422

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -21,8 +21,10 @@ MIREA = (
 class Meteo:
     def __init__(self, fail: bool = False) -> None:
         self.fail = fail
+        self.requests = 0
 
     async def forecast(self, lat: float, lon: float) -> dict[str, Any]:
+        self.requests += 1
         if self.fail:
             raise UpstreamUnavailable(service="open-meteo")
         return forecast_payload(NOW, temperature=9)
@@ -51,7 +53,7 @@ def test_part_of_day(hour: int, part: str) -> None:
 
 async def test_today_collects_everything(session, make_user) -> None:
     user = await make_user()
-    await notes.create(session, user.id, "n")
+    await notes.create(session, user.id, "n", now=NOW)
     data = await digest.today(session, user, Meteo(), Cbr(), NOW)
     assert data.part_of_day == "morning" and data.local_now.hour == 8
     assert data.weather is not None and data.weather.temperature == 9
@@ -59,10 +61,37 @@ async def test_today_collects_everything(session, make_user) -> None:
     assert (data.habits_done, data.habits_total, data.best_streak) == (0, 0, None)
 
 
+async def test_today_has_the_forecast_of_one_request(session, make_user) -> None:
+    user = await make_user()
+    meteo = Meteo()
+    data = await digest.today(session, user, meteo, Cbr(), NOW)
+    assert meteo.requests == 1
+    assert data.forecast is not None and data.weather == data.forecast.now
+    assert data.forecast.zone == "Europe/Moscow"
+    # The days of the week ahead and its hours: «Завтра» and the way to the classes.
+    assert [day.day for day in data.forecast.days][:2] == [date(2026, 9, 28), date(2026, 9, 29)]
+    assert len(data.forecast.hours) == 7 * 24
+
+
+async def test_today_has_the_first_three_pinned_notes(session, make_user) -> None:
+    user = await make_user()
+    assert (await digest.today(session, user, Meteo(), Cbr(), NOW)).pinned == []
+    n0, n1, n2 = [await notes.create(session, user.id, f"n{i}", now=NOW) for i in range(3)]
+    shopping = await notes.create(session, user.id, "Покупки", ["молоко", "хлеб"], now=NOW)
+    await notes.set_item(session, user.id, shopping.id, shopping.items[0].id, True)
+    # Pinned in an order that is neither the notes' order nor its reverse: the last pinned first.
+    for minutes, view in enumerate([n1, shopping, n0, n2]):
+        await notes.set_pinned(session, user.id, view.id, True, NOW + timedelta(minutes=minutes))
+    data = await digest.today(session, user, Meteo(), Cbr(), NOW)
+    assert [view.text for view in data.pinned] == ["n2", "n0", "Покупки"]
+    assert (data.pinned[2].done, data.pinned[2].total) == (1, 2)
+    assert data.notes_count == 4
+
+
 async def test_today_survives_upstream_failure(session, make_user) -> None:
     user = await make_user()
     data = await digest.today(session, user, Meteo(fail=True), Cbr(), NOW)
-    assert data.weather is None and data.rates is not None
+    assert data.weather is None and data.forecast is None and data.rates is not None
 
 
 async def test_today_survives_a_forecast_it_cannot_read(session, make_user, caplog) -> None:
@@ -75,7 +104,7 @@ async def test_today_survives_a_forecast_it_cannot_read(session, make_user, capl
     user = await make_user()
     with caplog.at_level(logging.WARNING):
         data = await digest.today(session, user, Garbled(), Cbr(), NOW)
-    assert data.weather is None and data.rates is not None
+    assert data.weather is None and data.forecast is None and data.rates is not None
     assert "KeyError" in caplog.text and "Secret" not in caplog.text
 
 
