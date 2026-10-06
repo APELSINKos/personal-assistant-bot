@@ -58,7 +58,9 @@ npm run build
 
 CI запускает Python-проверки на 3.12 и 3.13, проверки приложения на Node.js 24 и сверяет миграции с моделями.
 
-Тесты не ходят в сеть: календари лежат в `tests/fixtures/schedule` (вырезка настоящего календаря группы МИРЭА без имён, календарь другого вуза и календарь Outlook), загрузчик проверяется на подменённом транспорте httpx и подменённом разрешении имён.
+Тесты не ходят в сеть: календари лежат в `tests/fixtures/schedule` (вырезка настоящего календаря группы МИРЭА без имён, календарь другого вуза и календарь Outlook), загрузчик проверяется на подменённом транспорте httpx и подменённом разрешении имён, а ответы Open-Meteo строит `forecast_payload` из `tests/stubs.py` — секундами Unix, как настоящий.
+
+Тесты не зависят от настоящей даты: роутеры бота берут время из модульной функции `clock` (тесты её подменяют), сервисы получают `now` аргументом, тесты приложения ставят время через `vi.setSystemTime`.
 
 ## Картинки
 
@@ -105,6 +107,37 @@ uv run alembic upgrade head
 ## Тексты
 
 Новый текст добавляется ключом в оба файла: `locales/ru/bot.ftl` и `locales/en/bot.ftl`. Числа со словами («1 день», «2 дня», «5 дней») оформляются выбором Fluent по `$count`. Строк для пользователя в коде Python нет. Строки приложения — в `webapp/src/i18n/ru.ts` и `en.ts`; английский словарь типизирован по русскому, так что пропущенный ключ не соберётся.
+
+Длина введённого текста везде считается в символах Unicode (кодовых точках): на сервере — `len()`, в приложении — `codePoints` из `lib/format.ts`. Атрибут `maxLength` у полей не ставится: он считает единицы UTF-16, и эмодзи весит в нём вдвое. Длину сообщения Telegram, наоборот, считает в UTF-16 `texts.utf16_len` (предел — 3900 единиц).
+
+## Поиск заметок
+
+Поиск в боте (`notes.search` и `notes.fold` в `core/services/notes.py`) и в приложении (`webapp/src/lib/search.ts`, по списку, который уже пришёл из `GET /notes`) должен находить одно и то же: текст сворачивается `lower()` / `toLowerCase()`, «ё» становится «е», пробелы делятся так же, как их делит `str.split()` в Python. `casefold()` не используется: в JavaScript его нет, а `toLowerCase()` с ним расходится («ß», «ς»).
+
+Обе стороны проверяет общая таблица случаев `webapp/src/lib/searchCases.json` — строки `{"text": …, "items": […], "query": …, "match": true | false}`; её читают `tests/unit/test_notes.py` и `webapp/src/lib/search.test.ts`. Правило сворачивания меняется в обоих файлах сразу, а новый случай добавляется строкой в таблицу, а не в один из тестов.
+
+## Коды ошибок
+
+Сервисы ядра бросают `InvalidInput` (поле `field`, причина `reason`, предел `limit`), `LimitReached` (`entity`, `limit`), `NotFound` (`entity`) и `UpstreamUnavailable` (`service`). Бот отвечает на них своими текстами из `bot.ftl`, а API — ответом `application/problem+json` (`api/errors.py`), где параметры ошибки идут рядом с `code`:
+
+| Статус | `code` | Параметры |
+|---|---|---|
+| 401 | `invalid_init_data`, `expired_init_data` | — |
+| 404 | `not_found` | `entity` |
+| 409 | `limit_reached` | `entity` и `limit`: `note` 50, `pinned_note` 5, `note_item` 20, `city` 4, `reminder` 20, `habit` 10, `category` 40, `entry` 50 000, `entry_month` 1 000 |
+| 422 | `validation_error` | `field`, `reason`, `limit`: например, `{"field": "items", "reason": "length", "limit": 100}`; повтор — `reason: "duplicate"` |
+| 429 | `rate_limited` | заголовок `Retry-After` |
+| 503 | `upstream_unavailable` | `service`: `open-meteo`, `cbr` или `telegram` |
+
+Сервер текстов для пользователя не пишет: их выбирает `errorCode()` в `webapp/src/api/queries.ts` и показывает всплывающей подсказкой.
+
+1. Нет связи с сервером — `network`; ошибка не от API — `generic`.
+2. 409 — `limit_<entity>`, если такой ключ есть в `errors` словаря («В заметке уже 20 пунктов»), иначе общий `limit_reached`.
+3. Повтор города (`field: "city"`, `reason: "duplicate"`) — `duplicate_city`.
+4. Причина со своим текстом (`OWN_TEXT_REASONS`: `duplicate`, `length`, `past`, причины календаря …) — сама `reason`.
+5. Иначе — `code`; если и для него ключа нет, `generic`.
+
+Новый текст ошибки — ключ в `errors` обоих словарей; для нового предела достаточно ключа `limit_<entity>`, а новой причине со своим текстом нужна ещё строка в `OWN_TEXT_REASONS`.
 
 ## Ветки и коммиты
 
