@@ -192,6 +192,44 @@ button-delete-note = 🗑 Delete
 button-back-notes = ↩️ To notes
 note-delete-ask = 🗑 Delete the note “{ $text }”?
 pinned-limit = You can pin up to { $limit } notes — unpin one first
+button-add-list = ☑️ List
+button-find = 🔍 Find
+button-reset-search = ✖️ Clear search
+button-add-items = ➕ Items
+button-edit = ✏️ Edit
+items-full = This note already has { $limit } items
+note-edit-ask = ✍️ Send the new text of the note (up to { $limit } characters):
+hint-note-edit = Send the new text of the note.
+note-updated = ✅ Note updated.
+items-ask = ✍️ Send the items, one per line (up to { $limit } in a note):
+hint-items = Send the items, one per line.
+items-room = Only { $count } more { $count ->
+        [one] item
+       *[other] items
+    } will fit — send fewer:
+item-too-long = The item “{ $text }” is longer than { $limit } characters — shorten it and try again:
+items-added = ✅ Items added: { $count }
+list-ask =
+    ☑️ Send a list: the title on the first line, then each item on its own line. For example:
+    Shopping
+    milk
+    bread
+hint-list = Send the title and the items, each on its own line.
+list-need-item = I need at least one item — one per line after the title.
+list-too-long = A list can have up to { $limit } items — send a shorter one:
+list-saved = ✅ List saved.
+search-ask = 🔍 What should I look for? Send a word or part of one:
+hint-search = Send a word to search for.
+search-bad = A search is up to { $limit } characters. Make it shorter:
+search-empty = 🔍 Nothing found for “{ $query }”. Try another word:
+search-found = 🔍 Found { $count } { $count ->
+        [one] note
+       *[other] notes
+    }
+search-title = 🔍 “{ $query }” — { $count } { $count ->
+        [one] note
+       *[other] notes
+    }:
 
 ## Reminders
 reminders-empty = ⏰ No active reminders. Tap “➕ Add” to create one.

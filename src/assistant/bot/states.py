@@ -11,6 +11,10 @@ class RatesForm(StatesGroup):
 
 class NoteForm(StatesGroup):
     text = State()
+    edit = State()  # a new text for the note of data["note_id"]
+    items = State()  # new items for the note of data["note_id"]
+    checklist = State()  # a new checklist: its title, then its items
+    search = State()  # words to look for in the notes
 
 
 class ReminderForm(StatesGroup):

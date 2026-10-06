@@ -28,6 +28,7 @@ SALE = "https://example.com/sale"
 GONE = "Этого уже нет."
 STALE = "Эта кнопка устарела — открой раздел заново из меню."
 EMPTY = "📝 Заметок пока нет. Нажми «➕ Заметка» или «☑️ Список», чтобы создать первую."
+TOOLS = ["➕ Заметка", "☑️ Список", "🔍 Найти"]  # under the notes of a list
 MAX_ID = 2**63 - 1
 
 
@@ -88,7 +89,10 @@ async def test_add_note_dialog(feed, fake, session) -> None:
     await feed(message_update("📝 Заметки"))
     empty = fake.of(SendMessage)[-1]
     assert empty.text == EMPTY
-    assert buttons(empty.reply_markup) == [["➕ Заметка"]]
+    assert buttons(empty.reply_markup) == [["➕ Заметка", "☑️ Список"]]  # nothing to search
+    assert data(empty.reply_markup) == [
+        [NoteCb(action="add").pack(), NoteCb(action="checklist").pack()]
+    ]
     await feed(callback_update(NoteCb(action="add").pack()))
     assert fake.sent_texts()[-1] == "✍️ Напиши текст заметки (до 500 символов):"
     await feed(message_update("a" * 501))
@@ -100,8 +104,15 @@ async def test_add_note_dialog(feed, fake, session) -> None:
     assert listed.text == "📝 Твои заметки (1/50):\n\n1. купить хлеб"
     stored = (await session.scalars(select(Note))).all()
     assert [(n.text, n.created_at) for n in stored] == [("купить хлеб", CLOCK)]  # the bot's clock
-    assert buttons(listed.reply_markup) == [["1. купить хлеб"], ["➕ Заметка"]]
-    assert data(listed.reply_markup)[0] == [NoteCb(action="open", id=stored[0].id).pack()]
+    assert buttons(listed.reply_markup) == [["1. купить хлеб"], TOOLS]
+    assert data(listed.reply_markup) == [
+        [NoteCb(action="open", id=stored[0].id).pack()],
+        [
+            NoteCb(action="add").pack(),
+            NoteCb(action="checklist").pack(),
+            NoteCb(action="find").pack(),
+        ],
+    ]
 
 
 async def test_note_of_exactly_500_characters_is_saved(feed, fake) -> None:
@@ -159,7 +170,7 @@ async def test_the_list_shows_the_pinned_on_top_then_the_newest(
         ["2. новая"],
         ["3. Покупки ✅ 2/5"],
         ["4. старая"],
-        ["➕ Заметка"],
+        TOOLS,
     ]
     # The addresses a note keeps are not the message's point: no preview card under the list.
     assert listed.link_preview_options == NO_PREVIEW
@@ -169,13 +180,13 @@ def test_a_long_note_is_one_line_in_the_list_and_shorter_on_its_button() -> None
     long = view(7, "Первая строка\n" + "я" * 200, pinned=True, items=[("молоко", True)])
     text, markup = notes_view([long], 0, RU)
     assert text.splitlines()[2] == "1. 📌 Первая строка " + "я" * 85 + "… ✅ 1/1"  # 100 characters
-    assert buttons(markup) == [["1. 📌 Первая строка " + "я" * 15 + "… ✅ 1/1"], ["➕ Заметка"]]
+    assert buttons(markup) == [["1. 📌 Первая строка " + "я" * 15 + "… ✅ 1/1"], TOOLS]
     text, markup = notes_view([view(7, "Shopping", items=[("milk", False)])], 0, EN)
     assert text == "📝 Your notes (1/50):\n\n1. Shopping ✅ 0/1"
-    assert buttons(markup) == [["1. Shopping ✅ 0/1"], ["➕ Note"]]
-    assert notes_view([], 0, EN)[0] == (
-        "📝 No notes yet. Tap “➕ Note” or “☑️ List” to create the first one."
-    )
+    assert buttons(markup) == [["1. Shopping ✅ 0/1"], ["➕ Note", "☑️ List", "🔍 Find"]]
+    text, markup = notes_view([], 0, EN)
+    assert text == "📝 No notes yet. Tap “➕ Note” or “☑️ List” to create the first one."
+    assert buttons(markup) == [["➕ Note", "☑️ List"]]
 
 
 async def test_fifty_long_notes_fit_telegram_limits(feed, fake, session, make_user) -> None:
@@ -189,7 +200,7 @@ async def test_fifty_long_notes_fit_telegram_limits(feed, fake, session, make_us
     assert first.text.endswith("Стр. 1 из 10")
     rows = first.reply_markup.inline_keyboard
     assert len(rows) == 7
-    assert [b.text for b in rows[5]] == ["➕ Заметка"] and [b.text for b in rows[6]] == ["▶️"]
+    assert [b.text for b in rows[5]] == TOOLS and [b.text for b in rows[6]] == ["▶️"]
     assert all(len(b.callback_data.encode()) <= 64 for row in rows for b in row)
     await feed(press("page", page=9))
     last = shown(fake)
@@ -207,25 +218,30 @@ def test_a_card_shows_the_text_whole_then_the_items() -> None:
     assert buttons(markup) == [
         ["⬜ молоко"],
         ["✅ хлеб"],
-        ["🧹 Убрать отмеченные"],
-        ["📌 Открепить"],
+        ["➕ Пункты", "🧹 Убрать отмеченные"],
+        ["📌 Открепить", "✏️ Изменить"],
         ["🗑 Удалить", "↩️ К заметкам"],
     ]
     assert data(markup) == [
         [NoteItemCb(note=7, id=1, done=1).pack()],  # the open item's button checks it
         [NoteItemCb(note=7, id=2, done=0).pack()],  # the checked one's unchecks it
-        [NoteCb(action="clear", id=7, page=2).pack()],
-        [NoteCb(action="unpin", id=7, page=2).pack()],
+        [NoteCb(action="items", id=7, page=2).pack(), NoteCb(action="clear", id=7, page=2).pack()],
+        [NoteCb(action="unpin", id=7, page=2).pack(), NoteCb(action="edit", id=7, page=2).pack()],
         [NoteCb(action="delask", id=7, page=2).pack(), NoteCb(action="page", page=2).pack()],
     ]
-    # Nothing checked, nothing to clear; a plain note has its text and the pin only.
+    # Nothing checked, nothing to clear; a plain note can get items and so become a checklist.
     _, markup = card_view(view(8, "Дела", items=[("позвонить", False)]), 0, RU)
-    assert buttons(markup) == [["⬜ позвонить"], ["📌 Закрепить"], ["🗑 Удалить", "↩️ К заметкам"]]
+    assert buttons(markup) == [
+        ["⬜ позвонить"],
+        ["➕ Пункты"],
+        ["📌 Закрепить", "✏️ Изменить"],
+        ["🗑 Удалить", "↩️ К заметкам"],
+    ]
     text, markup = card_view(view(9, "Wi-Fi: hunter2"), 0, EN)
     assert text == "Wi-Fi: hunter2"
-    assert buttons(markup) == [["📌 Pin"], ["🗑 Delete", "↩️ To notes"]]
+    assert buttons(markup) == [["➕ Items"], ["📌 Pin", "✏️ Edit"], ["🗑 Delete", "↩️ To notes"]]
     _, markup = card_view(view(9, "Shopping", pinned=True, items=[("milk", True)]), 0, EN)
-    assert buttons(markup)[1:3] == [["🧹 Remove checked"], ["📌 Unpin"]]
+    assert buttons(markup)[1:3] == [["➕ Items", "🧹 Remove checked"], ["📌 Unpin", "✏️ Edit"]]
 
 
 def test_an_items_line_and_button_keep_40_characters() -> None:
@@ -242,6 +258,7 @@ def test_the_fullest_card_fits_whole() -> None:
     assert utf16_len(text) == 2644  # of the 3900 a message keeps to: a card is never cut
     assert utf16_len(card_view(replace(pinned, pinned_at=None), 9, RU)[0]) == 2641
     assert all(len(b.callback_data.encode()) <= 64 for row in markup.inline_keyboard for b in row)
+    assert buttons(markup)[20] == ["🧹 Убрать отмеченные"]  # 20 items: no room for «➕ Пункты»
     longest = NoteItemCb(note=MAX_ID, id=MAX_ID, done=1).pack()
     assert longest == f"ni:{MAX_ID}:{MAX_ID}:1" and len(longest.encode()) == 44
 
@@ -325,7 +342,11 @@ async def test_pinning_puts_the_note_on_top_without_editing_it(
     await feed(press("pin", first.id, page=0))
     card = shown(fake)
     assert card.text == "📌 первая"
-    assert buttons(card.reply_markup) == [["📌 Открепить"], ["🗑 Удалить", "↩️ К заметкам"]]
+    assert buttons(card.reply_markup) == [
+        ["➕ Пункты"],
+        ["📌 Открепить", "✏️ Изменить"],
+        ["🗑 Удалить", "↩️ К заметкам"],
+    ]
     assert card.link_preview_options == NO_PREVIEW
     pinned = await notes.get_view(session, 1, first.id)
     assert (pinned.pinned_at, pinned.updated_at) == (CLOCK, NOW)  # the bot's clock; not an edit
@@ -333,7 +354,7 @@ async def test_pinning_puts_the_note_on_top_without_editing_it(
     assert shown(fake).text == "📝 Твои заметки (2/50):\n\n1. 📌 первая\n2. вторая"
     await feed(press("unpin", first.id))
     assert shown(fake).text == "первая"
-    assert buttons(shown(fake).reply_markup)[0] == ["📌 Закрепить"]
+    assert buttons(shown(fake).reply_markup)[1] == ["📌 Закрепить", "✏️ Изменить"]
     assert (await notes.get_view(session, 1, first.id)).pinned_at is None
 
 
@@ -367,13 +388,14 @@ async def test_clearing_removes_the_checked_items(feed, fake, session, make_user
         await notes.set_item(session, 1, note.id, item.id, True)
     await session.commit()
     await feed(press("open", note.id))
-    assert buttons(shown(fake).reply_markup)[3] == ["🧹 Убрать отмеченные"]
+    assert buttons(shown(fake).reply_markup)[3] == ["➕ Пункты", "🧹 Убрать отмеченные"]
     await feed(press("clear", note.id))
     card = shown(fake)
     assert card.text == "Покупки\n\n⬜ хлеб"
     assert buttons(card.reply_markup) == [
         ["⬜ хлеб"],
-        ["📌 Закрепить"],
+        ["➕ Пункты"],
+        ["📌 Закрепить", "✏️ Изменить"],
         ["🗑 Удалить", "↩️ К заметкам"],
     ]
 
@@ -459,7 +481,10 @@ async def test_an_old_delete_button_asks_first(feed, fake, session, make_user) -
     assert await notes.count(session, 1) == 1
 
 
-@pytest.mark.parametrize("action", ["open", "pin", "unpin", "clear", "delask", "del", "delyes"])
+@pytest.mark.parametrize(
+    "action",
+    ["open", "fopen", "pin", "unpin", "clear", "edit", "items", "delask", "del", "delyes"],
+)
 async def test_a_button_of_a_deleted_note_shows_the_list(
     action, feed, fake, session, make_user
 ) -> None:
@@ -484,6 +509,8 @@ async def test_buttons_with_someone_elses_note_find_nothing(feed, fake, session,
         tick(note.id, item.id, 1, user_id=2),
         press("pin", note.id, user_id=2),
         press("clear", note.id, user_id=2),
+        press("edit", note.id, user_id=2),
+        press("items", note.id, user_id=2),
         press("delask", note.id, user_id=2),
         press("delyes", note.id, user_id=2),
     ):
@@ -492,6 +519,7 @@ async def test_buttons_with_someone_elses_note_find_nothing(feed, fake, session,
         assert shown(fake).text == EMPTY
     kept = await notes.get_view(session, 1, note.id)
     assert (kept.pinned_at, kept.items[0].done) == (None, False)
+    assert not fake.of(SendMessage)  # no dialog began for the other user
 
 
 async def test_an_old_button_never_hits_a_newer_note(feed, fake, session, make_user) -> None:
