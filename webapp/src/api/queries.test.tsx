@@ -11,7 +11,7 @@ import { mockApi } from "../test/mockApi";
 import { ApiError } from "./client";
 import type { Agenda, City, Habit, HabitDetail, Me, Note, ScheduleState, Today, WeatherCity } from "./types";
 import {
-  createQueryClient, errorCode, keys, useAddCity, useAddItem, useClearDone, useCreateHabit, useCreateNote,
+  createQueryClient, errorCode, keys, useAddCity, useAddingItems, useAddItem, useClearDone, useCreateHabit, useCreateNote,
   useDeleteCity, useDeleteHabit, useDeleteItem, useDeleteNote, useDeleteReminder, useDisconnectSchedule,
   useForecast, useHabit, useHabits, useMarkDay, useNotes, usePinNote, useRefreshSchedule, useScheduleAlerts,
   useSetCity, useSetItem, useSetMark, useShareHabit, useUpdateHabit, useUpdateMe, useUpdateNote, useUploadSchedule,
@@ -1131,6 +1131,26 @@ describe("the items of a checklist", () => {
     act(() => result.current.mutate(12));
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(calls[0]).toMatchObject({ method: "DELETE", path: "/notes/12/items?done=true" });
+  });
+
+  it("counts the items still on their way to a note, queued ones too, and no other note's", async () => {
+    const { client, pending, resolveAt } = open();
+    const { result } = renderHook(
+      () => ({ add: useAddItem(), set: useSetItem(), adding: useAddingItems(12), other: useAddingItems(11) }),
+      { wrapper: wrapperFor(client) },
+    );
+    act(() => result.current.add.mutate({ note: 12, text: "сыр" }));
+    act(() => result.current.set.mutate({ note: 12, id: 31, done: true }));
+    act(() => result.current.add.mutate({ note: 12, text: "масло" })); // queued behind the check
+    act(() => result.current.add.mutate({ note: 11, text: "батон" }));
+    await waitFor(() => expect(result.current.adding).toBe(2));
+    expect(result.current.other).toBe(1);
+    await waitFor(() => expect(pending).toHaveLength(1));
+
+    act(() => resolveAt(0, 201, { id: 33, text: "сыр", done: false }));
+    // Shown in the note now, and no longer counted on its way: never twice, never missing.
+    await waitFor(() => expect(result.current.adding).toBe(1));
+    expect(client.getQueryData<Note[]>(keys.notes)?.[0]?.items.map((item) => item.id)).toEqual([31, 32, 33]);
   });
 });
 

@@ -1,5 +1,5 @@
 import {
-  MutationCache, QueryClient, useIsMutating, useMutation, useQuery, useQueryClient,
+  MutationCache, QueryClient, useIsMutating, useMutation, useMutationState, useQuery, useQueryClient,
 } from "@tanstack/react-query";
 import { toast } from "../components/toastStore";
 import { hasErrorText, useT } from "../i18n";
@@ -164,6 +164,7 @@ const DELETE_CHANGE = [...NOTE_CHANGE, "delete"];
 const TEXT_CHANGE = [...NOTE_CHANGE, "text"];
 const PIN_CHANGE = [...NOTE_CHANGE, "pin"];
 const ITEM_CHANGE = [...NOTE_CHANGE, "items"];
+const ADD_ITEM = [...ITEM_CHANGE, "add"];
 const ITEMS_SCOPE = { id: "note-items" };
 
 /** After a change of the notes: the notes and «Сегодня» again, once the last change is done. */
@@ -359,7 +360,7 @@ export function useAddItem() {
   const changed = useNoteChanged();
   const gone = useGoneToast();
   return useMutation({
-    mutationKey: ITEM_CHANGE,
+    mutationKey: ADD_ITEM,
     scope: ITEMS_SCOPE,
     meta: OWN_NOT_FOUND,
     mutationFn: ({ note, text }: { note: number; text: string }) =>
@@ -372,8 +373,23 @@ export function useAddItem() {
     onError: (error) => {
       if (isGone(error)) gone();
     },
-    onSettled: changed,
+    // The notes are asked for without waiting: the addition counts as on its way (useAddingItems)
+    // until it settles, and its item shows already, so meanwhile it would take two places.
+    onSettled: () => {
+      void changed();
+    },
   });
+}
+
+/**
+ * The items still on their way to a note, queued ones too: with those it shows, they take the
+ * note's 20 places, so a quick run of additions cannot go past the limit.
+ */
+export function useAddingItems(note: number): number {
+  return useMutationState({
+    filters: { mutationKey: ADD_ITEM, status: "pending" },
+    select: (mutation) => (mutation.state.variables as { note: number } | undefined)?.note,
+  }).filter((id) => id === note).length;
 }
 
 /**

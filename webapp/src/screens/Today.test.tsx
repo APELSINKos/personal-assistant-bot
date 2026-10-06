@@ -1,7 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { keys } from "../api/queries";
-import type { ClassesWeather, ForecastDay, TodayLesson } from "../api/types";
+import type { ClassesWeather, ForecastDay, PinnedNote, TodayLesson } from "../api/types";
 import { installTelegram } from "../test/fakeTelegram";
 import { habit, today } from "../test/fixtures";
 import { mockApi } from "../test/mockApi";
@@ -396,5 +396,55 @@ describe("Today's money", () => {
     renderWithApp(<TodayScreen />);
     expect(await screen.findByText("📝 4 заметки")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /^Деньги/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("Today's notes", () => {
+  const pinned: PinnedNote[] = [
+    { id: 12, text: "Покупки", done: 1, total: 2 },
+    { id: 4, text: "Пароль от wifi: hunter2 https://example.com/r\nи логин на второй строке", done: 0, total: 0 },
+  ];
+
+  /** The card a heading names. */
+  function cardOf(name: string): HTMLElement {
+    const card = screen.getByRole("heading", { name }).closest("section");
+    if (!card) throw new Error(`no card ${name}`);
+    return card;
+  }
+
+  it("shows the pinned notes, each opening its note, and the way to all of them", async () => {
+    installTelegram();
+    mockApi({ "GET /today": { ...today, notes_count: 12, pinned_notes: pinned } });
+    renderWithApp(<TodayScreen />);
+    await screen.findByRole("heading", { name: "Заметки" });
+    const card = cardOf("Заметки");
+    const shopping = within(card).getByRole("link", { name: "Покупки Отмечено 1 из 2" });
+    expect(shopping).toHaveAttribute("href", "/notes/12");
+    expect(within(shopping).getByText("✅ 1/2")).toBeInTheDocument();
+    // A plain line, its address too: the whole line opens the note, and nothing in it is a button.
+    const password = within(card).getByRole("link", { name: /^Пароль от wifi: hunter2/ });
+    expect(password).toHaveAttribute("href", "/notes/4");
+    expect(password).toHaveAccessibleName(/hunter2 https:\/\/example\.com\/r/);
+    expect(within(card).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(password).queryByText(/✅/)).not.toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: "Все заметки (12)" })).toHaveAttribute("href", "/notes");
+    expect(screen.queryByText(/📝/)).not.toBeInTheDocument();
+  });
+
+  it("speaks English too", async () => {
+    installTelegram();
+    mockApi({ "GET /today": { ...today, notes_count: 1, pinned_notes: [{ id: 12, text: "Shopping", done: 2, total: 5 }] } });
+    renderWithApp(<TodayScreen />, { lang: "en" });
+    await screen.findByRole("heading", { name: "Notes" });
+    expect(screen.getByRole("link", { name: "Shopping 2 of 5 checked" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "All notes (1)" })).toBeInTheDocument();
+  });
+
+  it("counts the notes, as before, when none is pinned", async () => {
+    installTelegram();
+    mockApi({ "GET /today": today });
+    renderWithApp(<TodayScreen />);
+    expect(await screen.findByRole("link", { name: "📝 4 заметки" })).toHaveAttribute("href", "/notes");
+    expect(screen.queryByRole("heading", { name: "Заметки" })).not.toBeInTheDocument();
   });
 });

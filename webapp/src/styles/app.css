@@ -373,19 +373,6 @@ a {
   }
 }
 
-.note-card {
-  display: block;
-  cursor: pointer;
-}
-
-.note-card__text {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  white-space: pre-wrap;
-}
-
 /* Floating add button, and the room it keeps after a list */
 .fab-room {
   height: 64px;
@@ -404,6 +391,12 @@ a {
   background: var(--accent);
   color: var(--on-accent);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+/* At a limit the button stays in its place, dimmed: a tap says why nothing opens. */
+.fab[aria-disabled="true"] {
+  opacity: 0.45;
+  box-shadow: none;
 }
 
 /* Bottom navigation */

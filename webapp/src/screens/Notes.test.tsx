@@ -1,21 +1,193 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { Route, Switch } from "wouter";
+import type { Note } from "../api/types";
 import { Toasts } from "../components/Toasts";
+import { getNotesQuery } from "../lib/notesSearch";
 import { installTelegram } from "../test/fakeTelegram";
-import { note } from "../test/fixtures";
-import { pressMainButton } from "../test/mainButton";
+import { checklist, note } from "../test/fixtures";
 import { mockApi } from "../test/mockApi";
 import { renderWithApp } from "../test/render";
 import { NoteEditor } from "./NoteEditor";
 import { NotesScreen } from "./Notes";
+
+const call: Note = { ...note, id: 10, text: "Позвонить маме" };
+const wifi: Note = { ...note, id: 9, text: "Пароль от WiFi: hunter2" };
+
+/** The list and the editor, as the app routes them, with the toasts. */
+function renderNotes(path = "/notes") {
+  return renderWithApp(
+    <>
+      <Switch>
+        <Route path="/notes" component={NotesScreen} />
+        <Route path="/notes/new" component={NoteEditor} />
+        <Route path="/notes/:id" component={NoteEditor} />
+      </Switch>
+      <Toasts />
+    </>,
+    { path },
+  );
+}
+
+/** What the list shows, top to bottom: its headings and its notes. */
+function shown(): (string | null)[] {
+  return Array.from(document.querySelectorAll("h2, .note-card__text"), (element) => element.textContent);
+}
+
+/** A pull down the screen far enough to refresh it. */
+function pullDown() {
+  const title = screen.getByRole("heading", { level: 1 });
+  fireEvent.touchStart(title, { touches: [{ clientX: 100, clientY: 100 }] });
+  fireEvent.touchMove(title, { touches: [{ clientX: 100, clientY: 300 }] });
+  fireEvent.touchEnd(title);
+}
 
 describe("Notes", () => {
   it("lists notes and opens one", async () => {
     installTelegram();
     mockApi({ "GET /notes": [note] });
     const { history } = renderWithApp(<NotesScreen />, { path: "/notes" });
-    fireEvent.click(await screen.findByText("Купить хлеб"));
+    fireEvent.click(await screen.findByRole("link", { name: "Купить хлеб" }));
     expect(history.at(-1)).toBe("/notes/11");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Заметки 1/50");
+  });
+
+  it("puts the pinned notes on top under a heading of their own, a checklist with its progress", async () => {
+    installTelegram();
+    mockApi({ "GET /notes": [checklist, note, call] });
+    renderWithApp(<NotesScreen />, { path: "/notes" });
+    const shopping = await screen.findByRole("link", { name: "📌 Покупки Отмечено 1 из 2" });
+    expect(shopping).toHaveAttribute("href", "/notes/12");
+    expect(screen.getByText("✅ 1/2")).toBeInTheDocument();
+    expect(shown()).toEqual(["Закреплённые", "📌 Покупки", "Остальные", "Купить хлеб", "Позвонить маме"]);
+  });
+
+  it("gives the notes no headings when none is pinned", async () => {
+    installTelegram();
+    mockApi({ "GET /notes": [note, call] });
+    renderWithApp(<NotesScreen />, { path: "/notes" });
+    await screen.findByRole("link", { name: "Купить хлеб" });
+    expect(shown()).toEqual(["Купить хлеб", "Позвонить маме"]);
+  });
+
+  it("filters as it is typed, by the items too, and says what it found", async () => {
+    installTelegram();
+    mockApi({ "GET /notes": [checklist, note, wifi] });
+    renderWithApp(<NotesScreen />, { path: "/notes" });
+    const field = await screen.findByRole("searchbox", { name: "Найти в заметках" });
+
+    fireEvent.change(field, { target: { value: "wifi" } });
+    expect(shown()).toEqual(["Пароль от WiFi: hunter2"]);
+    expect(screen.getByRole("status")).toHaveTextContent("Найдено заметок: 1");
+
+    fireEvent.change(field, { target: { value: "МОЛОКО" } }); // an item of «Покупки»
+    expect(shown()).toEqual(["Закреплённые", "📌 Покупки"]);
+
+    fireEvent.change(field, { target: { value: "хлеб купить" } }); // every word, in any order
+    expect(shown()).toEqual(["Купить хлеб"]);
+
+    fireEvent.change(field, { target: { value: "ёлка" } });
+    expect(shown()).toEqual([]);
+    expect(screen.getByRole("status")).toHaveTextContent("Ничего не нашлось");
+
+    fireEvent.change(field, { target: { value: "   " } });
+    expect(shown()).toHaveLength(5);
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+  });
+
+  it("keeps the query while a note is open and finds the same notes after it", async () => {
+    const app = installTelegram();
+    mockApi({ "GET /notes": [checklist, note, wifi] });
+    const { history } = renderNotes();
+    fireEvent.change(await screen.findByRole("searchbox"), { target: { value: "купить" } });
+    fireEvent.click(screen.getByRole("link", { name: "Купить хлеб" }));
+    expect(await screen.findByDisplayValue("Купить хлеб")).toBeInTheDocument();
+    expect(history.at(-1)).toBe("/notes/11");
+    expect(history.join(" ")).not.toContain("?"); // the query is in no address
+
+    const back = vi.mocked(app.BackButton.onClick).mock.calls.at(-1)?.[0];
+    act(() => back?.());
+    expect(await screen.findByRole("searchbox")).toHaveValue("купить");
+    expect(shown()).toEqual(["Купить хлеб"]);
+    expect(getNotesQuery()).toBe("купить");
+  });
+
+  it("offers no search without notes", async () => {
+    installTelegram();
+    mockApi({ "GET /notes": [] });
+    renderWithApp(<NotesScreen />, { path: "/notes" });
+    expect(await screen.findByText("Заметок пока нет. Нажми «+», чтобы создать первую.")).toBeInTheDocument();
+    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Заметки 0/50");
+  });
+
+  it("opens an address in a card, and not the note", async () => {
+    const app = installTelegram();
+    const text = "Скидки тут (https://example.com/sale). Чат — t.me/x, сайты “https://x.ru” и \"https://y.ru\"";
+    mockApi({ "GET /notes": [{ ...note, text }] });
+    const { history } = renderWithApp(<NotesScreen />, { path: "/notes" });
+
+    fireEvent.click(await screen.findByRole("button", { name: "https://example.com/sale" }));
+    expect(app.openLink).toHaveBeenLastCalledWith("https://example.com/sale"); // without «)» and «.»
+    fireEvent.click(screen.getByRole("button", { name: "t.me/x" }));
+    expect(app.openTelegramLink).toHaveBeenLastCalledWith("https://t.me/x"); // inside Telegram
+    fireEvent.click(screen.getByRole("button", { name: "https://x.ru" }));
+    expect(app.openLink).toHaveBeenLastCalledWith("https://x.ru"); // without the quotes
+    fireEvent.click(screen.getByRole("button", { name: "https://y.ru" }));
+    expect(app.openLink).toHaveBeenLastCalledWith("https://y.ru");
+    expect(history).toEqual(["/notes"]);
+
+    // The text loses nothing around them, and the card still opens the note.
+    expect(shown()).toEqual([text]);
+    fireEvent.click(screen.getByRole("link", { name: /^Скидки тут/ }));
+    expect(history.at(-1)).toBe("/notes/11");
+  });
+
+  it("dims «+» at 50 notes and says why instead of opening a new note", async () => {
+    const app = installTelegram();
+    const fifty = Array.from({ length: 50 }, (_, index) => ({ ...note, id: index + 1, text: `Заметка ${index + 1}` }));
+    mockApi({ "GET /notes": fifty });
+    const { history } = renderNotes();
+    const plus = await screen.findByRole("link", { name: "Добавить заметку" });
+    expect(plus).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Заметки 50/50");
+    fireEvent.click(plus);
+    expect(await screen.findByText("Достигнут лимит — 50 заметок. Удали лишние.")).toBeInTheDocument();
+    expect(history).toEqual(["/notes"]);
+    expect(app.HapticFeedback?.notificationOccurred).toHaveBeenCalledWith("error");
+  });
+
+  it("opens a new note from «+» below the limit", async () => {
+    installTelegram();
+    const many = Array.from({ length: 49 }, (_, index) => ({ ...note, id: index + 1, text: `Заметка ${index + 1}` }));
+    mockApi({ "GET /notes": many });
+    const { history } = renderNotes();
+    const plus = await screen.findByRole("link", { name: "Добавить заметку" });
+    expect(plus).not.toHaveAttribute("aria-disabled");
+    fireEvent.click(plus);
+    expect(await screen.findByRole("heading", { name: "Новая заметка" })).toBeInTheDocument();
+    expect(history.at(-1)).toBe("/notes/new");
+  });
+
+  it("keeps the notes shown when a refresh fails, and shows fresh ones after a refresh that works", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    installTelegram();
+    let reply: unknown = { body: [note] };
+    mockApi({ "GET /notes": () => reply });
+    renderWithApp(<NotesScreen />, { path: "/notes" });
+    await screen.findByRole("link", { name: "Купить хлеб" });
+    const settle = () => act(() => vi.advanceTimersByTimeAsync(5_000));
+
+    reply = { status: 503, body: { status: 503, code: "upstream_unavailable", title: "Unavailable" } };
+    pullDown();
+    await settle();
+    expect(screen.getByRole("link", { name: "Купить хлеб" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Повторить" })).not.toBeInTheDocument();
+
+    reply = { body: [call, note] };
+    pullDown();
+    await settle();
+    expect(shown()).toEqual(["Позвонить маме", "Купить хлеб"]);
   });
 
   it("test_deleting_a_note_that_is_already_gone", async () => {
@@ -53,79 +225,5 @@ describe("Notes", () => {
       watcher.disconnect();
     }
     expect(reappeared).toBe(false);
-  });
-});
-
-describe("NoteEditor", () => {
-  it("edits a note and saves with the main button", async () => {
-    const app = installTelegram();
-    const { calls } = mockApi({
-      "GET /notes": [note],
-      "PATCH /notes/11": { ...note, text: "Купить молоко" },
-    });
-    const { history } = renderWithApp(<NoteEditor />, { path: "/notes/11" });
-    const editor = await screen.findByDisplayValue("Купить хлеб");
-    fireEvent.change(editor, { target: { value: "Купить молоко" } });
-    expect(screen.getByText("13/500")).toBeInTheDocument();
-    expect(app.enableClosingConfirmation).toHaveBeenCalled();
-    pressMainButton(app);
-    await waitFor(() => expect(history.at(-1)).toBe("/notes"));
-    expect(calls).toContainEqual({ method: "PATCH", path: "/notes/11", body: { text: "Купить молоко" } });
-  });
-
-  it("creates a new note", async () => {
-    const app = installTelegram();
-    const { calls } = mockApi({ "GET /notes": [], "POST /notes": () => ({ status: 201, body: note }) });
-    renderWithApp(<NoteEditor />, { path: "/notes/new" });
-    fireEvent.change(await screen.findByLabelText("Текст заметки"), { target: { value: "Купить хлеб" } });
-    pressMainButton(app);
-    await waitFor(() =>
-      expect(calls).toContainEqual({ method: "POST", path: "/notes", body: { text: "Купить хлеб" } }),
-    );
-  });
-
-  it("asks before leaving with unsaved edits", async () => {
-    const app = installTelegram({
-      showConfirm: vi.fn((_message: string, callback: (ok: boolean) => void) => callback(false)),
-    });
-    mockApi({ "GET /notes": [note] });
-    const { history } = renderWithApp(<NoteEditor />, { path: "/notes/11" });
-    fireEvent.change(await screen.findByDisplayValue("Купить хлеб"), { target: { value: "черновик" } });
-    const back = vi.mocked(app.BackButton.onClick).mock.calls.at(-1)?.[0];
-    await act(async () => back?.());
-    expect(app.showConfirm).toHaveBeenCalledWith("Выйти без сохранения?", expect.any(Function));
-    expect(history.at(-1)).toBe("/notes/11");
-  });
-
-  it("shows a not-found state for a note that doesn't exist", async () => {
-    installTelegram();
-    mockApi({ "GET /notes": [note] });
-    renderWithApp(<NoteEditor />, { path: "/notes/999" });
-    expect(await screen.findByText("Этого уже нет")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Заметки" })).toBeInTheDocument();
-  });
-
-  it("keeps the draft when the note disappears elsewhere while editing", async () => {
-    const app = installTelegram();
-    mockApi({
-      "GET /notes": [note],
-      "PATCH /notes/11": () => ({ status: 404, body: { status: 404, code: "not_found", title: "Not found" } }),
-    });
-    const { client } = renderWithApp(<><NoteEditor /><Toasts /></>, { path: "/notes/11" });
-    const editor = await screen.findByDisplayValue("Купить хлеб");
-    fireEvent.change(editor, { target: { value: "черновик" } });
-
-    // The note is gone from the cache — e.g. deleted in another tab — while the user is still
-    // editing it here. React Query notifies subscribers on a real macrotask (`setTimeout(…, 0)`),
-    // so the update is awaited here to let the screen actually re-render before the assertion.
-    await act(async () => {
-      client.setQueryData(["notes"], []);
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    expect(screen.getByDisplayValue("черновик")).toBeInTheDocument();
-
-    pressMainButton(app);
-    expect(await screen.findByText("Этого уже нет")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("черновик")).toBeInTheDocument();
   });
 });

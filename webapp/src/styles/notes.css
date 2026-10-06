@@ -1,0 +1,368 @@
+/* The notes: the list with its search and its blocks, a note's card, the editor with its 📌, its
+   links and its items; the notes card of «Сегодня». */
+
+/* How many notes there are of the 50 a user may keep, after the title. */
+.screen__count {
+  margin-left: 4px;
+  color: var(--hint);
+  font-family: var(--font-text);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.notes-search {
+  display: block;
+  margin-bottom: 12px;
+}
+
+/* A note in the list. The swipe row draws the card, and its box is the nearest positioned one, so
+   the link's ::after covers the whole card; an address is a button above it. */
+.note-card__open::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-card);
+}
+
+.note-card__open:focus-visible {
+  outline: none;
+}
+
+/* Inside the card's edge: the swipe row clips whatever goes past it. */
+.note-card__open:focus-visible::after {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Up to six lines; the side padding keeps an address's focus ring inside the clipped box. */
+.note-card__text {
+  display: -webkit-box;
+  margin: 0 -3px;
+  padding: 0 3px;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.note-card__progress {
+  display: block;
+  margin-top: 8px;
+}
+
+/* An address in a note: a button that reads as a link, above the card's link or beside an item's
+   check. One line: a longer address ends in «…» and still opens whole. */
+.note-link {
+  position: relative;
+  z-index: 1;
+  max-width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  text-align: start;
+  text-decoration: underline;
+  text-overflow: ellipsis;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+  vertical-align: bottom;
+  cursor: pointer;
+}
+
+.note-link:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* A checklist's progress: «✅ 2/5» and, in the list, a thin bar of it. */
+.note-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--hint);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.note-progress__count {
+  flex: none;
+  white-space: nowrap;
+}
+
+.note-progress__bar {
+  flex: 1;
+  height: 4px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--line);
+}
+
+.note-progress__done {
+  display: block;
+  width: var(--done);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+/* The editor: the title and the 📌 on one line. */
+.editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.editor-head .screen__title {
+  min-width: 0;
+  margin: 4px;
+}
+
+/* The 📌 is the button's only sign, so it is never faded, and its ring is --hint, not the faint
+   --line: a control's parts need 3:1 against the page. Not pinned, the pin is grey; pinned, in its
+   own colours on a tinted --accent ring. */
+.pin-toggle {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--hint);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pin-toggle span {
+  filter: grayscale(1);
+}
+
+.pin-toggle--on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.pin-toggle--on span {
+  filter: none;
+}
+
+.pin-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* A checklist's text is its title: a few lines are enough, and the items come into view. */
+.editor--list {
+  min-height: 96px;
+}
+
+.field__counter--over {
+  color: var(--error-text);
+  font-weight: 700;
+}
+
+/* The addresses of a saved note, under its field. The column is as wide as the screen's content:
+   sized by its content, a long address on one line would widen the whole page. */
+.note-links {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.note-links__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.note-links__link {
+  max-width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--glass);
+  color: var(--accent-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.note-links__link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The items of a checklist; one column as wide as the screen's content, as above. */
+.items {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.items > h2 {
+  margin: 0;
+}
+
+.items__list {
+  margin: 0;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-field);
+  background: var(--glass);
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+}
+
+.item + .item {
+  border-top: 1px solid var(--line);
+}
+
+.item__text {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 0;
+  overflow-wrap: anywhere;
+}
+
+.item--draft .item__text {
+  padding-left: 10px;
+}
+
+/* Checked: struck through as well as faint, so not by colour alone. */
+.item--done .item__text {
+  color: var(--hint);
+  text-decoration: line-through;
+}
+
+.item__remove {
+  flex: none;
+}
+
+/* A 44 px target around a 22 px box. */
+.item__check {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  border-radius: var(--radius-field);
+  cursor: pointer;
+}
+
+.item__check::before {
+  content: "";
+  position: absolute;
+  inset: 11px;
+  border: 2px solid var(--hint);
+  border-radius: 6px;
+}
+
+.item__check:checked::before {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.item__check:checked::after {
+  content: "";
+  position: absolute;
+  top: 14px;
+  left: 18px;
+  width: 6px;
+  height: 11px;
+  border: solid var(--on-accent);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.item__check:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.item-add {
+  display: flex;
+  gap: 8px;
+}
+
+.item-add .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.item-add .button {
+  flex: none;
+}
+
+.item-add__note {
+  margin: 0 4px;
+  font-size: 13px;
+}
+
+.items__clear {
+  justify-self: start;
+}
+
+/* The notes card of «Сегодня»: the pinned notes, a line each, then all the notes. */
+.notes-today__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.notes-today__note,
+.notes-today__all {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.notes-today__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-today .note-progress {
+  flex: none;
+}
+
+.notes-today__all {
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.notes-today__note:focus-visible,
+.notes-today__all:focus-visible {
+  border-radius: 8px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

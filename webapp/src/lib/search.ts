@@ -11,7 +11,8 @@ const SPACE = new Set(
   ].map((code) => String.fromCharCode(code)),
 );
 
-function words(text: string): string[] {
+/** The words of a text, split at white space as Python's str.split() splits. */
+export function words(text: string): string[] {
   const found: string[] = [];
   let word = "";
   for (const char of text) {

@@ -1,11 +1,12 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { Link } from "wouter";
 import { useSetMark, useToday } from "../api/queries";
-import type { ClassesWeather, ForecastDay, Rate, TodayLesson, TodayMoney, Weather } from "../api/types";
+import type { ClassesWeather, ForecastDay, PinnedNote, Rate, TodayLesson, TodayMoney, Weather } from "../api/types";
 import { Card } from "../components/Card";
 import { Credit } from "../components/Credit";
 import { HabitDots, HabitToggle, nextMark } from "../components/HabitBits";
 import { BudgetBar } from "../components/MoneyCharts";
+import { NoteProgress } from "../components/NoteBits";
 import { PullToRefresh } from "../components/PullToRefresh";
 import { ErrorState, Loader } from "../components/States";
 import { useLang, useT, type Lang } from "../i18n";
@@ -132,6 +133,47 @@ function RateLine({ emoji, code, rate, lang }: { emoji: string; code: string; ra
   );
 }
 
+/**
+ * The notes: the first three pinned ones, each opening its note, and the way to all of them; with
+ * nothing pinned, only how many there are.
+ */
+function NotesCard({ count, pinned, index }: { count: number; pinned: PinnedNote[]; index: number }) {
+  const t = useT();
+  const style = { "--i": index } as CSSProperties;
+  if (pinned.length === 0) {
+    return (
+      <Link href="/notes" className="card card--link" style={style}>
+        <span>📝 {t.today.notes(count)}</span>
+        <span aria-hidden>›</span>
+      </Link>
+    );
+  }
+  return (
+    <section className="card notes-today" style={style}>
+      <h2 className="card__title">{t.tabs.notes}</h2>
+      <ul className="notes-today__list">
+        {pinned.map((note) => (
+          <li key={note.id}>
+            {/* Plain text, addresses too: a tap anywhere on the line opens the note. */}
+            <Link href={`/notes/${note.id}`} className="notes-today__note">
+              <span className="notes-today__text">
+                <span aria-hidden>📌 </span>
+                {note.text}
+              </span>
+              {/* The space parts the text from the progress in the link's spoken name. */}
+              {note.total > 0 && <> <NoteProgress done={note.done} total={note.total} /></>}
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <Link href="/notes" className="notes-today__all">
+        <span>{t.today.allNotes(count)}</span>
+        <span aria-hidden>›</span>
+      </Link>
+    </section>
+  );
+}
+
 /** Spent today and the month's budget; a tap opens the «Деньги» tab. */
 function MoneyCard({ money, date, index }: { money: TodayMoney; date: string; index: number }) {
   const t = useT();
@@ -245,10 +287,7 @@ export function TodayScreen() {
         </Card>
       )}
 
-      <Link href="/notes" className="card card--link" style={{ "--i": 4 + shift + moneyShift } as CSSProperties}>
-        <span>📝 {t.today.notes(data.notes_count)}</span>
-        <span aria-hidden>›</span>
-      </Link>
+      <NotesCard count={data.notes_count} pinned={data.pinned_notes} index={4 + shift + moneyShift} />
     </PullToRefresh>
   );
 }
