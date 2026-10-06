@@ -5,6 +5,20 @@ export interface City {
   lat: number;
   lon: number;
   timezone: string;
+  /** A found place's GeoNames id, when it has one: by it the server knows a city it keeps already. */
+  geo_id?: number | null;
+}
+
+/** One of the extra cities of the weather (GET /me/cities); the home city is not among them. */
+export interface WeatherCity {
+  id: number;
+  name: string;
+  admin: string | null;
+  country: string | null;
+  lat: number;
+  lon: number;
+  timezone: string;
+  geo_id: number | null;
 }
 
 export interface Me {
@@ -40,6 +54,62 @@ export interface Weather {
   tmin: number | null;
   tmax: number | null;
   tips: string[];
+}
+
+/** The weather now in a city's forecast. */
+export interface ForecastNow {
+  temperature: number | null;
+  feels_like: number | null;
+  wind: number | null;
+  gusts: number | null;
+  /** Percent. */
+  humidity: number | null;
+  is_day: boolean;
+  /** The moon at night. */
+  emoji: string;
+  description: string;
+  /** The chance of the hour going on: the label of now rounded up to the hour. */
+  precip_chance: number | null;
+}
+
+export interface ForecastHour {
+  /** «15:00» on the city's clock: the hour's label. */
+  time: string;
+  emoji: string;
+  description: string;
+  temperature: number;
+  /** Of the hour before the label: the one at 16:00 is for 15:00–16:00. */
+  precip_chance: number | null;
+}
+
+export interface ForecastDay {
+  /** «2026-10-07» on the city's clock. */
+  date: string;
+  /** Of the day's heaviest weather. */
+  emoji: string;
+  description: string;
+  tmin: number;
+  tmax: number;
+  precip_chance: number | null;
+}
+
+/**
+ * A city's forecast (GET /weather). Every time and date is on the city's clock, counted by the
+ * server: the app shows them as they come.
+ */
+export interface Forecast {
+  /** id 0: the home city. */
+  city: { id: number; name: string; home: boolean };
+  now: ForecastNow;
+  tips: string[];
+  /** Up to 23 hours after now; an hour without a forecast is left out. */
+  hours: ForecastHour[];
+  /** Up to 7 days from the city's today. */
+  days: ForecastDay[];
+  /** «06:39» of days[0]; null on a polar day or night. */
+  sunrise: string | null;
+  sunset: string | null;
+  polar: "night" | "day" | null;
 }
 
 export interface Rate {
@@ -128,13 +198,63 @@ export interface Today {
   lessons: TodayLesson[];
   week_label: string | null;
   money: TodayMoney | null;
+  /** From 17:00 on the user's clock, when the weather came. */
+  tomorrow: ForecastDay | null;
+  /** null without today's classes or without the forecast of the last one's end. */
+  classes_weather: ClassesWeather | null;
+  /** The first three pinned notes, in the order of the list. */
+  pinned_notes: PinnedNote[];
+}
+
+/**
+ * The weather of the way to the first class and home after the last one, on the user's clock.
+ * It is the whole day's: the app hides the parts that are over.
+ */
+export interface ClassesWeather {
+  /** «09:00»: the first class begins. */
+  start: string;
+  /** null: no forecast for that hour. */
+  start_temp: number | null;
+  /** null under 30 % too. */
+  start_chance: number | null;
+  /** «16:20»: the last class ends. */
+  end: string;
+  end_temp: number | null;
+  end_chance: number | null;
+}
+
+export interface PinnedNote {
+  id: number;
+  /** Whole: the app cuts it. */
+  text: string;
+  /** A checklist's checked items; 0 of 0 for a note without items. */
+  done: number;
+  total: number;
+}
+
+export interface NoteItem {
+  id: number;
+  text: string;
+  done: boolean;
 }
 
 export interface Note {
   id: number;
+  /** A checklist's title. */
   text: string;
+  pinned: boolean;
+  /** In the order they were added. */
+  items: NoteItem[];
   created_at: string;
+  /** The text's last change: pins and items leave it as it is. */
   updated_at: string;
+}
+
+/** A new note as POST /notes takes it: a checklist with its items, pinned at once if asked. */
+export interface NoteInput {
+  text: string;
+  items?: string[];
+  pinned?: boolean;
 }
 
 export type RepeatName = "none" | "daily" | "weekly" | "monthly";

@@ -49,7 +49,7 @@ export function NoteEditor() {
   const save = () => {
     if (!valid || !dirty || create.isPending || update.isPending) return;
     const done = { onSuccess: () => navigate("/notes") };
-    if (id === null) create.mutate(trimmed, done);
+    if (id === null) create.mutate({ text: trimmed }, done);
     else update.mutate({ id, text: trimmed }, done);
   };
 

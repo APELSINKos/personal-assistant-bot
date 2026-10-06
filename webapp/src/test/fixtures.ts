@@ -1,4 +1,6 @@
-import type { Habit, Me, MoneyCategory, MoneyMonth, Note, Reminder, ScheduleSource, Today } from "../api/types";
+import type {
+  Forecast, ForecastHour, Habit, Me, MoneyCategory, MoneyMonth, Note, Reminder, ScheduleSource, Today, WeatherCity,
+} from "../api/types";
 
 export const me: Me = {
   id: 1,
@@ -51,10 +53,69 @@ export const today: Today = {
   lessons: [],
   week_label: null,
   money: null,
+  tomorrow: null,
+  classes_weather: null,
+  pinned_notes: [],
 };
 
 export const note: Note = {
-  id: 11, text: "Купить хлеб", created_at: "2026-09-27T10:00:00Z", updated_at: "2026-09-27T10:00:00Z",
+  id: 11, text: "Купить хлеб", pinned: false, items: [],
+  created_at: "2026-09-27T10:00:00Z", updated_at: "2026-09-27T10:00:00Z",
+};
+
+/** A pinned checklist: milk still to buy, bread bought. */
+export const checklist: Note = {
+  id: 12, text: "Покупки", pinned: true,
+  items: [{ id: 31, text: "молоко", done: false }, { id: 32, text: "хлеб", done: true }],
+  created_at: "2026-09-26T09:00:00Z", updated_at: "2026-09-26T09:00:00Z",
+};
+
+/** An hour of the server's stub day (tests/stubs.py): 5.8 at 05:00, 13.2 at 15:00. */
+const DAY_TEMPERATURES = [
+  7.0, 6.6, 6.3, 6.1, 5.9, 5.8, 6.0, 6.6, 7.6, 8.8, 9.9, 11.0,
+  11.9, 12.6, 13.1, 13.2, 13.0, 12.4, 11.6, 10.6, 9.6, 8.8, 8.1, 7.5,
+];
+
+/** The 23 hours after 15:00: the evening, the night with the moon, the next day to 14:00; rain likely at 21:00. */
+const HOURS: ForecastHour[] = Array.from({ length: 23 }, (_, index) => {
+  const hour = (16 + index) % 24;
+  const night = hour < 7 || hour > 18;
+  return {
+    time: `${String(hour).padStart(2, "0")}:00`,
+    emoji: night ? "🌙" : "🌤",
+    description: "малооблачно",
+    temperature: DAY_TEMPERATURES[hour] ?? 0,
+    precip_chance: hour === 21 ? 40 : 0,
+  };
+});
+
+/** Moscow at 15:00 on Monday, 28 September 2026, as GET /weather gives it. */
+export const forecast: Forecast = {
+  city: { id: 0, name: "Москва", home: true },
+  now: {
+    temperature: 9.6, feels_like: 7.2, wind: 3.4, gusts: 6.1, humidity: 71, is_day: true,
+    emoji: "🌤", description: "малооблачно", precip_chance: 0,
+  },
+  tips: ["🚲 Сегодня хороший день для велосипеда"],
+  hours: HOURS,
+  days: [
+    { date: "2026-09-28", emoji: "🌤", description: "малооблачно", tmin: 5.8, tmax: 13.2, precip_chance: 0 },
+    { date: "2026-09-29", emoji: "🌧", description: "дождь", tmin: 6.1, tmax: 11.0, precip_chance: 80 },
+    { date: "2026-09-30", emoji: "☁️", description: "пасмурно", tmin: 4.9, tmax: 9.7, precip_chance: 10 },
+    { date: "2026-10-01", emoji: "☀️", description: "ясно", tmin: 3.2, tmax: 12.4, precip_chance: 0 },
+    { date: "2026-10-02", emoji: "🌤", description: "малооблачно", tmin: 5.0, tmax: 14.1, precip_chance: null },
+    { date: "2026-10-03", emoji: "🌦", description: "морось", tmin: 7.3, tmax: 12.0, precip_chance: 20 },
+    { date: "2026-10-04", emoji: "☁️", description: "пасмурно", tmin: 6.4, tmax: 10.8, precip_chance: 0 },
+  ],
+  sunrise: "06:40",
+  sunset: "18:40",
+  polar: null,
+};
+
+/** An extra city of the weather (GET /me/cities). */
+export const tula: WeatherCity = {
+  id: 3, name: "Тула", admin: "Тульская область", country: "Россия",
+  lat: 54.19, lon: 37.62, timezone: "Europe/Moscow", geo_id: 480562,
 };
 
 export const reminder: Reminder = {

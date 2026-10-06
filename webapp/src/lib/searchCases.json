@@ -36,5 +36,7 @@
   },
   { "text": "Позвонить маме\nв субботу", "items": [], "query": "маме суббот", "match": true },
   { "text": "Meeting notes", "items": ["Agenda", "Follow-ups"], "query": "FOLLOW", "match": true },
-  { "text": "Meeting notes", "items": ["Agenda"], "query": "minutes", "match": false }
+  { "text": "Meeting notes", "items": ["Agenda"], "query": "minutes", "match": false },
+  { "text": "wifi", "items": [], "query": "wi\u0085fi", "match": true },
+  { "text": "wifi", "items": [], "query": "wi\ufefffi", "match": false }
 ]

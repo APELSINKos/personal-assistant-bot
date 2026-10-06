@@ -39,3 +39,8 @@ export function errorText(t: Dict, code: string | undefined): string {
   const text = code !== undefined && Object.hasOwn(messages, code) ? messages[code] : undefined;
   return text ?? t.errors.generic;
 }
+
+/** Whether `code` has a text of its own among the errors; both languages have the same keys. */
+export function hasErrorText(code: string): boolean {
+  return Object.hasOwn(ru.errors, code);
+}

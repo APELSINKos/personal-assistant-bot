@@ -56,8 +56,30 @@ export function formatTemp(value: number | null): string {
   return rounded > 0 ? `+${rounded}°` : `${rounded}°`;
 }
 
+/**
+ * A chance of precipitation worth mentioning. Only `shownChance` makes one, and the weather texts
+ * of the dictionaries take nothing else: a forecast's raw chance there would read «осадки 0 %».
+ */
+export type ShownChance = number & { readonly __brand: "ShownChance" };
+
+/**
+ * The chance the app mentions, as the bot does: from 20 % — the weather of the way to classes from
+ * 30 % — else null, and a lower chance goes unsaid.
+ */
+export function shownChance(chance: number | null, from = 20): ShownChance | null {
+  return chance !== null && chance >= from ? (chance as ShownChance) : null;
+}
+
 export function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/**
+ * A text's length as the server measures it, in Unicode code points: an emoji is one, where
+ * `length` counts its two UTF-16 halves. Every limit of a form is checked with this.
+ */
+export function codePoints(text: string): number {
+  return [...text].length;
 }
 
 export function daysBetween(fromIso: string, toIso: string): number {

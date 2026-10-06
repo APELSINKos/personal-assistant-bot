@@ -41,7 +41,7 @@ describe("More", () => {
     expect(await screen.findByText("Сохранено")).toBeInTheDocument();
     expect(calls).toContainEqual({
       method: "PUT", path: "/me/city",
-      body: { name: "Казань", lat: 55.79, lon: 49.12, timezone: "Europe/Moscow" },
+      body: { name: "Казань", lat: 55.79, lon: 49.12, timezone: "Europe/Moscow", geo_id: null },
     });
     expect(await screen.findByText("Казань")).toBeInTheDocument();
     // Picking a city clears the query; the stale suggestion must vanish right away, not linger
