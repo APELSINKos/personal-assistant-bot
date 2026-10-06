@@ -70,7 +70,10 @@ welcome =
     🎓 Schedule — your MIREA group's classes or any calendar
     ⚙️ Settings — city, morning digest and language
 
+    { help-credits }
+
     Pick a section in the menu below 👇
+help-credits = Weather — open-meteo.com, city names — geonames.org; licence CC BY 4.0 (creativecommons.org/licenses/by/4.0), the bot rounds the data and adds tips.
 friend = friend
 app-soon = 📱 The app is coming soon — stay tuned.
 app-open = Open the app with the button below 👇
@@ -265,6 +268,11 @@ day-today = Today
 day-tomorrow = Tomorrow
 day-after-tomorrow = The day after tomorrow
 unknown-hint = To create a reminder, just write, e.g. “tomorrow at 9 buy milk”. An expense — like this: “coffee 250”.
+unknown-keep = 🤔 I didn't get that. If it's a note, tap “📝 Save as a note”.
+button-keep = 📝 Save as a note
+button-open-note = 📝 Open
+keep-gone = That message is no longer available
+keep-too-long = Too long for a note — up to { $limit } characters
 button-snooze-10m = +10 min
 button-snooze-1h = +1 h
 button-snooze-tomorrow = Tomorrow

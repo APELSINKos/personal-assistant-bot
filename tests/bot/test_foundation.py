@@ -12,6 +12,7 @@ from assistant.bot import sections
 from assistant.bot.context import Ctx
 from assistant.bot.fsm_storage import current_session
 from assistant.bot.keyboards import main_menu, menu_key, paginate, preview
+from assistant.bot.replies import NO_PREVIEW
 from assistant.core.i18n import translator
 from assistant.core.models import User
 from assistant.core.services import users
@@ -49,6 +50,27 @@ async def test_start_creates_user_and_shows_menu(feed, fake, session) -> None:
 async def test_english_user_gets_english(feed, fake) -> None:
     await feed(message_update("/start", lang="en"))
     assert fake.sent_texts()[0].startswith("👋 Hi, Alex")
+
+
+async def test_the_welcome_credits_the_data_above_its_last_line(feed, fake) -> None:
+    await feed(message_update("/start"))
+    await feed(message_update("/help"))
+    await feed(message_update("/help", lang="en"))
+    start, help_ru, help_en = fake.of(SendMessage)
+    assert start.text == help_ru.text  # one handler, one text
+    # A paragraph of its own before the last line, so that 👇 still points at the menu.
+    assert start.text.split("\n\n")[-2:] == [
+        "Погода — open-meteo.com, названия городов — geonames.org; лицензия CC BY 4.0 "
+        "(creativecommons.org/licenses/by/4.0), бот округляет данные и добавляет советы.",
+        "Выбери раздел в меню ниже 👇",
+    ]
+    assert help_en.text.split("\n\n")[-2:] == [
+        "Weather — open-meteo.com, city names — geonames.org; licence CC BY 4.0 "
+        "(creativecommons.org/licenses/by/4.0), the bot rounds the data and adds tips.",
+        "Pick a section in the menu below 👇",
+    ]
+    # The addresses are written out: no preview card of a site under the welcome.
+    assert [reply.link_preview_options for reply in (start, help_ru, help_en)] == [NO_PREVIEW] * 3
 
 
 async def test_group_messages_are_ignored(feed, fake, session) -> None:
@@ -130,18 +152,19 @@ async def test_write_lock_is_released_before_sending_the_reply(feed, fake, monke
 async def test_cancel_and_unknown(feed, fake) -> None:
     await feed(message_update("/cancel"))
     await feed(message_update("❌ Cancel"))
-    await feed(message_update("что-то непонятное"))
+    await feed(message_update("что-то непонятное"))  # words may be a note: tests/bot/test_keep.py
     await feed(message_update(None, sticker=True))
     assert fake.sent_texts() == [
         "Отменено.",
         "Отменено.",
-        "🤔 Не понял. Выбери раздел в меню ниже 👇\n"
+        "🤔 Не понял. Если это заметка — нажми «📝 В заметки».\n"
         "Чтобы создать напоминание, просто напиши, например: «завтра в 9 купить молоко». "
         "Трату — так: «кофе 250».",
         "🤔 Не понял. Выбери раздел в меню ниже 👇\n"
         "Чтобы создать напоминание, просто напиши, например: «завтра в 9 купить молоко». "
         "Трату — так: «кофе 250».",
     ]
+    assert fake.of(SendMessage)[-1].reply_markup == main_menu(translator("ru"))
 
 
 async def test_unknown_button_is_answered(feed, fake) -> None:

@@ -61,6 +61,11 @@ class NoteItemCb(CallbackData, prefix="ni"):
     done: Annotated[int, Field(ge=0, le=1)]  # 1: check the item, 0: uncheck it
 
 
+class KeepCb(CallbackData, prefix="k"):
+    """«📝 В заметки» under a «Не понял» answer. It carries nothing: the note is the message the
+    answer replies to, read from the chat, since 500 characters would never fit a button."""
+
+
 class ReminderCb(CallbackData, prefix="r", sep="|"):
     # A custom separator: `value` carries "HH:MM" time choices, which would otherwise
     # collide with the default ":" separator between packed fields.
