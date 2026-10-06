@@ -38,3 +38,4 @@ class MoneyForm(StatesGroup):
 class SettingsForm(StatesGroup):
     city = State()
     time = State()
+    add_city = State()  # the name of a city to add to the weather's list

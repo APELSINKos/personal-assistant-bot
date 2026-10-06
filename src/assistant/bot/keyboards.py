@@ -83,6 +83,19 @@ class SettingsCb(CallbackData, prefix="s"):
     value: str = ""
 
 
+class CityCb(CallbackData, prefix="c"):
+    """«🏙 Города»: the list of the weather's cities, adding one, removing one, the choice
+    between namesakes when adding."""
+
+    action: str  # list / add / del / pick
+    id: Id = 0  # the city to remove; for pick, the place's number in the search
+    # Where «↩️ Назад» leads: s — the settings, w — the weather. The sub-view carries it into
+    # each of its buttons, where a forged longer value would not fit in 64 bytes: such a
+    # button does not unpack and is answered as a stale one.
+    back: Annotated[str, Field(pattern="^[sw]$")] = "s"
+    token: str = ""  # for pick, the search the button belongs to
+
+
 class RatesCb(CallbackData, prefix="x"):
     source: str
     target: str
