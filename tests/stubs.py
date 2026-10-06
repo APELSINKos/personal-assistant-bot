@@ -30,7 +30,7 @@ class StubMeteo:
             raise UpstreamUnavailable(service="open-meteo")
         return self.forecast_data
 
-    async def search(self, name: str, lang: str, count: int = 5) -> list[City]:
+    async def search(self, name: str, lang: str) -> list[City]:
         self.searches.append((name, lang))
         if self.fail:
             raise UpstreamUnavailable(service="open-meteo")
