@@ -18,6 +18,7 @@ from sqlalchemy import select
 
 from assistant.bot import scheduler as scheduler_module
 from assistant.bot.keyboards import FireCb
+from assistant.bot.replies import NO_PREVIEW
 from assistant.bot.scheduler import Scheduler
 from assistant.core.models import FsmState, Habit, Reminder, ReminderStatus, Repeat, ShareCard
 from assistant.core.services import reminders
@@ -187,6 +188,14 @@ async def test_unexpected_error_for_one_reminder_does_not_stop_the_batch(
     first = await reload(session, first)
     assert (first.status, first.attempts) == (ReminderStatus.PENDING, 1)
     assert first.next_attempt_at == NOW + timedelta(seconds=reminders.BACKOFF[0])
+
+
+async def test_send_passes_the_link_preview_options(scheduler, fake) -> None:
+    assert (await scheduler._send(1, "open-meteo.com", link_preview_options=NO_PREVIEW)).ok
+    assert (await scheduler._send(1, "⏰ Напоминание: полить цветы")).ok
+    without_preview, as_before = fake.of(SendMessage)
+    assert without_preview.link_preview_options == NO_PREVIEW
+    assert as_before.link_preview_options is None
 
 
 # 23:30 Moscow = 20:30 UTC; the window lasts until 00:30 of the next local day.

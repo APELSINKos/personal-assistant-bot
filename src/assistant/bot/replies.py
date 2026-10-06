@@ -6,10 +6,18 @@ import logging
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, ReplyKeyboardMarkup
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    LinkPreviewOptions,
+    ReplyKeyboardMarkup,
+)
 
 log = logging.getLogger(__name__)
 Markup = InlineKeyboardMarkup | ReplyKeyboardMarkup | None
+# For messages whose links are not their point (open-meteo.com under the weather, addresses in
+# notes): Telegram would otherwise add a preview card of the first link to each of them.
+NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
 
 async def answer_quietly(
@@ -26,9 +34,21 @@ async def answer_quietly(
         log.info("could not answer a callback query: %s", error.message)
 
 
-async def send(bot: Bot, query: CallbackQuery, text: str, markup: Markup = None) -> None:
+async def send(
+    bot: Bot,
+    query: CallbackQuery,
+    text: str,
+    markup: Markup = None,
+    *,
+    link_preview_options: LinkPreviewOptions | None = None,
+) -> None:
     # Private chats only, so the chat id equals the user id.
-    await bot.send_message(query.from_user.id, text, reply_markup=markup)
+    await bot.send_message(
+        query.from_user.id,
+        text,
+        reply_markup=markup,
+        link_preview_options=link_preview_options,
+    )
 
 
 async def edit(
@@ -36,9 +56,11 @@ async def edit(
     query: CallbackQuery,
     text: str,
     markup: InlineKeyboardMarkup | None = None,
+    *,
+    link_preview_options: LinkPreviewOptions | None = None,
 ) -> None:
     if query.message is None:
-        await send(bot, query, text, markup)
+        await send(bot, query, text, markup, link_preview_options=link_preview_options)
         return
     try:
         await bot.edit_message_text(
@@ -46,12 +68,13 @@ async def edit(
             chat_id=query.message.chat.id,
             message_id=query.message.message_id,
             reply_markup=markup,
+            link_preview_options=link_preview_options,
         )
     except TelegramBadRequest as error:
         if "message is not modified" in error.message:
             return
         log.info("could not edit a message, sending a new one: %s", error.message)
-        await send(bot, query, text, markup)
+        await send(bot, query, text, markup, link_preview_options=link_preview_options)
 
 
 async def drop_buttons(bot: Bot, query: CallbackQuery) -> None:

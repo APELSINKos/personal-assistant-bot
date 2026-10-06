@@ -20,6 +20,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     event,
+    false,
 )
 from sqlalchemy.engine import Dialect
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -149,6 +150,24 @@ class Note(Base):
     text: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
+    # None: not pinned. Pinning is not an edit, so it is written with updated_at=Note.updated_at:
+    # onupdate would move it otherwise.
+    pinned_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+
+
+class NoteItem(Base):
+    """One line of a checklist; the note's text is the list's title. Items keep the order they
+    were added in (by id), checked ones included."""
+
+    __tablename__ = "note_items"
+    # AUTOINCREMENT: an item's button carries its id, which must never come back (see Note).
+    __table_args__ = (Index("ix_note_items_note", "note_id", "id"), {"sqlite_autoincrement": True})
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    note_id: Mapped[int] = mapped_column(ForeignKey("notes.id", ondelete="CASCADE"))
+    text: Mapped[str] = mapped_column(String(100))
+    done: Mapped[bool] = mapped_column(default=False, server_default=false())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
 
 class Reminder(Base):
@@ -416,3 +435,31 @@ class MoneyAlert(Base):
     category_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)  # 0: total
     threshold: Mapped[int] = mapped_column(SmallInteger, primary_key=True, autoincrement=False)
     sent_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class WeatherCity(Base):
+    """An extra city of the weather. The home city stays in `users` and alone sets the time of
+    reminders, the digest and the rest; these cities change nothing but the weather shown."""
+
+    __tablename__ = "weather_cities"
+    __table_args__ = (
+        CheckConstraint("lat BETWEEN -90 AND 90", name="lat_range"),
+        CheckConstraint("lon BETWEEN -180 AND 180", name="lon_range"),
+        # A city found twice keeps one row. NULLs never clash: a city without a GeoNames id is
+        # told from the others by its coordinates, in code (services/cities).
+        UniqueConstraint("user_id", "geo_id"),
+        Index("ix_weather_cities_user", "user_id", "id"),
+        # AUTOINCREMENT: a city's button carries its id, which must never come back.
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(100))
+    admin: Mapped[str | None] = mapped_column(String(100))  # the region, «Тульская область»
+    country: Mapped[str | None] = mapped_column(String(100))
+    lat: Mapped[float]
+    lon: Mapped[float]
+    timezone: Mapped[str] = mapped_column(String(64))
+    geo_id: Mapped[int | None] = mapped_column(BigInteger)  # GeoNames, when the search gave one
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)

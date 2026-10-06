@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 import sqlite3
+from collections.abc import Sequence
 from contextlib import closing
 from pathlib import Path
 
@@ -11,11 +12,19 @@ from alembic import command
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+from alembic.script import ScriptDirectory
 from sqlalchemy.engine import Connection
 
 from assistant.core.db import create_engine
+from assistant.core.models import Base
 
 ROOT = Path(__file__).resolve().parents[2]
+# Every table the models give AUTOINCREMENT: ids of its deleted rows must never come back.
+AUTOINCREMENT = tuple(
+    table.name
+    for table in Base.metadata.sorted_tables
+    if table.dialect_options["sqlite"]["autoincrement"]
+)
 CHILDREN = ("notes", "reminders", "habits", "habit_marks")
 STAMP = "2026-09-28 10:00:00.000000"
 FILL = f"""
@@ -28,13 +37,21 @@ VALUES (1, 'r', '{STAMP}', 'pending', 0, '{STAMP}', '{STAMP}');
 INSERT INTO habits (user_id, name, created_on, created_at) VALUES (1, 'h', '2026-09-28', '{STAMP}');
 INSERT INTO habit_marks (habit_id, day, done) VALUES (1, '2026-09-28', 1);
 """
+# The tables of 2.6 exist from 0006 on, so they are filled after upgrade(cfg, "0006") and never
+# in FILL: the tests of 0002–0005 take the database down to 0001–0004, where they are missing.
+CHILDREN_26 = ("note_items", "weather_cities")
+FILL_26 = f"""
+INSERT INTO note_items (note_id, text, created_at) VALUES (1, 'i', '{STAMP}');
+INSERT INTO weather_cities (user_id, name, lat, lon, timezone, geo_id, created_at)
+VALUES (1, 'Тула', 54.19, 37.62, 'Europe/Moscow', 480562, '{STAMP}');
+"""
 REVISION = """
 from __future__ import annotations
 
 from alembic import op
 
 revision = "test_extra"
-down_revision = "0005"
+down_revision = "0006"
 branch_labels = None
 depends_on = None
 
@@ -75,14 +92,14 @@ def _scripts_with(tmp_path: Path, body: str) -> Path:
     return scripts
 
 
-def _fill(db: Path) -> None:
+def _fill(db: Path, script: str = FILL) -> None:
     with closing(sqlite3.connect(db)) as conn:
-        conn.executescript(FILL)
+        conn.executescript(script)
 
 
-def _counts(db: Path) -> dict[str, int]:
+def _counts(db: Path, tables: Sequence[str] = CHILDREN) -> dict[str, int]:
     with closing(sqlite3.connect(db)) as conn:
-        return {t: conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in CHILDREN}
+        return {t: conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in tables}
 
 
 def test_upgrade_creates_schema_and_matches_models(tmp_path: Path) -> None:
@@ -91,27 +108,46 @@ def test_upgrade_creates_schema_and_matches_models(tmp_path: Path) -> None:
     command.upgrade(cfg, "head")
     with closing(sqlite3.connect(db)) as conn:
         schema = dict(conn.execute("select name, sql from sqlite_master where type='table'"))
-    assert {
-        "users",
-        "notes",
-        "reminders",
-        "habits",
-        "habit_marks",
-        "fsm_state",
-        "mirea_groups",
-        "schedule_sources",
-        "lessons",
-        "week_labels",
-        "lesson_alerts",
-        "job_runs",
-        "share_cards",
-    } <= set(schema)
+    assert set(Base.metadata.tables) <= set(schema)
     # AUTOINCREMENT: ids of deleted rows are never reused. `alembic check` does not compare it
     # and a batch rebuild drops it unless given table_kwargs={"sqlite_autoincrement": True}.
     assert "sqlite_sequence" in schema
-    for table in ("notes", "reminders", "habits"):
+    assert {
+        "notes",
+        "reminders",
+        "habits",
+        "money_categories",
+        "money_entries",
+        "note_items",
+        "weather_cities",
+    } <= set(AUTOINCREMENT)
+    for table in AUTOINCREMENT:
         assert "AUTOINCREMENT" in schema[table], table
     command.check(cfg)  # raises if models and migrations differ
+
+
+def test_every_id_counter_survives_every_upgrade(tmp_path: Path) -> None:
+    """A table rebuild resets its AUTOINCREMENT counter to max(id), a drop deletes it: the ids
+    of deleted rows would then come back, and an old inline button (which carries an id) could
+    act on a newer row. Each table gets a counter above its ids as soon as a revision creates
+    it, and every later revision up to head must keep it."""
+    db = tmp_path / "m.db"
+    cfg = _config(db)
+    revisions = [script.revision for script in ScriptDirectory.from_config(cfg).walk_revisions()]
+    counters: dict[str, int] = {}
+    for revision in reversed(revisions):  # walk_revisions() goes from head down
+        command.upgrade(cfg, revision)
+        with closing(sqlite3.connect(db)) as conn:
+            assert dict(conn.execute("SELECT name, seq FROM sqlite_sequence")) == counters, revision
+            tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
+            for table in sorted(tables & set(AUTOINCREMENT) - set(counters)):
+                counters[table] = 1000 + len(counters)
+                conn.execute(
+                    "INSERT INTO sqlite_sequence (name, seq) VALUES (?, ?)",
+                    (table, counters[table]),
+                )
+            conn.commit()
+    assert set(counters) == set(AUTOINCREMENT)
 
 
 def test_downgrade_to_base_and_back(tmp_path: Path) -> None:
@@ -128,6 +164,8 @@ def test_engine_without_foreign_keys_keeps_children_on_batch_rebuild(tmp_path: P
     # insert does not set; the migration itself backfills it when upgrading past 0001.
     command.upgrade(cfg, "0001")
     _fill(db)
+    command.upgrade(cfg, "0006")
+    _fill(db, FILL_26)
     command.upgrade(cfg, "head")
 
     def rebuild(connection: Connection) -> None:
@@ -142,7 +180,7 @@ def test_engine_without_foreign_keys_keeps_children_on_batch_rebuild(tmp_path: P
         await engine.dispose()
 
     asyncio.run(run())
-    assert _counts(db) == dict.fromkeys(CHILDREN, 1)
+    assert _counts(db, CHILDREN + CHILDREN_26) == dict.fromkeys(CHILDREN + CHILDREN_26, 1)
 
 
 def test_migrations_rebuild_a_parent_table_without_losing_children(tmp_path: Path) -> None:
@@ -150,8 +188,10 @@ def test_migrations_rebuild_a_parent_table_without_losing_children(tmp_path: Pat
     cfg = _config(db, _scripts_with(tmp_path, REBUILD_USERS))
     command.upgrade(cfg, "0001")
     _fill(db)
+    command.upgrade(cfg, "0006")
+    _fill(db, FILL_26)
     command.upgrade(cfg, "head")
-    assert _counts(db) == dict.fromkeys(CHILDREN, 1)
+    assert _counts(db, CHILDREN + CHILDREN_26) == dict.fromkeys(CHILDREN + CHILDREN_26, 1)
 
 
 def test_migration_that_leaves_broken_references_fails(tmp_path: Path) -> None:
@@ -348,3 +388,84 @@ def test_0005_gives_users_roubles_and_downgrades_keeping_their_data(tmp_path: Pa
     assert not columns & {"currency", "money_budget"}
     assert broken == []
     command.upgrade(cfg, "head")  # and up again
+
+
+def test_0006_adds_pins_items_and_cities_and_a_round_trip_keeps_their_counters(
+    tmp_path: Path,
+) -> None:
+    db = tmp_path / "old.db"
+    cfg = _config(db)
+    command.upgrade(cfg, "0001")
+    _fill(db)
+    command.upgrade(cfg, "0005")
+    with closing(sqlite3.connect(db)) as conn:
+        conn.execute(
+            "INSERT INTO notes (user_id, text, created_at, updated_at) "
+            f"VALUES (1, 'gone', '{STAMP}', '{STAMP}')"
+        )
+        conn.execute("DELETE FROM notes WHERE text = 'gone'")  # sqlite_sequence 2, max(id) 1
+        conn.commit()
+    command.upgrade(cfg, "0006")
+    _fill(db, FILL_26)
+    with closing(sqlite3.connect(db)) as conn:
+        pins = conn.execute("SELECT pinned_at FROM notes").fetchall()
+        items = conn.execute("SELECT id, done FROM note_items").fetchall()
+        cities = conn.execute("SELECT id, admin, country, geo_id FROM weather_cities").fetchall()
+        # An item and a city deleted: their ids must not come back after a round trip.
+        conn.execute(
+            f"INSERT INTO note_items (note_id, text, created_at) VALUES (1, 'gone', '{STAMP}')"
+        )
+        conn.execute("DELETE FROM note_items WHERE text = 'gone'")
+        conn.execute(
+            "INSERT INTO weather_cities (user_id, name, lat, lon, timezone, created_at) "
+            f"VALUES (1, 'gone', 0, 0, 'UTC', '{STAMP}')"
+        )
+        conn.execute("DELETE FROM weather_cities WHERE name = 'gone'")
+        conn.commit()
+        counters = dict(conn.execute("SELECT name, seq FROM sqlite_sequence"))
+    assert pins == [(None,)]
+    assert items == [(1, 0)]  # `done` is 0 when a write does not name it
+    assert cities == [(1, None, None, 480562)]
+    # Each counter is above max(id) of its table; `notes` kept its own, so adding the column did
+    # not rebuild the table.
+    kept = {"reminders": 1, "habits": 1, "notes": 2, "note_items": 2, "weather_cities": 2}
+    assert counters == kept
+    for statement in (
+        "UPDATE weather_cities SET lat = 90.5",
+        "UPDATE weather_cities SET lat = -90.5",
+        "UPDATE weather_cities SET lon = 180.5",
+        "UPDATE weather_cities SET lon = -180.5",
+        # The same GeoNames city twice for one user.
+        "INSERT INTO weather_cities (user_id, name, lat, lon, timezone, geo_id, created_at) "
+        "SELECT user_id, name, lat, lon, timezone, geo_id, created_at FROM weather_cities",
+    ):
+        with closing(sqlite3.connect(db)) as conn, pytest.raises(sqlite3.IntegrityError):
+            conn.execute(statement)
+            conn.commit()
+
+    command.downgrade(cfg, "0005")
+    assert _counts(db) == {t: 1 for t in CHILDREN}
+    with closing(sqlite3.connect(db)) as conn:
+        names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(notes)")}
+        notes = conn.execute("SELECT sql FROM sqlite_master WHERE name = 'notes'").fetchone()[0]
+        counters = dict(conn.execute("SELECT name, seq FROM sqlite_sequence"))
+        broken = conn.execute("PRAGMA foreign_key_check").fetchall()
+    assert not names & {*CHILDREN_26, "ix_note_items_note", "ix_weather_cities_user"}
+    assert "pinned_at" not in columns
+    # Dropping the column did not rebuild `notes`: its AUTOINCREMENT, index and counter stay.
+    # The counters of the dropped tables are kept for the way back to 2.6.
+    assert "AUTOINCREMENT" in notes and "ix_notes_user" in names
+    assert counters == kept
+    assert broken == []
+
+    command.upgrade(cfg, "head")  # and up again: the ids go on from the old counters
+    _fill(db, FILL_26)
+    with closing(sqlite3.connect(db)) as conn:
+        item_ids = [row[0] for row in conn.execute("SELECT id FROM note_items")]
+        city_ids = [row[0] for row in conn.execute("SELECT id FROM weather_cities")]
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("DELETE FROM users")  # takes the notes, their items and the cities along
+        conn.commit()
+    assert item_ids == [3] and city_ids == [3]
+    assert _counts(db, CHILDREN_26) == dict.fromkeys(CHILDREN_26, 0)

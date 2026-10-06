@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.exc import IntegrityError
 
 from assistant.core.models import (
@@ -12,6 +12,8 @@ from assistant.core.models import (
     Lesson,
     LessonAlert,
     MireaGroup,
+    Note,
+    NoteItem,
     Reminder,
     ReminderStatus,
     Repeat,
@@ -19,6 +21,7 @@ from assistant.core.models import (
     ScheduleSource,
     ShareCard,
     User,
+    WeatherCity,
     WeekLabel,
 )
 
@@ -204,3 +207,133 @@ async def test_weekly_goal_must_be_between_1_and_7(session, make_user) -> None:
     session.add(habit)
     with pytest.raises(IntegrityError):
         await session.commit()
+
+
+def tula(user_id: int = 1, **fields: object) -> WeatherCity:
+    values: dict[str, object] = {
+        "user_id": user_id,
+        "name": "Тула",
+        "admin": "Тульская область",
+        "country": "Россия",
+        "lat": 54.19,
+        "lon": 37.62,
+        "timezone": "Europe/Moscow",
+        "geo_id": 480562,
+    }
+    values.update(fields)
+    return WeatherCity(**values)
+
+
+async def test_a_new_note_is_not_pinned_and_its_items_are_not_done(session, make_user) -> None:
+    user = await make_user()
+    note = Note(user_id=user.id, text="Покупки")
+    session.add(note)
+    await session.flush()
+    item = NoteItem(note_id=note.id, text="молоко")
+    session.add(item)
+    await session.commit()
+    note_id, item_id = note.id, item.id
+    session.expire_all()
+    stored_note = await session.get(Note, note_id)
+    stored_item = await session.get(NoteItem, item_id)
+    assert stored_note is not None and stored_note.pinned_at is None
+    assert stored_item is not None and stored_item.done is False
+    assert stored_item.created_at.tzinfo is UTC
+
+
+async def test_an_item_written_without_done_is_not_done(session, make_user) -> None:
+    # The column's own default: a write that names no `done` (raw SQL, an old script) is open.
+    user = await make_user()
+    note = Note(user_id=user.id, text="Покупки")
+    session.add(note)
+    await session.commit()
+    await session.execute(
+        text(
+            "INSERT INTO note_items (note_id, text, created_at) "
+            "VALUES (:note, 'хлеб', '2026-10-05 10:00:00.000000')"
+        ),
+        {"note": note.id},
+    )
+    await session.commit()
+    assert (await session.scalars(select(NoteItem.done))).all() == [False]
+
+
+async def test_items_go_with_their_note(session, make_user) -> None:
+    user = await make_user()
+    note = Note(user_id=user.id, text="Покупки")
+    session.add(note)
+    await session.flush()
+    session.add_all(
+        [NoteItem(note_id=note.id, text="молоко"), NoteItem(note_id=note.id, text="хлеб")]
+    )
+    await session.commit()
+    await session.execute(delete(Note).where(Note.id == note.id))
+    await session.commit()
+    assert (await session.scalars(select(NoteItem))).all() == []
+
+
+async def test_ids_of_deleted_items_and_cities_never_come_back(session, make_user) -> None:
+    # An old card's button carries the id of an item or a city: it must never reach a newer one.
+    user = await make_user()
+    note = Note(user_id=user.id, text="Покупки")
+    session.add(note)
+    await session.flush()
+    item, city = NoteItem(note_id=note.id, text="молоко"), tula(user.id)
+    session.add_all([item, city])
+    await session.commit()
+    gone_item, gone_city = item.id, city.id
+    await session.execute(delete(NoteItem))
+    await session.execute(delete(WeatherCity))
+    await session.commit()
+    again_item, again_city = NoteItem(note_id=note.id, text="молоко"), tula(user.id)
+    session.add_all([again_item, again_city])
+    await session.commit()
+    assert again_item.id > gone_item and again_city.id > gone_city
+
+
+async def test_cities_go_with_their_user(session, make_user) -> None:
+    user = await make_user()
+    session.add(tula(user.id))
+    await session.commit()
+    await session.delete(user)
+    await session.commit()
+    assert (await session.scalars(select(WeatherCity))).all() == []
+
+
+@pytest.mark.parametrize(
+    "coordinates", [{"lat": 90.5}, {"lat": -91.0}, {"lon": 180.5}, {"lon": -181.0}]
+)
+async def test_a_city_outside_the_coordinate_ranges_is_refused(
+    session, make_user, coordinates
+) -> None:
+    user = await make_user()
+    session.add(tula(user.id, **coordinates))
+    with pytest.raises(IntegrityError):
+        await session.commit()
+    await session.rollback()
+
+
+async def test_the_edges_of_the_coordinates_are_allowed(session, make_user) -> None:
+    user = await make_user()
+    session.add_all(
+        [
+            tula(user.id, lat=90.0, lon=180.0, geo_id=1),
+            tula(user.id, lat=-90.0, lon=-180.0, geo_id=2),
+        ]
+    )
+    await session.commit()
+    assert len((await session.scalars(select(WeatherCity))).all()) == 2
+
+
+async def test_a_geonames_city_is_added_once_per_user(session, make_user) -> None:
+    first, second = await make_user(1), await make_user(2)
+    # Without an id the database cannot tell two cities apart (NULLs never clash): the service
+    # compares their coordinates instead.
+    session.add_all(
+        [tula(first.id), tula(second.id), tula(first.id, geo_id=None), tula(first.id, geo_id=None)]
+    )
+    await session.commit()
+    session.add(tula(first.id))
+    with pytest.raises(IntegrityError):
+        await session.commit()
+    await session.rollback()

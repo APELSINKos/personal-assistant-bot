@@ -22,7 +22,7 @@ from aiogram.exceptions import (
     TelegramNetworkError,
     TelegramRetryAfter,
 )
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardMarkup, LinkPreviewOptions
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -154,10 +154,17 @@ class Scheduler:
             log.exception("scheduler job schedules failed")
 
     async def _send(
-        self, chat_id: int, text: str, markup: InlineKeyboardMarkup | None = None
+        self,
+        chat_id: int,
+        text: str,
+        markup: InlineKeyboardMarkup | None = None,
+        *,
+        link_preview_options: LinkPreviewOptions | None = None,
     ) -> Delivery:
         try:
-            await self._bot.send_message(chat_id, text, reply_markup=markup)
+            await self._bot.send_message(
+                chat_id, text, reply_markup=markup, link_preview_options=link_preview_options
+            )
         except TelegramRetryAfter as error:
             return Delivery(False, retry_after=float(error.retry_after), error="retry_after")
         except TelegramForbiddenError as error:
