@@ -56,6 +56,11 @@ export function formatTemp(value: number | null): string {
   return rounded > 0 ? `+${rounded}°` : `${rounded}°`;
 }
 
+/** «+2…+7°»: a day's range, the degree sign once, as the bot writes it (texts.temp_range). */
+export function formatRange(low: number | null, high: number | null): string {
+  return `${formatTemp(low).replace("°", "")}…${formatTemp(high)}`;
+}
+
 /**
  * A chance of precipitation worth mentioning. Only `shownChance` makes one, and the weather texts
  * of the dictionaries take nothing else: a forecast's raw chance there would read «осадки 0 %».

@@ -45,8 +45,9 @@ export const en: Dict = {
     lessonsOver: "Classes are over for today",
     tomorrow: (emoji: string, range: string) => `Tomorrow: ${emoji} ${range}`,
     // Every weather text takes its `chance` from shownChance (lib/format.ts): null leaves it unsaid.
+    // A line of «Сегодня» may wrap: the drop stays with its number.
     withChance: (text: string, chance: ShownChance | null) =>
-      chance === null ? text : `${text}, 💧 ${chance}%`,
+      chance === null ? text : `${text}, 💧\u00a0${chance}%`,
     classes: (start: string, startWeather: string, end: string, endWeather: string) =>
       `🎓 To classes (${start}): ${startWeather} · after (${end}): ${endWeather}`,
     classesAfter: (end: string, endWeather: string) => `🎓 After classes (${end}): ${endWeather}`,

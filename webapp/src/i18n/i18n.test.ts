@@ -49,11 +49,12 @@ describe("i18n", () => {
     expect(en.weather.humidity(71)).toBe("Humidity 71%");
     expect(ru.weather.chance(shownChance(40))).toBe(`💧 40${NBSP}%`);
     expect(en.weather.chance(shownChance(40))).toBe("💧 40%");
+    // A line of «Сегодня» that wraps keeps the drop with its number too.
     expect(ru.today.withChance(ru.today.tomorrow("☁️", "+2…+7°"), shownChance(80))).toBe(
-      `Завтра: ☁️ +2…+7°, 💧 80${NBSP}%`,
+      `Завтра: ☁️ +2…+7°, 💧${NBSP}80${NBSP}%`,
     );
     expect(en.today.withChance(en.today.tomorrow("☁️", "+2…+7°"), shownChance(80))).toBe(
-      "Tomorrow: ☁️ +2…+7°, 💧 80%",
+      `Tomorrow: ☁️ +2…+7°, 💧${NBSP}80%`,
     );
   });
 
@@ -91,7 +92,7 @@ describe("i18n", () => {
 
   it("words the weather of the way to classes and back", () => {
     expect(ru.today.classes("09:00", "+3°", "16:20", ru.today.withChance("+6°", shownChance(70, 30)))).toBe(
-      `🎓 На пары (09:00): +3° · после пар (16:20): +6°, 💧 70${NBSP}%`,
+      `🎓 На пары (09:00): +3° · после пар (16:20): +6°, 💧${NBSP}70${NBSP}%`,
     );
     expect(ru.today.classesAfter("16:20", "+6°")).toBe("🎓 После пар (16:20): +6°");
     expect(en.today.classes("09:00", "+3°", "16:20", "+6°")).toBe("🎓 To classes (09:00): +3° · after (16:20): +6°");

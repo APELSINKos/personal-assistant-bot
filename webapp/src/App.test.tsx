@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { toast } from "./components/toastStore";
 import { ROUTES } from "./routes";
-import { me } from "./test/fixtures";
+import { forecast, me, today, tula } from "./test/fixtures";
 import { installTelegram, oldHeaderColor } from "./test/fakeTelegram";
 import { mockApi } from "./test/mockApi";
 import { normalizeLaunchHash } from "./telegram";
@@ -80,6 +80,36 @@ describe("App shell", () => {
     mockApi({ "GET /me": me });
     render(<App />);
     expect(await screen.findByRole("link", { name: "Сегодня" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("opens the weather under «Сегодня», with the BackButton leading there", async () => {
+    const app = installTelegram();
+    mockApi({ "GET /me": me, "GET /me/cities": [tula], "GET /weather": forecast, "GET /today": today });
+    window.history.replaceState(null, "", "/#/weather");
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Москва" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Сегодня" })).toHaveAttribute("aria-current", "page");
+    expect(app.BackButton.show).toHaveBeenCalled();
+    const onBack = vi.mocked(app.BackButton.onClick).mock.calls.at(-1)?.[0];
+    act(() => onBack?.());
+    expect(await screen.findByText("📝 4 заметки")).toBeInTheDocument();
+    expect(window.location.hash).toBe("#/");
+  });
+
+  it("keeps «Сегодня» on for an extra city, which takes the last one's place", async () => {
+    installTelegram();
+    const tulaForecast = { ...forecast, city: { id: 3, name: "Тула", home: false } };
+    mockApi({ "GET /me": me, "GET /me/cities": [tula], "GET /weather": forecast, "GET /weather?city=3": tulaForecast });
+    window.history.replaceState(null, "", "/#/weather");
+    render(<App />);
+    const chip = await screen.findByRole("button", { name: "Тула" });
+    const entries = window.history.length;
+    act(() => chip.click());
+    expect(await screen.findByRole("heading", { name: "Тула" })).toBeInTheDocument();
+    expect(window.location.hash).toBe("#/weather/3");
+    expect(window.location.search).toBe(""); // no «?city=» left in the address
+    expect(window.history.length).toBe(entries);
+    expect(screen.getByRole("link", { name: "Сегодня" })).toHaveAttribute("aria-current", "page");
   });
 
   it("shows the BackButton on a route with a parent and navigates there on press", async () => {

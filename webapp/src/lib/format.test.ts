@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  addDaysIso, bigDate, codePoints, dayHeading, dayMonth, daysBetween, formatNumber, formatTemp, lessonMeta,
-  localTimeHm, localTodayIso, monthGrid, monthTitle, rangeLabel, shortMoment, shownChance, weekOf, weekdayShort,
+  addDaysIso, bigDate, codePoints, dayHeading, dayMonth, daysBetween, formatNumber, formatRange, formatTemp,
+  lessonMeta, localTimeHm, localTodayIso, monthGrid, monthTitle, rangeLabel, shortMoment, shownChance, weekOf,
+  weekdayShort,
 } from "./format";
 
 describe("format", () => {
@@ -20,6 +21,12 @@ describe("format", () => {
     expect(formatNumber(1500.5, "ru")).toBe("1 500,50");
     expect(formatNumber(1500.5, "en")).toBe("1,500.50");
     expect([9.6, -3.7, -0.4, 0.2, null].map(formatTemp)).toEqual(["+10°", "-4°", "0°", "0°", "—"]);
+  });
+
+  it("writes a day's range with the degree sign once", () => {
+    expect(formatRange(1.6, 7.2)).toBe("+2…+7°");
+    expect(formatRange(-4.2, 0.3)).toBe("-4…0°");
+    expect(formatRange(null, 7)).toBe("—…+7°");
   });
 
   it("mentions a chance of precipitation from 20 %, or from the threshold it is given", () => {

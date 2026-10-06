@@ -1,0 +1,349 @@
+/* The «Погода» screen: the cities, now, the 24-hour strip, the week, the sun and the credit; the
+   weather card of «Сегодня» with the credit under it. */
+
+/* The cities in one row that scrolls sideways and never wraps. Its padding keeps the focus ring of
+   a chip inside the row, which clips whatever overflows it; the margins take that padding back.
+   A mouse reaches the chips past the edge only by the bar (its wheel scrolls the page, and Telegram
+   Desktop opens the app as narrow as a phone), so the bar stays, thin as under the 24-hour strip,
+   with 4 px more padding below to keep it clear of the focus rings. */
+.city-chips {
+  display: flex;
+  gap: 8px;
+  margin: -4px -4px 8px;
+  padding: 4px 4px 8px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+/* A finger swipes the row: a touch screen shows no bar and keeps no room for it. */
+@media (pointer: coarse) {
+  .city-chips {
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+
+  .city-chips::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* «Петропавловск-Камчатский» fits whole; a longer name ends in «…», and the whole of it is still
+   the chip's accessible name. */
+.city-chip {
+  flex: none;
+  max-width: 240px;
+  min-height: 44px;
+  padding: 0 16px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--glass);
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.city-chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.city-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Now: the temperature as large as the day on «Сегодня», in the same face. */
+.weather-now {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.weather-now__temp {
+  font-family: var(--font-display);
+  font-size: 64px;
+  font-weight: 700;
+  line-height: 0.85;
+  letter-spacing: -2px;
+  white-space: nowrap;
+}
+
+.weather-now__icon {
+  font-size: 44px;
+  line-height: 1;
+}
+
+.weather-now__desc {
+  margin: 12px 0 2px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.weather-facts {
+  margin: 0;
+  padding: 0;
+  color: var(--hint);
+  font-size: 14px;
+  list-style: none;
+}
+
+.weather-tips {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+
+/* The 24-hour strip: the card keeps the padding of its title, the strip runs from border to border
+   (286 px of a 320 px phone). */
+.strip-card {
+  padding: 14px 0 0;
+  overflow: hidden;
+}
+
+.strip-card .card__title {
+  margin: 0 16px 6px;
+}
+
+.strip {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+/* The card clips the strip, so its focus ring goes inside. */
+.strip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.strip__curve {
+  display: block;
+  color: var(--accent-text);
+}
+
+.strip__line {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.strip__area {
+  fill: currentColor;
+  opacity: 0.12;
+}
+
+.strip__dot {
+  fill: currentColor;
+}
+
+.strip__cells {
+  display: flex;
+  width: max-content;
+  margin: 0;
+  padding: 2px 0 12px;
+  list-style: none;
+}
+
+/* As wide as CELL_WIDTH in lib/weather.ts, which places the curve's points: 5½ cells show at
+   320 px, and the cut one tells that the strip scrolls. */
+.strip__cell {
+  display: grid;
+  flex: none;
+  justify-items: center;
+  gap: 2px;
+  width: 52px;
+}
+
+.strip__time {
+  color: var(--hint);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.strip__cell--now .strip__time {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.strip__icon {
+  font-size: 20px;
+  line-height: 1.3;
+}
+
+.strip__temp {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* There even when empty: the cells keep one height, and their rows line up. */
+.strip__chance {
+  min-height: 16px;
+  color: var(--hint);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+/* Seven days in fixed columns, so they line up: the day over its chance, the icon, the lowest,
+   the range on the week's scale, the highest. At 320 px the range keeps 62 of the card's 254 px. */
+.week {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.week__day {
+  display: grid;
+  grid-template-columns: 72px 24px 36px minmax(56px, 1fr) 36px;
+  align-items: center;
+  column-gap: 6px;
+  min-height: 48px;
+}
+
+.week__day + .week__day {
+  border-top: 1px solid var(--line);
+}
+
+.week__when {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* 12 px is what keeps every date of a year on one line in the 72 px column: «пн, 23 февр.» and
+   «Wed, May 20» measure 70 and 72 px; at 13 px a tenth of the Russian dates and a fifth of the
+   English ones would not fit. */
+.week__name {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.week__chance {
+  color: var(--hint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.week__icon {
+  font-size: 20px;
+  line-height: 1;
+  text-align: center;
+}
+
+.week__temp {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.week__temp--low {
+  color: var(--hint);
+  font-weight: 600;
+}
+
+.week__bar {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--line);
+}
+
+/* --from and --width: the day's range in percent of the week's (lib/weather.ts, rangeBar). A day
+   whose range is next to nothing still shows as a dot. */
+.week__range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: min(calc(var(--from) * 1%), calc(100% - 6px));
+  width: max(calc(var(--width) * 1%), 6px);
+  border-radius: inherit;
+  background: var(--accent-text);
+}
+
+.weather-sun {
+  margin: 4px 4px 0;
+  font-size: 14px;
+}
+
+/* Where the data come from, in fine print; each source a link (components/Credit.tsx). */
+.credit {
+  margin: 0 4px 10px;
+  color: var(--hint);
+  font-size: 12px;
+}
+
+.credit,
+.weather-sun {
+  animation: rise 0.35s ease both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+
+/* Right under the weather card of «Сегодня»: the line belongs to that card. */
+.credit--under {
+  margin-top: -10px;
+}
+
+/* As tall as a finger needs, in a line of fine print. */
+.credit__link {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.credit__link:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The weather card of «Сегодня»: the whole card opens the «Погода» screen. */
+.weather-today {
+  display: grid;
+  gap: 4px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.weather-today__title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+}
+
+.weather-today .weather__desc {
+  display: grid;
+  justify-items: end;
+}
+
+.weather-today .tip {
+  margin-top: 4px;
+}
+
+.weather-today__tomorrow {
+  font-size: 14px;
+}
+
+.weather-today:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

@@ -4,20 +4,40 @@ import { haptic } from "../telegram";
 
 const TRIGGER = 64;
 const MAX_PULL = 88;
+// How far the finger goes before its direction counts.
+const DECIDE = 8;
+
+interface Gesture {
+  x: number;
+  y: number;
+  /** Up or down rather than sideways; null until the finger has gone DECIDE px. */
+  vertical: boolean | null;
+}
 
 export function PullToRefresh({ onRefresh, children }: { onRefresh: () => Promise<unknown>; children: ReactNode }) {
   const t = useT();
-  const start = useRef<number | null>(null);
+  const start = useRef<Gesture | null>(null);
   const [pull, setPull] = useState(0);
   const [busy, setBusy] = useState(false);
 
   const onTouchStart = (event: TouchEvent) => {
-    start.current = window.scrollY <= 0 && !busy ? (event.touches[0]?.clientY ?? null) : null;
+    const touch = event.touches[0];
+    start.current = window.scrollY <= 0 && !busy && touch ? { x: touch.clientX, y: touch.clientY, vertical: null } : null;
   };
   const onTouchMove = (event: TouchEvent) => {
-    if (start.current === null) return;
-    const distance = (event.touches[0]?.clientY ?? start.current) - start.current;
-    setPull(distance > 0 ? Math.min(distance * 0.5, MAX_PULL) : 0);
+    const gesture = start.current;
+    const touch = event.touches[0];
+    if (gesture === null || touch === undefined) return;
+    const dx = touch.clientX - gesture.x;
+    const dy = touch.clientY - gesture.y;
+    if (gesture.vertical === null) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < DECIDE) return;
+      // A sideways swipe scrolls the 24-hour strip or the city chips: it is no pull, however far
+      // it drifts down afterwards.
+      gesture.vertical = Math.abs(dy) > Math.abs(dx);
+    }
+    if (!gesture.vertical) return;
+    setPull(dy > 0 ? Math.min(dy * 0.5, MAX_PULL) : 0);
   };
   const onTouchEnd = async () => {
     const shouldRefresh = pull >= TRIGGER;
