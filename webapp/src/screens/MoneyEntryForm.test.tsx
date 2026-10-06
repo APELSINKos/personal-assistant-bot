@@ -96,6 +96,21 @@ describe("Entry form", () => {
     expect(calls.find((call) => call.method === "PATCH")?.body).toEqual({ amount: "450" });
   });
 
+  it("counts the note in characters as the server does, and saves none longer than 100", async () => {
+    const { app, calls } = open("/money/24/edit", { "GET /money/entries/24": ENTRY, "PATCH /money/entries/24": SAVED });
+    const field = await screen.findByLabelText("Заметка");
+    fireEvent.change(field, { target: { value: "🥐".repeat(101) } });
+    expect(screen.getByText("101/100")).toBeInTheDocument();
+    expect(field).toHaveAccessibleDescription("101/100");
+    expect(active(app)).toBe(false);
+
+    fireEvent.change(field, { target: { value: "🥐".repeat(100) } }); // 200 UTF-16 units
+    expect(screen.queryByText("101/100")).not.toBeInTheDocument();
+    expect(active(app)).toBe(true);
+    pressMainButton(app);
+    await waitFor(() => expect(calls.find((call) => call.method === "PATCH")?.body).toEqual({ note: "🥐".repeat(100) }));
+  });
+
   it("sends nothing when nothing changed", async () => {
     const { app, calls, history } = open("/money/24/edit", { "GET /money/entries/24": ENTRY });
     expect(await screen.findByLabelText("Сумма")).toHaveValue("430,50");

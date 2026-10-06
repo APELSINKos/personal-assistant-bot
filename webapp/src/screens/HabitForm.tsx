@@ -5,6 +5,7 @@ import type { HabitColor } from "../api/types";
 import { HabitLoadError } from "../components/HabitBits";
 import { MainAction } from "../components/MainAction";
 import { Loader } from "../components/States";
+import { useTextLimit } from "../components/TextLimit";
 import { useT } from "../i18n";
 import { COLORS, DAILY, EMOJI } from "../lib/habits";
 import { confirmAction, useBackButton, useClosingConfirmation } from "../telegram";
@@ -38,15 +39,16 @@ export function HabitForm() {
   const current = draft ?? initial;
   const change = (patch: Partial<Draft>) => setDraft({ ...current, ...patch });
   const trimmed = current.name.trim();
-  const valid = trimmed.length > 0 && trimmed.length <= MAX_NAME;
+  const nameLimit = useTextLimit(trimmed, MAX_NAME);
+  const valid = trimmed !== "" && !nameLimit.over;
   const dirty = draft !== null && JSON.stringify(draft) !== JSON.stringify(initial);
   const back = id === null ? "/habits" : `/habits/${id}`;
   const busy = create.isPending || update.isPending;
 
-  useClosingConfirmation(id === null ? trimmed.length > 0 : dirty);
+  useClosingConfirmation(id === null ? trimmed !== "" : dirty);
   useBackButton(() => {
     void (async () => {
-      const unsaved = id === null ? trimmed.length > 0 : dirty;
+      const unsaved = id === null ? trimmed !== "" : dirty;
       if (!unsaved || (await confirmAction(t.notes.confirmDiscard))) navigate(back);
     })();
   });
@@ -68,11 +70,12 @@ export function HabitForm() {
         <span className="field__label">{t.habits.name}</span>
         <input
           className="input"
-          maxLength={MAX_NAME}
           value={current.name}
+          {...nameLimit.field}
           onChange={(event) => change({ name: event.target.value })}
         />
       </label>
+      {nameLimit.hint}
 
       <div className="field">
         <span className="field__label" id="habit-emoji">{t.habits.emoji}</span>

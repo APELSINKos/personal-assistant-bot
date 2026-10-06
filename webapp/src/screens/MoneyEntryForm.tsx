@@ -9,6 +9,7 @@ import { AmountField } from "../components/AmountField";
 import { BackTo } from "../components/BackTo";
 import { MainAction } from "../components/MainAction";
 import { ErrorState, Loader } from "../components/States";
+import { useTextLimit } from "../components/TextLimit";
 import { useLang, useT } from "../i18n";
 import { addDaysIso, localTodayIso } from "../lib/format";
 import { amountText, currencySign, ENTRY_DAYS_BACK, parseAmount } from "../lib/money";
@@ -104,10 +105,11 @@ function EntryEditor({ entry, today, categories, currency }: EditorProps & { ent
   const change = (patch: Partial<Draft>) => setDraft({ ...draft, ...patch });
 
   const amount = parseAmount(draft.amount);
+  const noteLimit = useTextLimit(draft.note.trim(), MAX_NOTE);
   const oldest = addDaysIso(today, -ENTRY_DAYS_BACK);
   // An entry keeps its own day even once that is further back than a new day may be.
   const dayValid = draft.day === initial.day || (draft.day >= oldest && draft.day <= today);
-  const valid = amount !== null && draft.category !== null && dayValid;
+  const valid = amount !== null && draft.category !== null && !noteLimit.over && dayValid;
   const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
   // A hidden category is not offered, unless it is the entry's own (also after another is picked).
   const offered = categories.filter(
@@ -193,12 +195,13 @@ function EntryEditor({ entry, today, categories, currency }: EditorProps & { ent
         <span className="field__label">{t.money.note}</span>
         <input
           className="input"
-          maxLength={MAX_NOTE}
           placeholder={t.money.notePlaceholder}
           value={draft.note}
+          {...noteLimit.field}
           onChange={(event) => change({ note: event.target.value })}
         />
       </label>
+      {noteLimit.hint}
 
       <div className="field">
         <span className="field__label" id="money-day">{t.money.day}</span>

@@ -304,8 +304,6 @@ export const ru = {
     swap: "Поменять валюты местами",
   },
   more: {
-    city: "Город",
-    searchCity: "Найти город",
     noCities: "Ничего не нашлось",
     citiesFound: (n: number) => `Найдено городов: ${n}`,
     morning: "Утренняя сводка",
@@ -327,7 +325,8 @@ export const ru = {
     citiesLimit: "До 5 городов вместе с домашним",
     deleteCity: "Удалить город",
     data: "Данные",
-    credits: "Погода — open-meteo.com, названия городов — geonames.org; лицензия CC BY 4.0 (creativecommons.org/licenses/by/4.0), приложение округляет данные и добавляет советы.",
+    // The licence's name does not break across lines.
+    credits: "Погода — open-meteo.com, названия городов — geonames.org; лицензия CC\u00a0BY\u00a04.0 (creativecommons.org/licenses/by/4.0), приложение округляет данные и добавляет советы.",
   },
   errors: {
     generic: "Что-то пошло не так. Попробуй ещё раз.",

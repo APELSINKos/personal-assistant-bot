@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Toasts } from "../components/Toasts";
+import type { TgWebApp } from "../telegram";
 import { installTelegram } from "../test/fakeTelegram";
 import { habit, me } from "../test/fixtures";
 import { pressMainButton } from "../test/mainButton";
@@ -8,6 +9,13 @@ import { mockApi } from "../test/mockApi";
 import { renderWithApp } from "../test/render";
 import { HabitForm } from "./HabitForm";
 import { HabitsScreen } from "./Habits";
+
+const RATE_LIMITED = { status: 429, body: { status: 429, code: "rate_limited", title: "Too many requests" } };
+
+/** Whether Telegram's main button («Сохранить») can be pressed now. */
+function canSave(app: TgWebApp): boolean | undefined {
+  return vi.mocked(app.MainButton.setParams).mock.calls.at(-1)?.[0].is_active;
+}
 
 describe("Habits", () => {
   it("shows statistics and marks today in the city's day", async () => {
@@ -30,6 +38,37 @@ describe("Habits", () => {
     await waitFor(() =>
       expect(calls).toContainEqual({ method: "PUT", path: "/habits/7/marks/2026-09-29", body: { done: true } }),
     );
+  });
+
+  it("offers a retry, not toggles that never come on, when the user cannot be read", async () => {
+    installTelegram();
+    let refused = true;
+    const { calls } = mockApi({
+      "GET /me": () => (refused ? RATE_LIMITED : { body: me }),
+      "GET /habits": [habit],
+    });
+    renderWithApp(<HabitsScreen />);
+    const retry = await screen.findByRole("button", { name: "Повторить" });
+    expect(screen.queryByRole("button", { name: /Спорт: без отметки/ })).not.toBeInTheDocument();
+    refused = false;
+    fireEvent.click(retry);
+    expect(await screen.findByRole("button", { name: /Спорт: без отметки/ })).toBeEnabled();
+    expect(calls.filter((call) => call.path === "/me")).toHaveLength(2);
+  });
+
+  it("keeps the list and its toggles when only a refresh fails", async () => {
+    installTelegram();
+    mockApi({ "GET /me": me, "GET /habits": [habit] });
+    const { client } = renderWithApp(<HabitsScreen />);
+    const toggle = await screen.findByRole("button", { name: /Спорт: без отметки/ });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    mockApi({ "GET /me": RATE_LIMITED, "GET /habits": RATE_LIMITED });
+    await act(async () => {
+      await Promise.all([client.refetchQueries({ queryKey: ["me"] }), client.refetchQueries({ queryKey: ["habits"] })]);
+      await new Promise((resolve) => setTimeout(resolve, 0)); // observers hear of it a tick later
+    });
+    expect(screen.getByRole("button", { name: /Спорт: без отметки/ })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Повторить" })).not.toBeInTheDocument();
   });
 
   it("waits for the city's zone before a habit can be marked", async () => {
@@ -146,6 +185,28 @@ describe("Habit form", () => {
     expect(calls.find((c) => c.method === "PATCH")?.body).toEqual({
       name: "Спорт", emoji: "💪", color: "mint", weekly_goal: 1,
     });
+  });
+
+  it("counts the name in characters as the server does: a name of 30 emoji from the bot is saved", async () => {
+    const app = installTelegram();
+    const detail = { ...habit, name: "🏃".repeat(30), year_from: "2025-09-29", year: ".".repeat(371) };
+    const { calls } = mockApi({ "GET /me": me, "GET /habits/7": detail, "PATCH /habits/7": habit });
+    renderWithApp(<HabitForm />, { path: "/habits/7/edit" });
+    const field = await screen.findByLabelText("Название");
+    expect(field).toHaveValue("🏃".repeat(30)); // 60 UTF-16 units
+
+    fireEvent.change(field, { target: { value: "🏃".repeat(51) } });
+    expect(screen.getByText("51/50")).toBeInTheDocument();
+    expect(field).toHaveAttribute("aria-invalid", "true");
+    expect(field).toHaveAccessibleDescription("51/50");
+    expect(canSave(app)).toBe(false);
+
+    fireEvent.change(field, { target: { value: "🏃".repeat(50) } });
+    expect(screen.queryByText("51/50")).not.toBeInTheDocument();
+    expect(field).toHaveAttribute("aria-invalid", "false");
+    expect(canSave(app)).toBe(true);
+    pressMainButton(app);
+    await waitFor(() => expect(calls.find((c) => c.method === "PATCH")?.body).toMatchObject({ name: "🏃".repeat(50) }));
   });
 
   it("says the habit is gone when it was deleted elsewhere", async () => {

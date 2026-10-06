@@ -269,8 +269,6 @@ export const en: Dict = {
     swap: "Swap the currencies",
   },
   more: {
-    city: "City",
-    searchCity: "Find a city",
     noCities: "Nothing found",
     citiesFound: (n: number) => `Cities found: ${n}`,
     morning: "Morning digest",
@@ -293,7 +291,8 @@ export const en: Dict = {
     citiesLimit: "Up to 5 cities including your home city",
     deleteCity: "Remove city",
     data: "Data",
-    credits: "Weather — open-meteo.com, city names — geonames.org; licence CC BY 4.0 (creativecommons.org/licenses/by/4.0), the app rounds the data and adds tips.",
+    // The licence's name does not break across lines.
+    credits: "Weather — open-meteo.com, city names — geonames.org; licence CC\u00a0BY\u00a04.0 (creativecommons.org/licenses/by/4.0), the app rounds the data and adds tips.",
   },
   errors: {
     generic: "Something went wrong. Please try again.",

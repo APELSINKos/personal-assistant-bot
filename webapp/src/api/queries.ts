@@ -3,6 +3,7 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "../components/toastStore";
 import { hasErrorText, useT } from "../i18n";
+import { codePoints } from "../lib/format";
 import { stateOn, withMark } from "../lib/habits";
 import { canShareMessages, haptic, shareMessage } from "../telegram";
 import { api, ApiError } from "./client";
@@ -95,12 +96,24 @@ export const useHabits = () => useQuery({ queryKey: keys.habits, queryFn: () => 
 export const useHealth = () =>
   useQuery({ queryKey: keys.health, queryFn: () => api<Health>("/health"), staleTime: Infinity });
 
+// The searches the server takes, in characters as it counts them (code points): a city by its
+// name (GET /cities) and a MIREA group (GET /schedule/groups); one character is no search yet.
+const SEARCH_FROM = 2;
+export const CITY_QUERY_MAX = 50;
+export const GROUP_QUERY_MAX = 40;
+
+/** Whether a query is worth sending: long enough to mean something, short enough to be taken. */
+export function searchable(query: string, max: number): boolean {
+  const length = codePoints(query.trim());
+  return length >= SEARCH_FROM && length <= max;
+}
+
 export function useCities(query: string) {
   const trimmed = query.trim();
   return useQuery({
     queryKey: keys.cities(trimmed),
     queryFn: ({ signal }) => api<City[]>(`/cities?q=${encodeURIComponent(trimmed)}`, { signal }),
-    enabled: trimmed.length >= 2,
+    enabled: searchable(trimmed, CITY_QUERY_MAX),
     staleTime: 5 * 60_000,
   });
 }
@@ -872,7 +885,7 @@ export function useGroups(query: string) {
     queryKey: keys.groups(trimmed),
     queryFn: ({ signal }) =>
       api<GroupSearch>(`/schedule/groups?q=${encodeURIComponent(trimmed)}`, { signal }),
-    enabled: trimmed.length >= 2,
+    enabled: searchable(trimmed, GROUP_QUERY_MAX),
     staleTime: 5 * 60_000,
   });
 }

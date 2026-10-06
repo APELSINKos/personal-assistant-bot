@@ -199,6 +199,51 @@ describe("Schedule", () => {
     expect(screen.queryByRole("button", { name: "ИКБО-63-24" })).not.toBeInTheDocument();
   });
 
+  it("counts a group search in characters as the server does, and sends none it would refuse", async () => {
+    installTelegram();
+    const { calls } = mockApi({
+      "GET /me": me,
+      "GET /schedule": { source: null },
+      "GET /schedule/groups": { groups: [{ id: 4805, name: "ИКБО-63-24" }], building: false },
+    });
+    show();
+    const field = await screen.findByLabelText("Группа МИРЭА");
+    fireEvent.change(field, { target: { value: "🎓" } }); // one character in two UTF-16 units
+    await act(() => new Promise((resolve) => setTimeout(resolve, 450)));
+    expect(searches(calls)).toEqual([]);
+
+    fireEvent.change(field, { target: { value: "🎓".repeat(40) } });
+    expect(await screen.findByRole("button", { name: "ИКБО-63-24" })).toBeInTheDocument();
+    expect(searches(calls)).toHaveLength(1);
+
+    fireEvent.change(field, { target: { value: "🎓".repeat(41) } });
+    expect(screen.getByText("41/40")).toBeInTheDocument();
+    expect(field).toHaveAccessibleDescription("41/40");
+    expect(screen.queryByRole("button", { name: "ИКБО-63-24" })).not.toBeInTheDocument();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 450)));
+    expect(searches(calls)).toHaveLength(1);
+  });
+
+  it("counts a calendar link in characters, and sends none longer than the server takes", async () => {
+    installTelegram();
+    const { calls } = mockApi({ "GET /me": me, "GET /schedule": { source: null }, "PUT /schedule": NOT_CALENDAR });
+    show();
+    const field = await screen.findByLabelText("Ссылка на календарь");
+    const connect = screen.getByRole("button", { name: "Подключить" });
+    const link = `https://uni.example/${"📅".repeat(1980)}`; // 2000 characters, 3980 UTF-16 units
+    fireEvent.change(field, { target: { value: `${link}📅` } });
+    expect(screen.getByText("2001/2000")).toBeInTheDocument();
+    expect(field).toHaveAccessibleDescription("2001/2000");
+    expect(connect).toBeDisabled();
+    fireEvent.submit(field.closest("form") as HTMLFormElement); // Enter in the field
+
+    fireEvent.change(field, { target: { value: link } });
+    expect(connect).toBeEnabled();
+    fireEvent.click(connect);
+    expect(await screen.findByText("Это не похоже на календарь .ics")).toBeInTheDocument();
+    expect(calls.filter((call) => call.method === "PUT")).toEqual([{ method: "PUT", path: "/schedule", body: { url: link } }]);
+  });
+
   it("explains why a link was refused and keeps the form", async () => {
     installTelegram();
     const { calls } = mockApi({ "GET /me": me, "GET /schedule": { source: null }, "PUT /schedule": NOT_CALENDAR });

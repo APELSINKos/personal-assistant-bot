@@ -296,6 +296,22 @@
   margin-top: -10px;
 }
 
+/* The whole text of «Ещё» → «Данные»: the card's own margins, a size of its hints, and the card's
+   entrance alone. Each line as tall as a link: a line with one is 44 px, and lines of 19 px between
+   them would read as a broken paragraph. Shorter lines would make the links of neighbouring lines
+   overlap. */
+.credit--card {
+  margin: 0;
+  font-size: 13px;
+  line-height: 44px;
+  animation: none;
+}
+
+/* A link with the punctuation it touches, never broken apart («(creativecommons.org/…),»). */
+.credit__piece {
+  white-space: nowrap;
+}
+
 /* As tall as a finger needs, in a line of fine print. */
 .credit__link {
   min-height: 44px;

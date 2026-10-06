@@ -653,7 +653,9 @@ a.button {
   background: var(--glass);
 }
 
-.result:disabled {
+/* A city search's results keep the focus while a city saves, so they are off by aria-disabled. */
+.result:disabled,
+.result[aria-disabled="true"] {
   opacity: 0.5;
   cursor: default;
 }
@@ -1057,6 +1059,50 @@ a.button {
 
 .schedule__cancel {
   width: 100%;
+}
+
+/* «Ещё» → «Города»: the home city over the extra ones, each of which a swipe deletes; the search
+   opens under the two buttons that ask for it. */
+.city-home {
+  display: grid;
+  margin: 0 0 12px;
+}
+
+.city-home__name,
+.city-list__name {
+  font-weight: 600;
+}
+
+.city-home__hint,
+.city-list__area {
+  font-size: 13px;
+}
+
+.city-list {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+/* A row of the card: lower than a card of its own. */
+.city-list .swipe__content {
+  display: grid;
+  padding: 10px 14px;
+}
+
+.city-actions {
+  display: grid;
+  gap: 8px;
+}
+
+/* The button whose search is open: the same button closes it. --accent-text clears 3:1 for a
+   state's edge on the light card, where --accent does not. */
+.city-actions .button[aria-expanded="true"] {
+  border-color: var(--accent-text);
+}
+
+.city-search {
+  margin-top: 14px;
 }
 
 /* A habit's own screen. --habit is set on it from the habit's colour (tokens.css): it fills

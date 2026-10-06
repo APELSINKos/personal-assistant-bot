@@ -11,11 +11,11 @@ import { mockApi } from "../test/mockApi";
 import { ApiError } from "./client";
 import type { Agenda, City, Habit, HabitDetail, Me, Note, ScheduleState, Today, WeatherCity } from "./types";
 import {
-  createQueryClient, errorCode, keys, useAddCity, useAddingItems, useAddItem, useClearDone, useCreateHabit, useCreateNote,
-  useDeleteCity, useDeleteHabit, useDeleteItem, useDeleteNote, useDeleteReminder, useDisconnectSchedule,
-  useForecast, useHabit, useHabits, useMarkDay, useNotes, usePinNote, useRefreshSchedule, useScheduleAlerts,
-  useSetCity, useSetItem, useSetMark, useShareHabit, useUpdateHabit, useUpdateMe, useUpdateNote, useUploadSchedule,
-  useWeatherCities,
+  CITY_QUERY_MAX, createQueryClient, errorCode, GROUP_QUERY_MAX, keys, searchable, useAddCity, useAddingItems, useAddItem,
+  useClearDone, useCreateHabit, useCreateNote, useDeleteCity, useDeleteHabit, useDeleteItem, useDeleteNote,
+  useDeleteReminder, useDisconnectSchedule, useForecast, useHabit, useHabits, useMarkDay, useNotes, usePinNote,
+  useRefreshSchedule, useScheduleAlerts, useSetCity, useSetItem, useSetMark, useShareHabit, useUpdateHabit,
+  useUpdateMe, useUpdateNote, useUploadSchedule, useWeatherCities,
 } from "./queries";
 
 // Every mutation goes through `api()`, which needs a session (`initData()` non-null) before it
@@ -731,6 +731,18 @@ describe("useShareHabit", () => {
     act(() => result.current.mutate(7));
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(calls.map((call) => call.path)).toEqual(["/habits/7/share"]);
+  });
+});
+
+describe("searchable", () => {
+  it("counts a search in characters as the server does: from two, up to its limit", () => {
+    expect(searchable("к", CITY_QUERY_MAX)).toBe(false);
+    expect(searchable("🏙", CITY_QUERY_MAX)).toBe(false); // one character in two UTF-16 units
+    expect(searchable("  ка  ", CITY_QUERY_MAX)).toBe(true); // the ends are not sent
+    expect(searchable("🏙".repeat(50), CITY_QUERY_MAX)).toBe(true);
+    expect(searchable("🏙".repeat(51), CITY_QUERY_MAX)).toBe(false);
+    expect(searchable("🎓".repeat(40), GROUP_QUERY_MAX)).toBe(true);
+    expect(searchable("🎓".repeat(41), GROUP_QUERY_MAX)).toBe(false);
   });
 });
 

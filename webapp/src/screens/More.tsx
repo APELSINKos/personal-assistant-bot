@@ -1,10 +1,17 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import type { UseQueryResult } from "@tanstack/react-query";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Link } from "wouter";
-import { useCities, useHealth, useMe, useSchedule, useSetCity, useUpdateMe } from "../api/queries";
-import type { City } from "../api/types";
+import {
+  CITY_QUERY_MAX, searchable, useAddCity, useCities, useDeleteCity, useHealth, useMe, useSchedule, useSetCity,
+  useUpdateMe, useWeatherCities,
+} from "../api/queries";
+import type { City, WeatherCity } from "../api/types";
 import { Card } from "../components/Card";
+import { Credit } from "../components/Credit";
 import { SearchStatus } from "../components/SearchStatus";
 import { ErrorState, Loader } from "../components/States";
+import { SwipeRow } from "../components/SwipeRow";
+import { useTextLimit } from "../components/TextLimit";
 import { toast } from "../components/toastStore";
 import { useLang, useT } from "../i18n";
 import { CURRENCY_CODES, currencyName, currencySign } from "../lib/money";
@@ -13,12 +20,191 @@ import { openLink } from "../telegram";
 
 export const REPO_URL = "https://github.com/APELSINKos/personal-assistant-bot";
 
-function cityLabel(city: City): string {
+/** The extra cities of the weather, the home one aside (LIMITS.cities on the server). */
+const MAX_EXTRA_CITIES = 4;
+
+/** A place's names, each once: a city may be its own region, as Moscow is. */
+function placeNames(city: City): string[] {
   const parts: string[] = [];
   for (const part of [city.name, city.admin, city.country]) {
     if (part && !parts.includes(part)) parts.push(part);
   }
-  return parts.join(", ");
+  return parts;
+}
+
+/** What the search does with a found city: puts it in place of the home one, or adds it. */
+type CityMode = "home" | "add";
+
+/**
+ * The city search of a mode, open while its button says so. Only the query is its own: the
+ * requests belong to the card, so a city saved after the search closed is still told.
+ */
+function CitySearch({
+  id, mode, busy, onChoose,
+}: { id: string; mode: CityMode; busy: boolean; onChoose: (city: City) => void }) {
+  const t = useT();
+  const field = useRef<HTMLInputElement>(null);
+  const [query, setQuery] = useState("");
+  const search = useDebounced(query, 300);
+  const results = useCities(search);
+  const queryLimit = useTextLimit(query.trim(), CITY_QUERY_MAX);
+  // Both the live query and the debounced one: right after a change, the suggestions of the
+  // query before it must not linger for the debounce delay.
+  const searching = searchable(query, CITY_QUERY_MAX) && searchable(search, CITY_QUERY_MAX);
+  const found = searching && results.data ? results.data.length : 0;
+
+  // The field takes the focus, and a phone its keyboard, when the search opens or changes mode.
+  useEffect(() => {
+    field.current?.focus();
+  }, [mode]);
+
+  return (
+    <div className="city-search" id={id}>
+      <label className="field">
+        <span className="field__label">{mode === "home" ? t.more.newHome : t.more.cityToAdd}</span>
+        <input
+          ref={field}
+          className="input"
+          type="search"
+          value={query}
+          {...queryLimit.field}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </label>
+      {queryLimit.hint}
+      {/* While a city saves, the results are off but not `disabled`: a disabled button drops the
+          focus, and a keyboard would start again from the top of the screen. */}
+      {searching && results.data && results.data.length > 0 && (
+        <div className="results">
+          {results.data.map((city) => (
+            <button
+              type="button"
+              key={`${city.lat},${city.lon}`}
+              className="result"
+              aria-disabled={busy || undefined}
+              onClick={() => onChoose(city)}
+            >
+              {placeNames(city).join(", ")}
+            </button>
+          ))}
+        </div>
+      )}
+      <SearchStatus count={found > 0 ? t.more.citiesFound(found) : null}>
+        {searching && results.isError && !results.data && <p className="muted">{t.errors.upstream_unavailable}</p>}
+        {searching && results.data?.length === 0 && <p className="muted">{t.more.noCities}</p>}
+      </SearchStatus>
+    </div>
+  );
+}
+
+/**
+ * The cities of the weather: the home one, whose clock everything keeps, and up to four more,
+ * each deleted by a swipe without a question (it is easy to add again). The search is there only
+ * when a button asks for it, and the same button hides it again: «Сменить домашний» puts the
+ * city found in place of the home one, «Добавить город» adds it to the others. A city saved
+ * closes the search, and the focus goes back to the button; one refused leaves it open, for
+ * another choice.
+ */
+function CitiesCard({ home, list, index }: { home: string; list: UseQueryResult<WeatherCity[]>; index: number }) {
+  const t = useT();
+  const setCity = useSetCity();
+  const addCity = useAddCity();
+  const remove = useDeleteCity();
+  const [mode, setMode] = useState<CityMode | null>(null);
+  const searchId = useId();
+  const limitId = useId();
+  const homeToggle = useRef<HTMLButtonElement>(null);
+  const addToggle = useRef<HTMLButtonElement>(null);
+  // The search on screen at the last commit, to tell one that has just closed.
+  const shown = useRef<CityMode | null>(null);
+  const extra = list.data ?? [];
+  const full = extra.length >= MAX_EXTRA_CITIES;
+  const busy = setCity.isPending || addCity.isPending;
+  if (mode === "add" && full) {
+    // The list filled up meanwhile (a city added in the bot): there is nothing more to add.
+    setMode(null);
+  }
+
+  // A search that closes by itself (a city saved, the list full) takes the focus with it, as does
+  // «Добавить город» turning off under it. The focus goes back to the button that opened the
+  // search, or to «Сменить домашний» when «Добавить город» is off, not to the top of the screen.
+  // A layout effect: it runs before the browser drops the focus of a button just turned off.
+  useLayoutEffect(() => {
+    const closed = shown.current;
+    shown.current = mode;
+    const focused = document.activeElement;
+    const lost = closed !== null && mode === null && (focused === null || focused === document.body);
+    if (lost || (full && focused === addToggle.current)) {
+      (closed === "add" && !full ? addToggle : homeToggle).current?.focus();
+    }
+  }, [mode, full]);
+
+  const toggle = (pressed: CityMode) => setMode(mode === pressed ? null : pressed);
+  const choose = (city: City) => {
+    // The results stay focusable while a city saves: a second choice in the meantime is not taken.
+    if (busy) return;
+    const saved = {
+      onSuccess: () => {
+        toast({ kind: "success", text: t.common.saved });
+        setMode(null);
+      },
+    };
+    if (mode === "home") setCity.mutate(city, saved);
+    else addCity.mutate(city, saved);
+  };
+
+  return (
+    <Card title={t.more.cities} index={index}>
+      <p className="city-home">
+        <span className="city-home__name">🏠 {home}</span>
+        <span className="muted city-home__hint">{t.more.homeHint}</span>
+      </p>
+      {list.isLoadingError && <ErrorState onRetry={() => void list.refetch()} />}
+      {extra.length > 0 && (
+        <ul className="city-list">
+          {extra.map((city) => {
+            const area = placeNames(city).slice(1).join(", ");
+            return (
+              <li key={city.id}>
+                <SwipeRow onDelete={() => remove.mutate(city.id)} deleteLabel={t.more.deleteCity}>
+                  <span className="city-list__name">{city.name}</span>
+                  {area && <span className="muted city-list__area">{area}</span>}
+                </SwipeRow>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <div className="city-actions">
+        <button
+          ref={homeToggle}
+          type="button"
+          className="button"
+          aria-expanded={mode === "home"}
+          aria-controls={mode === null ? undefined : searchId}
+          onClick={() => toggle("home")}
+        >
+          {t.more.changeHome}
+        </button>
+        <button
+          ref={addToggle}
+          type="button"
+          className="button"
+          aria-expanded={mode === "add"}
+          aria-controls={mode === null ? undefined : searchId}
+          aria-describedby={full ? limitId : undefined}
+          disabled={full}
+          onClick={() => toggle("add")}
+        >
+          {t.more.addCity}
+        </button>
+      </div>
+      {full && <p className="muted field__note" id={limitId}>{t.more.citiesLimit}</p>}
+      {mode !== null && (
+        <CitySearch id={searchId} mode={mode} busy={busy} onChoose={choose} />
+      )}
+    </Card>
+  );
 }
 
 const COMPLETE_TIME = /^\d{2}:\d{2}$/;
@@ -69,67 +255,23 @@ export function MoreScreen() {
   const t = useT();
   const lang = useLang();
   const me = useMe();
+  // Asked for with /me rather than after it: the card of the cities needs both.
+  const cities = useWeatherCities();
   const health = useHealth();
   const schedule = useSchedule();
   const update = useUpdateMe();
-  const setCity = useSetCity();
-  const [query, setQuery] = useState("");
-  const search = useDebounced(query, 300);
-  const cities = useCities(search);
 
   if (me.isPending) return <Loader />;
-  if (me.isError) return <ErrorState onRetry={() => void me.refetch()} />;
+  // A failed refresh keeps the settings on screen: only a first load that failed is an error.
+  if (me.isLoadingError) return <ErrorState onRetry={() => void me.refetch()} />;
   const profile = me.data;
   const source = schedule.data?.source;
-  // Both the live query and the debounced one must be long enough — otherwise, right after
-  // picking a city (which clears `query`), the stale suggestions would linger for up to the
-  // debounce delay while `search` catches up.
-  const searching = query.trim().length >= 2 && search.trim().length >= 2;
-  const found = searching && cities.data ? cities.data.length : 0;
-
-  const chooseCity = (city: City) =>
-    setCity.mutate(city, {
-      onSuccess: () => {
-        setQuery("");
-        toast({ kind: "success", text: t.common.saved });
-      },
-    });
 
   return (
     <>
       <h1 className="screen__title">{t.tabs.more}</h1>
 
-      <Card title={t.more.city} index={0}>
-        <p>{profile.city.name}</p>
-        <label className="field">
-          <span className="field__label">{t.more.searchCity}</span>
-          <input
-            className="input"
-            type="search"
-            maxLength={50}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-        </label>
-        {searching && cities.data && cities.data.length > 0 && (
-          <div className="results">
-            {cities.data.map((city) => (
-              <button
-                type="button"
-                key={`${city.lat},${city.lon}`}
-                className="result"
-                onClick={() => chooseCity(city)}
-              >
-                {cityLabel(city)}
-              </button>
-            ))}
-          </div>
-        )}
-        <SearchStatus count={found > 0 ? t.more.citiesFound(found) : null}>
-          {searching && cities.isError && !cities.data && <p className="muted">{t.errors.upstream_unavailable}</p>}
-          {searching && cities.data?.length === 0 && <p className="muted">{t.more.noCities}</p>}
-        </SearchStatus>
-      </Card>
+      <CitiesCard home={profile.city.name} list={cities} index={0} />
 
       <Link href="/more/schedule" className="card card--link" style={{ "--i": 1 } as CSSProperties}>
         <span>
@@ -191,7 +333,12 @@ export function MoreScreen() {
         <p className="muted field__note">{t.more.currencyHint}</p>
       </Card>
 
-      <Card title={t.more.about} index={5}>
+      {/* The licence of the weather and of the city names (CC BY 4.0) asks for their sources. */}
+      <Card title={t.more.data} index={5}>
+        <Credit text={t.more.credits} className="credit--card" />
+      </Card>
+
+      <Card title={t.more.about} index={6}>
         {health.data && <p className="muted">{t.more.version(health.data.version)}</p>}
         <button type="button" className="button" onClick={() => openLink(REPO_URL)}>
           {t.more.source}
