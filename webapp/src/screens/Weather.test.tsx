@@ -222,26 +222,39 @@ describe("Weather in the extra cities", () => {
       .toHaveAttribute("aria-pressed", "true");
   });
 
-  it("scrolls the pressed chip into view when the screen opens and when the city changes", async () => {
+  it("scrolls the row, and only the row, to the pressed chip when the screen opens and when the city changes", async () => {
     installTelegram();
     mockApi({ "GET /me": me, "GET /me/cities": [tula], "GET /weather": forecast, "GET /weather?city=3": TULA });
-    // jsdom lays nothing out and has neither scrollIntoView nor document.fonts: stand-ins for this test.
-    const scrolled: Element[] = [];
-    const scrollIntoView = vi.fn(function (this: Element) {
-      scrolled.push(this);
+    // jsdom lays nothing out: the row stands at 12-308 px, and each chip where this stub puts it along
+    // the row, moved by the row's own scroll. The font comes after the chips and widens the Тула chip.
+    let fontsIn = false;
+    const box = (left: number, right: number) =>
+      ({ left, right, top: 0, bottom: 44, width: right - left, height: 44, x: left, y: 0, toJSON: () => ({}) }) as DOMRect;
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      if (this.classList.contains("city-chips")) return box(12, 308);
+      const row = this.closest(".city-chips");
+      if (row === null) return box(0, 0);
+      const other = this.textContent === "Тула";
+      const left = 12 + (other ? 330 : 4) - row.scrollLeft;
+      return box(left, left + (other ? (fontsIn ? 70 : 67) : 107));
     });
+    // Neither may move the page: scrollIntoView would. jsdom has no document.fonts either.
+    const scrollIntoView = vi.fn();
     Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, writable: true, value: scrollIntoView });
-    Object.defineProperty(document, "fonts", { configurable: true, value: { ready: Promise.resolve() } });
+    Object.defineProperty(document, "fonts", {
+      configurable: true,
+      get: () => ({ ready: Promise.resolve().then(() => (fontsIn = true)) }),
+    });
     try {
       renderWeather("/weather/3");
       const chips = await screen.findByRole("group", { name: "Города" });
-      const other = within(chips).getByRole("button", { name: "Тула" });
-      // At once, and again once the fonts are in: the chips' own font may widen them.
-      await waitFor(() => expect(scrolled).toEqual([other, other]));
-      expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
-      const home = within(chips).getByRole("button", { name: /Москва/ });
-      fireEvent.click(home);
-      await waitFor(() => expect(scrolled).toEqual([other, other, home, home]));
+      // The Тула chip at 342-409, past the row's right edge less 4 px (304): 105 px. Once the font is in
+      // it ends at 307 instead: 3 px more.
+      await waitFor(() => expect(chips.scrollLeft).toBe(108));
+      fireEvent.click(within(chips).getByRole("button", { name: /Москва/ }));
+      // The home chip, now at 16 - 108 = -92 px: back to 4 px inside the row's left edge.
+      await waitFor(() => expect(chips.scrollLeft).toBe(0));
+      expect(scrollIntoView).not.toHaveBeenCalled();
     } finally {
       Reflect.deleteProperty(Element.prototype, "scrollIntoView");
       Reflect.deleteProperty(document, "fonts");

@@ -138,11 +138,16 @@ describe("Today's weather", () => {
     mockApi({ "GET /today": { ...today, tomorrow } });
     const { unmount } = renderWithApp(<TodayScreen />);
     const card = await screen.findByRole("link", { name: /^Москва/ });
-    expect(within(card).getByText("Завтра: 🌧\uFE0F +6…+11°, 💧 80 %")).toBeInTheDocument();
+    const line = card.querySelector(".weather-today__tomorrow");
+    expect(line?.textContent?.replace(/\s+/g, " ")).toBe("Завтра: 🌧\uFE0F +6…+11°, 💧 80 %");
+    // The icon in a span of its own, which the light theme draws with an edge.
+    expect(line?.querySelector(".weather-today__icon")?.textContent).toBe("🌧\uFE0F");
     unmount();
     mockApi({ "GET /today": { ...today, tomorrow: { ...tomorrow, emoji: "☁️", precip_chance: 10 } } });
     renderWithApp(<TodayScreen />, { lang: "en" });
-    expect(await screen.findByText("Tomorrow: ☁️ +6…+11°")).toBeInTheDocument();
+    const english = (await screen.findByRole("link", { name: /^Москва/ })).querySelector(".weather-today__tomorrow");
+    expect(english?.textContent?.replace(/\s+/g, " ")).toBe("Tomorrow: ☁️ +6…+11°");
+    expect(english?.querySelector(".weather-today__icon")?.textContent).toBe("☁️");
   });
 });
 

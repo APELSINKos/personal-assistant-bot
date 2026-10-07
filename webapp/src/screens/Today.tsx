@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "wouter";
 import { useSetMark, useToday } from "../api/queries";
 import type { ClassesWeather, ForecastDay, PinnedNote, Rate, TodayLesson, TodayMoney, Weather } from "../api/types";
@@ -15,6 +15,22 @@ import { budgetText, formatAmount, monthName } from "../lib/money";
 import { asEmoji, classesLine, nextClassesChange } from "../lib/weather";
 
 /**
+ * A line of text with a weather icon in it: the icon in a span of its own, which the light theme
+ * draws with an edge (weather.css). A line without the icon stays as it is.
+ */
+function withIcon(text: string, icon: string): ReactNode {
+  const at = icon === "" ? -1 : text.indexOf(icon);
+  if (at < 0) return text;
+  return (
+    <>
+      {text.slice(0, at)}
+      <span className="weather-today__icon">{icon}</span>
+      {text.slice(at + icon.length)}
+    </>
+  );
+}
+
+/**
  * The weather now, and from 17:00 tomorrow's; a tap opens the «Погода» screen — also without the
  * weather, as that screen has its own «Повторить». The source's credit goes under the card.
  */
@@ -29,8 +45,9 @@ function WeatherCard({ weather, tomorrow }: { weather: Weather | null; tomorrow:
       </Link>
     );
   }
+  const icon = tomorrow ? asEmoji(tomorrow.emoji) : "";
   const later = tomorrow && t.today.withChance(
-    t.today.tomorrow(asEmoji(tomorrow.emoji), formatRange(tomorrow.tmin, tomorrow.tmax)),
+    t.today.tomorrow(icon, formatRange(tomorrow.tmin, tomorrow.tmax)),
     shownChance(tomorrow.precip_chance),
   );
   return (
@@ -51,7 +68,7 @@ function WeatherCard({ weather, tomorrow }: { weather: Weather | null; tomorrow:
           </span>
         </span>
         {weather.tips[0] && <span className="tip">{weather.tips[0]}</span>}
-        {later && <span className="muted weather-today__tomorrow">{later}</span>}
+        {later && <span className="muted weather-today__tomorrow">{withIcon(later, icon)}</span>}
       </Link>
       <Credit text={t.weather.credit} className="credit--under" />
     </>

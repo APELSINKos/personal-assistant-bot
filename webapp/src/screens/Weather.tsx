@@ -86,19 +86,29 @@ function CityWeather({ id }: { id: number }) {
   );
 }
 
+/** The room CityChips keeps between the pressed chip and the row's edge: the row's scroll-padding-inline. */
+const CHIP_ROOM = 4;
+
 /** The home city and the extra ones in one row that scrolls sideways; a chip opens its city in place. */
 function CityChips({ home, cities, current }: { home: string; cities: WeatherCity[]; current: number }) {
   const t = useT();
   const [, navigate] = useLocation();
   const row = useRef<HTMLDivElement>(null);
   // Opened by its address (a reload of an extra city's weather), the row starts at its left end,
-  // where the pressed chip may not be: it is brought into view then and whenever the city changes,
-  // and once more when the fonts are in, as the chips' own font may come after them and widen them.
-  // Optional calls: jsdom has neither scrollIntoView nor document.fonts.
+  // where the pressed chip may not be: the row brings it in then and whenever the city changes, and
+  // once more when the fonts are in, as the chips' own font may come after them and widen them.
+  // The row alone moves, just enough to show the whole chip, as scrollIntoView with "nearest" would
+  // move it; scrollIntoView would also scroll the page and take a reader who has scrolled down back
+  // up to the chips. Optional: jsdom has no document.fonts.
   useEffect(() => {
     const show = () => {
-      const pressed = row.current?.querySelector<HTMLElement>('[aria-pressed="true"]');
-      pressed?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+      const box = row.current;
+      const pressed = box?.querySelector<HTMLElement>('[aria-pressed="true"]');
+      if (!box || !pressed) return;
+      const edges = box.getBoundingClientRect();
+      const chip = pressed.getBoundingClientRect();
+      if (chip.left < edges.left + CHIP_ROOM) box.scrollLeft -= edges.left + CHIP_ROOM - chip.left;
+      else if (chip.right > edges.right - CHIP_ROOM) box.scrollLeft += chip.right - (edges.right - CHIP_ROOM);
     };
     show();
     void document.fonts?.ready.then(show);

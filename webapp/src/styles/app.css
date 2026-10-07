@@ -495,12 +495,14 @@ select.input {
   outline-offset: 2px;
 }
 
-/* The same ring on the link cards, the language options and the morning switch: the browser's own
-   is nearly black, and the dark glass hides it. */
+/* A ring of the app's own on the link cards, the language options and the morning switch: the
+   browser's is nearly black, and the dark glass hides it. In --accent-text rather than --accent:
+   the same mint in the dark theme, and in the light one a darker green that stays above 3:1 on the
+   light glows, where the brighter accent fell to about 2.8:1, under the browser's own ring. */
 .card--link:focus-visible,
 .segmented__option:focus-visible,
 .switch:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-text);
   outline-offset: 2px;
 }
 
