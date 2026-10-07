@@ -510,6 +510,48 @@ snapshot is taken after the downgrade. That copy is the only up-to-date one
 with the money, and as there it is `assistant-<UTC date>.db`, overwritten by
 the nightly run at 03:30 UTC: copy it under another name before then.
 
+### Going from 2.5 to 2.6
+
+Nothing is installed by hand, and the Caddyfile and the units stay as they
+are: the deploy runs migration `0006` (the notes' pins, and the `note_items`
+and `weather_cities` tables). The forecast and the city search still come
+from Open-Meteo (`api.open-meteo.com`, `geocoding-api.open-meteo.com`),
+public addresses the services already reach.
+
+From 2.6 on the bot sets its name, commands, descriptions and menu button in
+the background, for at most 120 seconds, so `Bot started` reaches the journal
+within the deploy's health check even while Telegram answers slowly; running
+out of that time is only a warning in the journal.
+
+### Going back from 2.6 to 2.5
+
+As with 2.5 → 2.4, undo migration `0006` with the 2.6 code that is still
+deployed, then deploy the 2.5.1 commit on purpose:
+
+```bash
+ssh <server> 'sudo bash -s' <<'EOF'
+set -euo pipefail
+systemctl stop assistant-bot assistant-api
+systemctl start assistant-backup.service
+cd /opt/assistant/app
+runuser -u assistant -- bash -c 'set -a; . /etc/assistant/assistant.env; set +a; exec .venv/bin/alembic downgrade 0005'
+EOF
+ssh <server> 'sudo DEPLOY_ALLOW_OLDER=1 /usr/local/sbin/assistant-deploy <v2.5.1 commit sha>'
+```
+
+The downgrade drops the checklist items, the extra weather cities and the
+notes' pins; the notes themselves stay (a checklist keeps its title), and so
+does everything else. It keeps the AUTOINCREMENT counters of the two dropped
+tables in `sqlite_sequence`, so after a later upgrade to 2.6 new items and
+cities go on numbering where they stopped, and a button left in a chat never
+reaches a new item or city. The pin column is removed by SQLite's own
+`ALTER TABLE … DROP COLUMN` (SQLite 3.35 or newer; the server has 3.45),
+which leaves `notes` with its counter as it is. The backup runs first for the
+same reason as in 2.3 → 2.2: the deploy's own snapshot is taken after the
+downgrade. That copy is the only up-to-date one with the items, the cities
+and the pins, and as there it is `assistant-<UTC date>.db`, overwritten by
+the nightly run at 03:30 UTC: copy it under another name before then.
+
 ## 8. Restore from a backup
 
 Nightly backups live in `/var/backups/assistant`

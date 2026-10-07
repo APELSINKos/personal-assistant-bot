@@ -37,7 +37,7 @@ wmo-snow = снег
 wmo-showers = ливень
 wmo-snowfall = снегопад
 wmo-storm = гроза
-wmo-unknown = без осадков
+wmo-unknown = нет данных
 tip-precip-now = { $kind ->
     [snow] 🌨 Сейчас идёт снег — надень капюшон
    *[rain] 🌧 Сейчас идёт дождь — возьми зонт
@@ -79,7 +79,10 @@ welcome =
     🎓 Расписание — пары твоей группы МИРЭА или любого календаря
     ⚙️ Настройки — город, утренняя сводка и язык
 
+    { help-credits }
+
     Выбери раздел в меню ниже 👇
+help-credits = Погода — open-meteo.com, названия городов — geonames.org; лицензия CC BY 4.0 (creativecommons.org/licenses/by/4.0), бот округляет данные и добавляет советы.
 friend = друг
 app-soon = 📱 Приложение скоро появится — следи за обновлениями.
 app-open = Открой приложение кнопкой ниже 👇
@@ -99,7 +102,22 @@ weather-now = { $emoji } { $city }: { $temp }, { $description }
 weather-feels = Ощущается как { $feels }, ветер { $wind } м/с
 weather-range = Сегодня: { $range }
 weather-unavailable = ⚠️ Не удалось получить погоду. Попробуй чуть позже.
-weather-change-city = 🏙 Сменить город
+weather-city-gone = Этого города уже нет в списке
+button-weather-now = 🌤 Сейчас
+button-hours = 🕐 По часам
+button-week = 📅 Неделя
+button-city-home = 🏠 { $city }
+weather-hours-title = 🕐 { $city } — по часам
+weather-hours-title-local = 🕐 { $city } — по часам (местное время)
+weather-hour = { $time } { $emoji } { $temp }
+weather-hour-chance = { $time } { $emoji } { $temp } 💧 { $chance } %
+weather-next-day = Завтра, { $date }
+weather-hours-none = Почасового прогноза сейчас нет.
+weather-week-title = 📅 { $city } — 7 дней
+weather-day = { $label } { $emoji } { $range }
+weather-day-chance = { $label } { $emoji } { $range } 💧 { $chance } %
+weather-days-none = Прогноза на неделю сейчас нет.
+weather-credit = Данные о погоде: open-meteo.com
 
 ## My day and the morning digest
 today-title = { $part ->
@@ -110,6 +128,11 @@ today-title = { $part ->
     }, { $name }!
 today-date = 📅 Сегодня, { $date }, { $weekday }
 today-weather-unavailable = 🌤 Погода временно недоступна
+classes-weather = 🎓 На пары ({ $start }): { $start_weather } · после пар ({ $end }): { $end_weather }
+classes-weather-after = 🎓 После пар ({ $end }): { $end_weather }
+classes-temp-chance = { $temp }, 💧 { $chance } %
+today-tomorrow = Завтра: { $emoji } { $range }
+today-tomorrow-chance = Завтра: { $emoji } { $range }, 💧 { $chance } %
 today-reminders = { $count ->
         [0] 📌 На сегодня напоминаний нет
         [one] 📌 На сегодня { $count } напоминание:
@@ -136,10 +159,11 @@ today-streak-weeks = 🔥 Лучшая серия: «{ $name }» — { $count } 
        *[many] недель
     }
 today-notes = 📝 Заметок: { $count }
+today-pinned = 📌 { $text }
 today-rates = 💵 { $usd } ₽ · 💶 { $eur } ₽
 morning-title = ☀️ Доброе утро, { $name }!
 morning-date = 📅 { $date }, { $weekday }
-morning-weather = 🌡 { $city }: { $range }
+morning-weather = { $emoji } { $city }: { $temp }, { $description } · днём до { $max }
 morning-reminders = { $count ->
         [0] 📌 На сегодня напоминаний нет
        *[other] 📌 Сегодня:
@@ -157,19 +181,73 @@ rates-bad-amount = Нужно число больше нуля и не боль�
 rates-result = 💱 { $amount } { $source } = { $result } { $target }
 
 ## Lists
-list-item = { $number }. { $text }
 button-add = ➕ Добавить
 button-delete-item = 🗑 { $number }. { $text }
 deleted = 🗑 Удалено
 
 ## Notes
-notes-empty = 📝 Заметок пока нет. Нажми «➕ Добавить», чтобы создать первую.
+notes-empty = 📝 Заметок пока нет. Нажми «➕ Заметка» или «☑️ Список», чтобы создать первую.
 notes-title = 📝 Твои заметки ({ $count }/{ $limit }):
 notes-limit = Достигнут лимит — { $limit } заметок. Удали лишние.
 note-ask = ✍️ Напиши текст заметки (до { $limit } символов):
 hint-note = Напиши текст заметки.
 note-bad-text = Заметка — это текст от 1 до { $limit } символов. Попробуй ещё раз:
 note-saved = ✅ Заметка сохранена.
+note-line = { $number }. { $text }
+note-line-pinned = { $number }. 📌 { $text }
+note-progress = { $text } ✅ { $done }/{ $total }
+note-card-pinned = 📌 { $text }
+button-add-note = ➕ Заметка
+item-open = ⬜ { $text }
+item-done = ✅ { $text }
+button-clear-done = 🧹 Убрать отмеченные
+button-pin = 📌 Закрепить
+button-unpin = 📌 Открепить
+button-delete-note = 🗑 Удалить
+button-back-notes = ↩️ К заметкам
+note-delete-ask = 🗑 Удалить заметку «{ $text }»?
+pinned-limit = Закрепить можно не больше { $limit } заметок — открепи одну
+button-add-list = ☑️ Список
+button-find = 🔍 Найти
+button-reset-search = ✖️ Сбросить поиск
+button-add-items = ➕ Пункты
+button-edit = ✏️ Изменить
+items-full = В заметке уже { $limit } пунктов
+note-edit-ask = ✍️ Напиши новый текст заметки (до { $limit } символов):
+hint-note-edit = Напиши новый текст заметки.
+note-updated = ✅ Заметка изменена.
+items-ask = ✍️ Напиши пункты — каждый с новой строки (в заметке до { $limit }):
+hint-items = Напиши пункты, каждый с новой строки.
+items-room = В заметку поместится ещё { $count } { $count ->
+        [one] пункт
+        [few] пункта
+       *[many] пунктов
+    } — напиши меньше:
+item-too-long = Пункт «{ $text }» длиннее { $limit } символов — сократи и напиши ещё раз:
+items-added = ✅ Добавлено пунктов: { $count }
+list-ask =
+    ☑️ Напиши список: в первой строке — название, дальше каждый пункт с новой строки. Например:
+    Покупки
+    молоко
+    хлеб
+hint-list = Напиши название и пункты, каждый с новой строки.
+list-need-item = Нужен хотя бы один пункт — каждый с новой строки после названия.
+list-too-long = В списке может быть до { $limit } пунктов — напиши короче:
+list-saved = ✅ Список сохранён.
+search-ask = 🔍 Что найти? Напиши слово или часть слова:
+hint-search = Напиши слово для поиска.
+search-bad = Запрос — до { $limit } символов. Напиши короче:
+search-empty = 🔍 По запросу «{ $query }» ничего не нашлось. Напиши по-другому:
+search-found = 🔍 Нашлось: { $count } { $count ->
+        [one] заметка
+        [few] заметки
+       *[many] заметок
+    }
+search-title = 🔍 «{ $query }» — { $count } { $count ->
+        [one] заметка
+        [few] заметки
+       *[many] заметок
+    }:
 
 ## Reminders
 reminders-empty = ⏰ Активных напоминаний нет. Нажми «➕ Добавить», чтобы создать.
@@ -205,6 +283,11 @@ day-today = Сегодня
 day-tomorrow = Завтра
 day-after-tomorrow = Послезавтра
 unknown-hint = Чтобы создать напоминание, просто напиши, например: «завтра в 9 купить молоко». Трату — так: «кофе 250».
+unknown-keep = 🤔 Не понял. Если это заметка — нажми «📝 В заметки».
+button-keep = 📝 В заметки
+button-open-note = 📝 Открыть
+keep-gone = Сообщение уже недоступно
+keep-too-long = Слишком длинно для заметки — до { $limit } символов
 button-snooze-10m = +10 мин
 button-snooze-1h = +1 ч
 button-snooze-tomorrow = Завтра
@@ -272,6 +355,20 @@ city-not-found = Не нашёл город «{ $name }». Проверь наз
 city-unavailable = ⚠️ Сервис поиска городов недоступен. Попробуй позже.
 city-choose = Нашлось несколько городов — выбери свой:
 city-saved = ✅ Город сохранён: { $city }
+button-cities = 🏙 Города
+cities-title = 🏙 Города
+cities-home = 🏠 { $city } — домашний город: по его времени приходят напоминания и сводка
+cities-item = • { $city }
+cities-none = Других городов пока нет — добавь до { $limit }, и их погода будет под «🌤 Погодой» одной кнопкой.
+button-change-home = ✏️ Сменить домашний
+button-delete-city = 🗑 { $city }
+button-add-city = ➕ Добавить город
+city-add-ask = 🏙 Какой город добавить? Напиши название:
+hint-city-add = Напиши название города, который добавить.
+city-choose-add = Нашлось несколько городов — выбери нужный:
+city-added = ✅ Город добавлен: { $city }. Его погода — кнопкой «{ $city }» под «🌤 Погодой».
+city-duplicate = Этот город уже в списке. Напиши другой:
+cities-limit = Можно добавить не больше { $limit } городов.
 time-ask = 🕗 Во сколько присылать утреннюю сводку? Формат ЧЧ:ММ, например 07:30
 hint-time = Напиши время в формате ЧЧ:ММ, например 07:30.
 time-bad = Не похоже на время. Нужен формат ЧЧ:ММ, например 07:30:

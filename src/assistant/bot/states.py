@@ -11,6 +11,10 @@ class RatesForm(StatesGroup):
 
 class NoteForm(StatesGroup):
     text = State()
+    edit = State()  # a new text for the note of data["note_id"]
+    items = State()  # new items for the note of data["note_id"]
+    checklist = State()  # a new checklist: its title, then its items
+    search = State()  # words to look for in the notes
 
 
 class ReminderForm(StatesGroup):
@@ -38,3 +42,4 @@ class MoneyForm(StatesGroup):
 class SettingsForm(StatesGroup):
     city = State()
     time = State()
+    add_city = State()  # the name of a city to add to the weather's list

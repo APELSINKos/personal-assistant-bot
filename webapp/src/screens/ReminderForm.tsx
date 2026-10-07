@@ -10,6 +10,7 @@ import {
 import type { ParsedPhrase, Reminder, ReminderInput } from "../api/types";
 import { MainAction } from "../components/MainAction";
 import { Empty, ErrorState, Loader } from "../components/States";
+import { useTextLimit } from "../components/TextLimit";
 import { toast } from "../components/toastStore";
 import { WriteRefusedCard } from "../components/WriteRefusedCard";
 import { useLang, useT } from "../i18n";
@@ -20,6 +21,8 @@ import { useCityZone } from "../lib/zone";
 import { confirmAction, useBackButton, useClosingConfirmation } from "../telegram";
 
 const MAX_TEXT = 200;
+// A phrase is the text and the words of its time («завтра в 9 …»): room for both.
+const MAX_PHRASE = MAX_TEXT + 100;
 const WEEKDAYS = 31;
 const WEEKENDS = 96;
 const CHOICES = ["none", "daily", "weekdays", "weekends", "days", "biweekly", "monthly"] as const;
@@ -153,6 +156,8 @@ export function ReminderForm() {
   const change = (patch: Partial<Draft>) => setDraft({ ...current, ...patch });
   const busy = create.isPending || update.isPending || write.pending;
   const trimmed = current.text.trim();
+  const textLimit = useTextLimit(trimmed, MAX_TEXT);
+  const phraseLimit = useTextLimit(phrase.trim(), MAX_PHRASE);
   const showDate = current.choice === "none" || current.choice === "biweekly";
   const showDays = current.choice === "days" || current.choice === "biweekly";
   const monthDayNum = Number(current.monthDay);
@@ -160,8 +165,8 @@ export function ReminderForm() {
     current.choice !== "monthly" ||
     (current.monthDay !== "" && Number.isInteger(monthDayNum) && monthDayNum >= 1 && monthDayNum <= 31);
   const valid =
-    trimmed.length > 0 &&
-    trimmed.length <= MAX_TEXT &&
+    trimmed !== "" &&
+    !textLimit.over &&
     /^\d{2}:\d{2}$/.test(current.time) &&
     (!showDate || current.date !== "") &&
     (!showDays || current.days > 0) &&
@@ -198,7 +203,7 @@ export function ReminderForm() {
   }
 
   const understand = () => {
-    if (!phrase.trim() || parse.isPending) return;
+    if (!phrase.trim() || phraseLimit.over || parse.isPending) return;
     parse.mutate(phrase, {
       onSuccess: (parsed) => {
         // A functional update: merges onto whatever the user has typed by the time the phrase
@@ -228,14 +233,14 @@ export function ReminderForm() {
     <>
       <h1 className="screen__title">{id === null ? t.reminderForm.newTitle : t.reminderForm.editTitle}</h1>
       {write.refused && <WriteRefusedCard />}
-      <div className="row field">
+      <div className="row field reminder-phrase">
         <input
           className="input"
           style={{ flex: 1 }}
           aria-label={t.reminderForm.phrase}
           placeholder={t.reminderForm.phrase}
-          maxLength={MAX_TEXT + 100}
           value={phrase}
+          {...phraseLimit.field}
           onChange={(event) => setPhrase(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") understand();
@@ -245,22 +250,24 @@ export function ReminderForm() {
           type="button"
           className="button"
           onClick={understand}
-          disabled={parse.isPending}
+          disabled={parse.isPending || phraseLimit.over}
           aria-busy={parse.isPending}
         >
           {t.reminderForm.understand}
         </button>
       </div>
+      {phraseLimit.hint}
       <label className="field">
         <span className="field__label">{t.reminderForm.text}</span>
         <textarea
           className="input"
           rows={2}
-          maxLength={MAX_TEXT}
           value={current.text}
+          {...textLimit.field}
           onChange={(event) => change({ text: event.target.value })}
         />
       </label>
+      {textLimit.hint}
       <div className="field">
         <span className="field__label">{t.reminderForm.repeat}</span>
         <div className="segmented segmented--wrap" role="group" aria-label={t.reminderForm.repeat}>
@@ -298,7 +305,7 @@ export function ReminderForm() {
           )}
         </>
       )}
-      <div className="row">
+      <div className="row reminder-when">
         {showDate && (
           <label className="field" style={{ flex: 1 }}>
             <span className="field__label">

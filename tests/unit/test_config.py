@@ -11,6 +11,8 @@ def test_limits_match_spec() -> None:
     assert (LIMITS.reminder_length, LIMITS.reminders) == (200, 20)
     assert (LIMITS.habit_length, LIMITS.habits, LIMITS.city_length) == (50, 10, 50)
     assert LIMITS.amount_max == 1_000_000_000
+    assert (LIMITS.pinned_notes, LIMITS.note_items, LIMITS.note_item_length) == (5, 20, 100)
+    assert (LIMITS.cities, LIMITS.search_length) == (4, 50)
 
 
 def test_settings_read_token_from_env(monkeypatch) -> None:

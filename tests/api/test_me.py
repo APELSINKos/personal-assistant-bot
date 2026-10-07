@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from assistant.core.clients.openmeteo import City
@@ -11,6 +13,7 @@ KAZAN = City(
     lat=55.79,
     lon=49.12,
     timezone="Europe/Moscow",
+    geo_id=551487,
 )
 
 
@@ -79,7 +82,7 @@ async def test_invalid_city_is_422(client, auth, body, limit) -> None:
 
 
 async def test_city_search_uses_user_language(client, auth, meteo) -> None:
-    meteo.cities = [KAZAN]
+    meteo.cities = [KAZAN, replace(KAZAN, admin=None, country=None, geo_id=None)]
     response = await client.get("/api/cities", params={"q": "Казань"}, headers=auth(lang="en"))
     assert response.status_code == 200
     assert response.json() == [
@@ -90,7 +93,17 @@ async def test_city_search_uses_user_language(client, auth, meteo) -> None:
             "lat": 55.79,
             "lon": 49.12,
             "timezone": "Europe/Moscow",
-        }
+            "geo_id": 551487,  # goes back with PUT /me/city and POST /me/cities
+        },
+        {
+            "name": "Казань",
+            "admin": None,
+            "country": None,
+            "lat": 55.79,
+            "lon": 49.12,
+            "timezone": "Europe/Moscow",
+            "geo_id": None,
+        },
     ]
     assert meteo.searches == [("Казань", "en")]
 

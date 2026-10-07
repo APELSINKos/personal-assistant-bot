@@ -13,11 +13,16 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Limits:
     note_length: int = 500
     notes: int = 50
+    pinned_notes: int = 5
+    note_items: int = 20  # checklist items of one note
+    note_item_length: int = 100
+    search_length: int = 50  # a notes search query
     reminder_length: int = 200
     reminders: int = 20
     habit_length: int = 50
     habits: int = 10
     city_length: int = 50
+    cities: int = 4  # extra weather cities; the home city is not one of them
     amount_max: float = 1_000_000_000.0
     money_note_length: int = 100
     money_category_length: int = 30

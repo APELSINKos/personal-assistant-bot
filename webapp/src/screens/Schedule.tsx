@@ -1,6 +1,8 @@
 import { useRef, useState, type FormEvent } from "react";
 import {
   errorCode,
+  GROUP_QUERY_MAX,
+  searchable,
   useConnectSchedule,
   useDisconnectSchedule,
   useGroups,
@@ -15,6 +17,7 @@ import type { AlertMinutes, ScheduleSource } from "../api/types";
 import { Card } from "../components/Card";
 import { SearchStatus } from "../components/SearchStatus";
 import { ErrorState, Loader } from "../components/States";
+import { useTextLimit } from "../components/TextLimit";
 import { toast } from "../components/toastStore";
 import { WriteRefusedCard } from "../components/WriteRefusedCard";
 import { errorText, useLang, useT } from "../i18n";
@@ -25,6 +28,8 @@ import { confirmAction, haptic } from "../telegram";
 
 const ALERT_CHOICES: (AlertMinutes | null)[] = [null, 5, 10, 15, 30, 60];
 const FILE_LIMIT = 2 * 1024 * 1024;
+/** The longest calendar link the server takes (URL_LENGTH in core/clients/calendars.py). */
+const LINK_MAX = 2000;
 
 /** Three ways in: a MIREA group by name, a calendar link, or an .ics file. */
 function ConnectForm({ onDone, onCancel }: { onDone: () => void; onCancel?: () => void }) {
@@ -48,14 +53,16 @@ function ConnectForm({ onDone, onCancel }: { onDone: () => void; onCancel?: () =
     toast({ kind: "success", text: t.schedule.connected });
     onDone();
   };
-  // Both the live query and the debounced one must be long enough, so the suggestions vanish at
+  const queryLimit = useTextLimit(query.trim(), GROUP_QUERY_MAX);
+  const linkLimit = useTextLimit(link.trim(), LINK_MAX);
+  // Both the live query and the debounced one must be searchable, so the suggestions vanish at
   // once when the field is cleared instead of lingering for the debounce delay.
-  const searching = query.trim().length >= 2 && search.trim().length >= 2;
+  const searching = searchable(query, GROUP_QUERY_MAX) && searchable(search, GROUP_QUERY_MAX);
   const found = searching && groups.data ? groups.data.groups.length : 0;
 
   const submitLink = (event: FormEvent) => {
     event.preventDefault();
-    if (link.trim() && !busy) void run(connect.mutateAsync({ url: link.trim() }));
+    if (link.trim() && !linkLimit.over && !busy) void run(connect.mutateAsync({ url: link.trim() }));
   };
   const pickFile = (file: File | undefined) => {
     if (!file) return;
@@ -76,12 +83,13 @@ function ConnectForm({ onDone, onCancel }: { onDone: () => void; onCancel?: () =
           <input
             className="input"
             type="search"
-            maxLength={40}
             placeholder={t.schedule.groupPlaceholder}
             value={query}
+            {...queryLimit.field}
             onChange={(event) => setQuery(event.target.value)}
           />
         </label>
+        {queryLimit.hint}
         {searching && groups.data && groups.data.groups.length > 0 && (
           <div className="results">
             {groups.data.groups.map((group) => (
@@ -120,13 +128,14 @@ function ConnectForm({ onDone, onCancel }: { onDone: () => void; onCancel?: () =
               inputMode="url"
               autoComplete="off"
               spellCheck={false}
-              maxLength={2000}
               placeholder={t.schedule.linkPlaceholder}
               value={link}
+              {...linkLimit.field}
               onChange={(event) => setLink(event.target.value)}
             />
           </label>
-          <button type="submit" className="button button--primary" disabled={busy || !link.trim()}>
+          {linkLimit.hint}
+          <button type="submit" className="button button--primary" disabled={busy || !link.trim() || linkLimit.over}>
             {t.schedule.connect}
           </button>
         </form>

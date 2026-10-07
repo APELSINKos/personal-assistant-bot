@@ -15,6 +15,7 @@ import { NotesScreen } from "./screens/Notes";
 import { ReminderForm } from "./screens/ReminderForm";
 import { ScheduleScreen } from "./screens/Schedule";
 import { TodayScreen } from "./screens/Today";
+import { WeatherScreen } from "./screens/Weather";
 
 function ToCalendar() {
   return <Redirect to="/calendar" replace />;
@@ -37,6 +38,9 @@ export interface AppRoute {
 /** Screens register themselves here (Tasks 8–10); the first matching path wins. */
 export const ROUTES: AppRoute[] = [
   { path: "/", component: TodayScreen },
+  // The home city (`/weather`) and an extra one (`/weather/3`): one route, so a chip that switches
+  // the city keeps the screen as it is. No `?…`: under the hash router it would stay in the address.
+  { path: "/weather/:id?", component: WeatherScreen, parent: "/" },
   { path: "/calendar", component: CalendarScreen },
   { path: "/calendar/new/:date?", component: ReminderForm, hideNav: true },
   { path: "/calendar/:id", component: ReminderForm, hideNav: true },

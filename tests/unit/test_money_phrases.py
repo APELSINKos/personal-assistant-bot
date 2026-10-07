@@ -84,6 +84,32 @@ def test_amounts_in_hundredths(number: str, thousands: bool, expected: int | Non
         ("rent 1,200", Quick(120000, "rent", None)),
         ("кофе 5$", OtherCurrency("USD")),
         ("кофе 5 евро", OtherCurrency("EUR")),
+        # Digits in groups that are not a phone number: still money.
+        ("маме 8 999", Quick(899900, "маме", None)),  # the shape of «продукты 1 200»
+        ("такси 8 500", Quick(850000, "такси", None)),
+        ("телефон 500", Quick(50000, "телефон", None)),  # «телефон» names the category
+        ("оплатил телефон 500", Quick(50000, "оплатил телефон", None)),
+        ("phone 300", Quick(30000, "phone", None)),
+        ("телефон 1 200", Quick(120000, "телефон", None)),  # the first group is not 8 or 7
+        ("номер 3500", Quick(350000, "номер", None)),
+        ("номер в отеле 4500", Quick(450000, "номер в отеле", None)),
+        ("автобус 7 45", Quick(4500, "автобус 7", None)),
+        ("маршрутка 52 60", Quick(6000, "маршрутка 52", None)),
+        ("кофе 2 99", Quick(9900, "кофе 2", None)),
+        ("тел 8", Quick(800, "тел", None)),  # one group after a phone word
+        ("номер 7", Quick(700, "номер", None)),
+        ("phone 8", Quick(800, "phone", None)),
+        # A phone word makes the digits a number only right before them.
+        ("купил телефон маме 8 999", Quick(899900, "купил телефон маме", None)),
+        # A number's tail is 3, 2 and 2 digits, the last without kopecks or a currency.
+        ("кофе 12 45 67", Quick(6700, "кофе 12 45", None)),
+        ("кофе 1234 45 67", Quick(6700, "кофе 1234 45", None)),
+        ("кофе 123 4 67", Quick(6700, "кофе 123 4", None)),
+        ("кофе 123 456 78", Quick(7800, "кофе 123 456", None)),
+        ("кофе 123 45 6", Quick(600, "кофе 123 45", None)),
+        ("кофе 123 45 678", Quick(4567800, "кофе 123", None)),
+        ("кофе 123 45 67₽", Quick(6700, "кофе 123 45", None)),
+        ("кофе 123 45 67,50", Quick(6750, "кофе 123 45", None)),
         # Not money: a quantity, a time, a date, a plain phrase, too long, nothing.
         ("молоко 2 литра", None),
         ("2 литра молока", None),
@@ -113,6 +139,41 @@ def test_amounts_in_hundredths(number: str, thousands: bool, expected: int | Non
         ("250 за", None),  # only a connective after the number
         ("8 999 123 45 67", None),
         ("2 + 2 = 4", None),
+        # A phone number at the end: its last digits «123 45 67», or a phone word before 8 or 7.
+        ("тел 8 999 123 45 67", None),
+        ("такси 8 999 123 45 67", None),
+        ("тел 123 45 67", None),
+        ("позвонить маме 8 999 123 45 67", None),
+        ("кофе 250 тел 8 999", None),
+        ("кофе 250 тел +7 999", None),  # not an income of 7 999
+        ("номер 8 800 555 35 35", None),
+        # A phone word before more than two groups, of any length.
+        ("тел 8 999 1234567", None),
+        ("моб +7 999 123 4567", None),
+        # A whole number in the last groups, after any word: 8 or 7 and ten digits, or +7 and ten.
+        ("Маша 8 999 1234567", None),
+        ("мама +7 916 1234567", None),
+        ("Вася 8 999 123 4567", None),
+        ("номер: 8 800 2000 600", None),
+        ("кофе 250 8 999 1234567", None),
+        ("кофе 8 999 1234", Quick(123400, "кофе 8 999", None)),  # eight digits are no number
+        # Joined only from a group of its own that is 8, 7 or +7: a note's digits are no number.
+        ("заказ 8123456 1500", Quick(150000, "заказ 8123456", None)),
+        ("wb 8765432 1290", Quick(129000, "wb 8765432", None)),
+        ("посылка 80012345 990", Quick(99000, "посылка 80012345", None)),
+        ("кофе 750 8 999 1234", Quick(123400, "кофе 750 8 999", None)),
+        # A phone word with a colon.
+        ("тел: 8 999", None),
+        ("кофе 250 тел: 8 999", None),
+        # Every phone word, in any case.
+        ("Тел 8 999", None),
+        ("кофе 250 ТЕЛ. 8 999", None),
+        ("телефон 8 999", None),
+        ("номер 7 999", None),
+        ("моб 8 912", None),
+        ("моб. 8 912", None),
+        ("tel 8 999", None),
+        ("Phone 8 999", None),
     ],
 )
 def test_quick_phrases_in_roubles(text: str, expected: Quick | OtherCurrency | None) -> None:

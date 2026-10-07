@@ -13,6 +13,7 @@ import assistant
 from assistant.api import __main__ as entry
 from assistant.api.app import create_app
 from assistant.api.routers.health import read_commit
+from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.models import User
 from assistant.core.ratelimit import RateLimiter
 from tests.api.conftest import NOW
@@ -144,11 +145,17 @@ def test_read_commit(tmp_path: Path) -> None:
 
 async def test_api_gives_upstream_services_a_short_time_budget(monkeypatch, api_settings) -> None:
     timeouts: list[object] = []
+    deadlines: list[float] = []
     real_client = httpx.AsyncClient
+    real_meteo = entry.OpenMeteoClient
 
     def recording_client(*, timeout: float, **options: object) -> httpx.AsyncClient:
         timeouts.append(timeout)
         return real_client(timeout=timeout, **options)
+
+    def recording_meteo(http: httpx.AsyncClient, *, deadline: float) -> OpenMeteoClient:
+        deadlines.append(deadline)
+        return real_meteo(http, deadline=deadline)
 
     class NoServer:
         def __init__(self, config: object) -> None:
@@ -160,11 +167,14 @@ async def test_api_gives_upstream_services_a_short_time_budget(monkeypatch, api_
     monkeypatch.setattr(entry, "get_settings", lambda: api_settings)
     monkeypatch.setattr(entry, "setup_logging", lambda *args: None)
     monkeypatch.setattr(entry.httpx, "AsyncClient", recording_client)
+    monkeypatch.setattr(entry, "OpenMeteoClient", recording_meteo)
     monkeypatch.setattr(entry.uvicorn, "Server", NoServer)
     await entry.main()
     # «Сегодня» must not wait for a hanging upstream as long as the bot may; calendars have a
     # client of their own with the whole ten seconds.
     assert timeouts == [4.0, 10.0] and api_settings.http_timeout == 10.0
+    # A forecast gets the same 4 seconds in all, the wait for one of its two slots included.
+    assert deadlines == [4.0]
 
 
 def test_the_api_waits_for_telegram_15_seconds() -> None:

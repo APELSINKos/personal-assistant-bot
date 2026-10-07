@@ -1,39 +1,77 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "wouter";
 import { useSetMark, useToday } from "../api/queries";
-import type { Rate, TodayLesson, TodayMoney, Weather } from "../api/types";
+import type { ClassesWeather, ForecastDay, PinnedNote, Rate, TodayLesson, TodayMoney, Weather } from "../api/types";
 import { Card } from "../components/Card";
+import { Credit } from "../components/Credit";
 import { HabitDots, HabitToggle, nextMark } from "../components/HabitBits";
 import { BudgetBar } from "../components/MoneyCharts";
+import { NoteProgress } from "../components/NoteBits";
 import { PullToRefresh } from "../components/PullToRefresh";
 import { ErrorState, Loader } from "../components/States";
 import { useLang, useT, type Lang } from "../i18n";
-import { bigDate, capitalize, formatNumber, formatTemp, lessonMeta } from "../lib/format";
+import { bigDate, capitalize, formatNumber, formatRange, formatTemp, lessonMeta, shownChance } from "../lib/format";
 import { budgetText, formatAmount, monthName } from "../lib/money";
+import { asEmoji, classesLine, nextClassesChange } from "../lib/weather";
 
-function WeatherCard({ weather }: { weather: Weather | null }) {
+/**
+ * A line of text with a weather icon in it: the icon in a span of its own, which the light theme
+ * draws with an edge (weather.css). A line without the icon stays as it is.
+ */
+function withIcon(text: string, icon: string): ReactNode {
+  const at = icon === "" ? -1 : text.indexOf(icon);
+  if (at < 0) return text;
+  return (
+    <>
+      {text.slice(0, at)}
+      <span className="weather-today__icon">{icon}</span>
+      {text.slice(at + icon.length)}
+    </>
+  );
+}
+
+/**
+ * The weather now, and from 17:00 tomorrow's; a tap opens the «Погода» screen — also without the
+ * weather, as that screen has its own «Повторить». The source's credit goes under the card.
+ */
+function WeatherCard({ weather, tomorrow }: { weather: Weather | null; tomorrow: ForecastDay | null }) {
   const t = useT();
+  const style = { "--i": 0 } as CSSProperties;
   if (!weather) {
     return (
-      <Card index={0}>
-        <p className="muted">{t.today.weatherUnavailable}</p>
-      </Card>
+      <Link href="/weather" className="card card--link" style={style}>
+        <span className="muted">{t.today.weatherUnavailable}</span>
+        <span aria-hidden>›</span>
+      </Link>
     );
   }
+  const icon = tomorrow ? asEmoji(tomorrow.emoji) : "";
+  const later = tomorrow && t.today.withChance(
+    t.today.tomorrow(icon, formatRange(tomorrow.tmin, tomorrow.tmax)),
+    shownChance(tomorrow.precip_chance),
+  );
   return (
-    <Card title={weather.city} index={0}>
-      <div className="row">
-        <span className="temp">{formatTemp(weather.temperature)}</span>
-        <span className="weather__desc">
-          {weather.emoji} {weather.description}
-          <br />
-          <span className="muted">
-            {formatTemp(weather.tmin).replace("°", "")}…{formatTemp(weather.tmax)}
+    <>
+      <Link href="/weather" className="card weather-today" style={style}>
+        <span className="card__title weather-today__title">
+          <span>{weather.city}</span>
+          <span aria-hidden>›</span>
+        </span>
+        <span className="row">
+          <span className="temp">{formatTemp(weather.temperature)}</span>
+          <span className="weather__desc">
+            <span><span className="weather-today__icon">{asEmoji(weather.emoji)}</span> {weather.description}</span>
+            {weather.feels_like !== null && (
+              <span className="muted">{t.today.feelsLike(formatTemp(weather.feels_like))}</span>
+            )}
+            <span className="muted">{formatRange(weather.tmin, weather.tmax)}</span>
           </span>
         </span>
-      </div>
-      {weather.tips[0] && <p className="tip">{weather.tips[0]}</p>}
-    </Card>
+        {weather.tips[0] && <span className="tip">{weather.tips[0]}</span>}
+        {later && <span className="muted weather-today__tomorrow">{withIcon(later, icon)}</span>}
+      </Link>
+      <Credit text={t.weather.credit} className="credit--under" />
+    </>
   );
 }
 
@@ -46,17 +84,19 @@ function lessonsOver(lessons: TodayLesson[], now: number = Date.now()): boolean 
 const MAX_TIMEOUT = 2 ** 31 - 1;
 
 function LessonsCard({
-  lessons, weekLabel, index,
-}: { lessons: TodayLesson[]; weekLabel: string | null; index: number }) {
+  lessons, weekLabel, classesWeather, index,
+}: { lessons: TodayLesson[]; weekLabel: string | null; classesWeather: ClassesWeather | null; index: number }) {
   const t = useT();
   const [tick, setTick] = useState(0);
-  // «Пары закончились» is decided at render time, and while the screen stays open nothing else re-renders
-  // the card when the day's last lesson ends. So one timer, up to that moment, does. It is cleared on
-  // unmount and re-armed when the lessons change (or after it fires early: `tick` re-runs this effect).
+  // The card is decided at render time — «На пары» until the first lesson begins, «Пары закончились»
+  // once the last one has ended — and while the screen stays open nothing else re-renders it at
+  // those moments. So one timer, up to the next of them, does. It is cleared on unmount and re-armed
+  // when the lessons change, after it fires (`tick` re-runs this effect) and when it fires early.
   useEffect(() => {
-    const wait = Math.max(...lessons.map((lesson) => Date.parse(lesson.ends_at))) - Date.now();
-    if (!(wait > 0)) return;
-    const timer = setTimeout(() => setTick((count) => count + 1), Math.min(wait, MAX_TIMEOUT));
+    const now = Date.now();
+    const next = nextClassesChange(lessons, now);
+    if (next === null) return;
+    const timer = setTimeout(() => setTick((count) => count + 1), Math.min(next - now, MAX_TIMEOUT));
     return () => clearTimeout(timer);
   }, [lessons, tick]);
   // The timer runs on uptime, so after the device slept it fires late, and a refetch with the
@@ -68,24 +108,28 @@ function LessonsCard({
     document.addEventListener("visibilitychange", recheck);
     return () => document.removeEventListener("visibilitychange", recheck);
   }, []);
+  const way = classesLine(classesWeather, lessons, t);
   return (
     <Card title={weekLabel ? `${t.today.lessons} · ${weekLabel}` : t.today.lessons} index={index}>
       {lessonsOver(lessons) ? (
         <p className="muted">{t.today.lessonsOver}</p>
       ) : (
-        <ul className="list">
-          {lessons.map((lesson, position) => (
-            <li key={`${lesson.starts_at}-${position}`} className="lesson">
-              <span className="time">{lesson.time}</span>
-              <span className="lesson__body">
-                <span>{lesson.title}</span>
-                <span className="muted lesson__meta">
-                  {lessonMeta(lesson.kind, lesson.time, lesson.end, lesson.room)}
+        <>
+          <ul className="list">
+            {lessons.map((lesson, position) => (
+              <li key={`${lesson.starts_at}-${position}`} className="lesson">
+                <span className="time">{lesson.time}</span>
+                <span className="lesson__body">
+                  <span>{lesson.title}</span>
+                  <span className="muted lesson__meta">
+                    {lessonMeta(lesson.kind, lesson.time, lesson.end, lesson.room)}
+                  </span>
                 </span>
-              </span>
-            </li>
-          ))}
-        </ul>
+              </li>
+            ))}
+          </ul>
+          {way && <p className="tip">{way}</p>}
+        </>
       )}
     </Card>
   );
@@ -103,6 +147,47 @@ function RateLine({ emoji, code, rate, lang }: { emoji: string; code: string; ra
         {arrow} {formatNumber(Math.abs(change), lang)}
       </span>
     </div>
+  );
+}
+
+/**
+ * The notes: the first three pinned ones, each opening its note, and the way to all of them; with
+ * nothing pinned, only how many there are.
+ */
+function NotesCard({ count, pinned, index }: { count: number; pinned: PinnedNote[]; index: number }) {
+  const t = useT();
+  const style = { "--i": index } as CSSProperties;
+  if (pinned.length === 0) {
+    return (
+      <Link href="/notes" className="card card--link" style={style}>
+        <span>📝 {t.today.notes(count)}</span>
+        <span aria-hidden>›</span>
+      </Link>
+    );
+  }
+  return (
+    <section className="card notes-today" style={style}>
+      <h2 className="card__title">{t.tabs.notes}</h2>
+      <ul className="notes-today__list">
+        {pinned.map((note) => (
+          <li key={note.id}>
+            {/* Plain text, addresses too: a tap anywhere on the line opens the note. */}
+            <Link href={`/notes/${note.id}`} className="notes-today__note">
+              <span className="notes-today__text">
+                <span aria-hidden>📌 </span>
+                {note.text}
+              </span>
+              {/* The space parts the text from the progress in the link's spoken name. */}
+              {note.total > 0 && <> <NoteProgress done={note.done} total={note.total} /></>}
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <Link href="/notes" className="notes-today__all">
+        <span>{t.today.allNotes(count)}</span>
+        <span aria-hidden>›</span>
+      </Link>
+    </section>
   );
 }
 
@@ -157,9 +242,16 @@ export function TodayScreen() {
         </span>
       </header>
 
-      <WeatherCard weather={data.weather} />
+      <WeatherCard weather={data.weather} tomorrow={data.tomorrow} />
 
-      {shift > 0 && <LessonsCard lessons={data.lessons} weekLabel={data.week_label} index={1} />}
+      {shift > 0 && (
+        <LessonsCard
+          lessons={data.lessons}
+          weekLabel={data.week_label}
+          classesWeather={data.classes_weather}
+          index={1}
+        />
+      )}
 
       <Card title={t.today.plans} index={1 + shift}>
         {data.reminders_today.length === 0 ? (
@@ -212,10 +304,7 @@ export function TodayScreen() {
         </Card>
       )}
 
-      <Link href="/notes" className="card card--link" style={{ "--i": 4 + shift + moneyShift } as CSSProperties}>
-        <span>📝 {t.today.notes(data.notes_count)}</span>
-        <span aria-hidden>›</span>
-      </Link>
+      <NotesCard count={data.notes_count} pinned={data.pinned_notes} index={4 + shift + moneyShift} />
     </PullToRefresh>
   );
 }

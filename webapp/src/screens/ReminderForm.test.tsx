@@ -42,6 +42,41 @@ describe("ReminderForm", () => {
     expect(await screen.findByText("Напомню!")).toBeInTheDocument();
   });
 
+  it("counts the text and the phrase in characters as the server does", async () => {
+    at("2026-09-29T09:00:00Z");
+    const app = installTelegram();
+    const { calls } = mockApi({ "GET /me": me, "POST /reminders": () => ({ status: 201, body: created }) });
+    const { client } = renderWithApp(<ReminderForm />, { path: "/calendar/new/2026-09-30" });
+    await ready(client);
+    const canSave = () => vi.mocked(app.MainButton.setParams).mock.calls.at(-1)?.[0].is_active;
+    fireEvent.change(screen.getByLabelText("Время"), { target: { value: "10:00" } });
+    const text = screen.getByLabelText("О чём напомнить");
+    fireEvent.change(text, { target: { value: "🔔".repeat(201) } });
+    expect(screen.getByText("201/200")).toBeInTheDocument();
+    expect(text).toHaveAccessibleDescription("201/200");
+    expect(canSave()).toBe(false);
+    fireEvent.change(text, { target: { value: "🔔".repeat(200) } }); // 400 UTF-16 units
+    expect(canSave()).toBe(true);
+
+    const phrase = screen.getByLabelText("Напиши, например: завтра в 9 купить молоко");
+    const understand = screen.getByRole("button", { name: "Понять" });
+    fireEvent.change(phrase, { target: { value: "🔔".repeat(301) } });
+    expect(screen.getByText("301/300")).toBeInTheDocument();
+    expect(phrase).toHaveAccessibleDescription("301/300");
+    expect(understand).toBeDisabled();
+    fireEvent.keyDown(phrase, { key: "Enter" });
+    fireEvent.change(phrase, { target: { value: "🔔".repeat(300) } });
+    expect(understand).toBeEnabled();
+    expect(calls.filter((call) => call.path === "/reminders/parse")).toEqual([]); // Enter over the limit asked nothing
+
+    pressMainButton(app);
+    await waitFor(() =>
+      expect(calls).toContainEqual({
+        method: "POST", path: "/reminders", body: { text: "🔔".repeat(200), due_local: "2026-09-30T10:00" },
+      }),
+    );
+  });
+
   it("fills the form from a phrase", async () => {
     at("2026-09-29T09:00:00Z");
     const app = installTelegram();

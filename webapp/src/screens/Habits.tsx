@@ -21,13 +21,18 @@ function Progress({ habit }: { habit: Habit }) {
 
 export function HabitsScreen() {
   const t = useT();
+  const me = useMe();
   // "Today" is the city's today; until /me names the city's zone, a mark could hit another day.
-  const zone = useMe().data?.city.timezone;
+  const zone = me.data?.city.timezone;
   const habits = useHabits();
   const setMark = useSetMark();
 
   if (habits.isPending) return <Loader />;
-  if (habits.isError) return <ErrorState onRetry={() => void habits.refetch()} />;
+  // A failed refresh keeps the list on screen: only a first load that failed is an error.
+  if (habits.isLoadingError) return <ErrorState onRetry={() => void habits.refetch()} />;
+  // Without /me no mark could ever be made: «Повторить» asks for it again, where every toggle
+  // would wait, disabled, for an answer that is not coming. A failed refresh keeps the zone known.
+  if (me.isLoadingError) return <ErrorState onRetry={() => void me.refetch()} />;
 
   return (
     <>

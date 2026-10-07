@@ -45,9 +45,25 @@ OLD_LABELS = {"rates": "money"}
 
 
 class NoteCb(CallbackData, prefix="n"):
+    # A new button gets a new action, never a new field: a field would make every button already
+    # in the chats stale. "del", the «🗑 N» of the lists before 2.6, asks first now, as "delask".
     action: str
     id: Id = 0
     page: int = 0
+
+
+class NoteItemCb(CallbackData, prefix="ni"):
+    """An item's button on a note's card. It carries the state to set rather than switching: an
+    old card's button never undoes a check made in the app."""
+
+    note: Id
+    id: Id
+    done: Annotated[int, Field(ge=0, le=1)]  # 1: check the item, 0: uncheck it
+
+
+class KeepCb(CallbackData, prefix="k"):
+    """«📝 В заметки» under a «Не понял» answer. It carries nothing: the note is the message the
+    answer replies to, read from the chat, since 500 characters would never fit a button."""
 
 
 class ReminderCb(CallbackData, prefix="r", sep="|"):
@@ -64,7 +80,10 @@ class FireCb(CallbackData, prefix="f"):
 
     action: str
     id: Id
-    at: int  # the reported firing, in minutes since the epoch
+    # The reported firing, in minutes since the epoch, before 2101-01-01 UTC: a forged one out
+    # of range does not unpack and is answered as a stale button, instead of failing to become
+    # a datetime.
+    at: Annotated[int, Field(ge=0, lt=68_899_680)]
 
 
 class HabitCb(CallbackData, prefix="h"):
@@ -81,6 +100,30 @@ class ScheduleCb(CallbackData, prefix="sc"):
 class SettingsCb(CallbackData, prefix="s"):
     action: str
     value: str = ""
+
+
+class CityCb(CallbackData, prefix="c"):
+    """«🏙 Города»: the list of the weather's cities, adding one, removing one, the choice
+    between namesakes when adding."""
+
+    action: str  # list / add / del / pick
+    id: Id = 0  # the city to remove; for pick, the place's number in the search
+    # Where «↩️ Назад» leads: s — the settings, w — the weather. The sub-view carries it into
+    # each of its buttons, where a forged longer value would not fit in 64 bytes: such a
+    # button does not unpack and is answered as a stale one.
+    back: Annotated[str, Field(pattern="^[sw]$")] = "s"
+    token: str = ""  # for pick, the search the button belongs to
+
+
+class WeatherCb(CallbackData, prefix="w"):
+    """A view of the weather: now, by the hour or the week, of the home city or an extra one.
+    No date: a press shows the forecast as of the press."""
+
+    # The city buttons carry the view shown, where a forged longer value would not fit in 64
+    # bytes: such a button does not unpack and is answered as a stale one.
+    view: Annotated[str, Field(pattern="^(now|hours|week)$")]
+    city: Id = 0  # an extra city; 0 is the home city
+    new: int = 0  # 1 under the digest and «Мой день»: the view comes as a message of its own
 
 
 class RatesCb(CallbackData, prefix="x"):
@@ -164,6 +207,37 @@ def app_markup(t: Translator, url: str | None) -> InlineKeyboardMarkup | None:
         return None
     button = InlineKeyboardButton(text=t("open-app"), web_app=WebAppInfo(url=url))
     return InlineKeyboardMarkup(inline_keyboard=[[button]])
+
+
+# The views of the weather and the keys of their buttons.
+WEATHER_VIEWS = {"now": "button-weather-now", "hours": "button-hours", "week": "button-week"}
+
+
+def weather_views(
+    t: Translator, shown: str, city: int = 0, new: int = 0
+) -> list[InlineKeyboardButton]:
+    """The buttons of the two views besides `shown`, for the same city: «🕐 По часам» and
+    «📅 Неделя» under «🌤 Погода», the digest and «Мой день»."""
+    return [
+        InlineKeyboardButton(
+            text=t(key), callback_data=WeatherCb(view=view, city=city, new=new).pack()
+        )
+        for view, key in WEATHER_VIEWS.items()
+        if view != shown
+    ]
+
+
+def today_markup(
+    t: Translator, weather: bool, url: str | None = None
+) -> InlineKeyboardMarkup | None:
+    """The buttons under «Мой день» and the morning digest: when the weather is shown, the home
+    city's hours and week, each as a message of its own that leaves this one whole; below them
+    the app, when it has an address."""
+    rows = [weather_views(t, "now", new=1)] if weather else []
+    app = app_markup(t, url)
+    if app is not None:
+        rows += app.inline_keyboard
+    return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
 
 
 def card_markup(t: Translator, card: int) -> InlineKeyboardMarkup:

@@ -36,7 +36,7 @@ wmo-snow = snow
 wmo-showers = showers
 wmo-snowfall = heavy snow
 wmo-storm = thunderstorm
-wmo-unknown = no precipitation
+wmo-unknown = no data
 tip-precip-now = { $kind ->
     [snow] 🌨 It's snowing now — put your hood on
    *[rain] 🌧 It's raining now — take an umbrella
@@ -70,7 +70,10 @@ welcome =
     🎓 Schedule — your MIREA group's classes or any calendar
     ⚙️ Settings — city, morning digest and language
 
+    { help-credits }
+
     Pick a section in the menu below 👇
+help-credits = Weather — open-meteo.com, city names — geonames.org; licence CC BY 4.0 (creativecommons.org/licenses/by/4.0), the bot rounds the data and adds tips.
 friend = friend
 app-soon = 📱 The app is coming soon — stay tuned.
 app-open = Open the app with the button below 👇
@@ -90,7 +93,22 @@ weather-now = { $emoji } { $city }: { $temp }, { $description }
 weather-feels = Feels like { $feels }, wind { $wind } m/s
 weather-range = Today: { $range }
 weather-unavailable = ⚠️ Couldn't get the weather. Please try again a bit later.
-weather-change-city = 🏙 Change city
+weather-city-gone = This city is no longer on your list
+button-weather-now = 🌤 Now
+button-hours = 🕐 Hourly
+button-week = 📅 Week
+button-city-home = 🏠 { $city }
+weather-hours-title = 🕐 { $city } — hourly
+weather-hours-title-local = 🕐 { $city } — hourly (local time)
+weather-hour = { $time } { $emoji } { $temp }
+weather-hour-chance = { $time } { $emoji } { $temp } 💧 { $chance }%
+weather-next-day = Tomorrow, { $date }
+weather-hours-none = No hourly forecast right now.
+weather-week-title = 📅 { $city } — 7 days
+weather-day = { $label } { $emoji } { $range }
+weather-day-chance = { $label } { $emoji } { $range } 💧 { $chance }%
+weather-days-none = No forecast for the week right now.
+weather-credit = Weather data: open-meteo.com
 
 ## My day and the morning digest
 today-title = { $part ->
@@ -101,6 +119,11 @@ today-title = { $part ->
     }, { $name }!
 today-date = 📅 Today, { $weekday }, { $date }
 today-weather-unavailable = 🌤 Weather is temporarily unavailable
+classes-weather = 🎓 To classes ({ $start }): { $start_weather } · after ({ $end }): { $end_weather }
+classes-weather-after = 🎓 After classes ({ $end }): { $end_weather }
+classes-temp-chance = { $temp }, 💧 { $chance }%
+today-tomorrow = Tomorrow: { $emoji } { $range }
+today-tomorrow-chance = Tomorrow: { $emoji } { $range }, 💧 { $chance }%
 today-reminders = { $count ->
         [0] 📌 No reminders for today
         [one] 📌 { $count } reminder for today:
@@ -124,10 +147,11 @@ today-streak-weeks = 🔥 Best streak: “{ $name }” — { $count } { $count -
        *[other] weeks
     }
 today-notes = 📝 Notes: { $count }
+today-pinned = 📌 { $text }
 today-rates = 💵 { $usd } ₽ · 💶 { $eur } ₽
 morning-title = ☀️ Good morning, { $name }!
 morning-date = 📅 { $weekday }, { $date }
-morning-weather = 🌡 { $city }: { $range }
+morning-weather = { $emoji } { $city }: { $temp }, { $description } · up to { $max } today
 morning-reminders = { $count ->
         [0] 📌 No reminders for today
        *[other] 📌 Today:
@@ -145,19 +169,70 @@ rates-bad-amount = I need a number above zero and up to one billion, e.g. 100 or
 rates-result = 💱 { $amount } { $source } = { $result } { $target }
 
 ## Lists
-list-item = { $number }. { $text }
 button-add = ➕ Add
 button-delete-item = 🗑 { $number }. { $text }
 deleted = 🗑 Deleted
 
 ## Notes
-notes-empty = 📝 No notes yet. Tap “➕ Add” to create the first one.
+notes-empty = 📝 No notes yet. Tap “➕ Note” or “☑️ List” to create the first one.
 notes-title = 📝 Your notes ({ $count }/{ $limit }):
 notes-limit = You've reached the limit of { $limit } notes. Delete some first.
 note-ask = ✍️ Send the text of the note (up to { $limit } characters):
 hint-note = Send the text of the note.
 note-bad-text = A note is text from 1 to { $limit } characters. Try again:
 note-saved = ✅ Note saved.
+note-line = { $number }. { $text }
+note-line-pinned = { $number }. 📌 { $text }
+note-progress = { $text } ✅ { $done }/{ $total }
+note-card-pinned = 📌 { $text }
+button-add-note = ➕ Note
+item-open = ⬜ { $text }
+item-done = ✅ { $text }
+button-clear-done = 🧹 Remove checked
+button-pin = 📌 Pin
+button-unpin = 📌 Unpin
+button-delete-note = 🗑 Delete
+button-back-notes = ↩️ To notes
+note-delete-ask = 🗑 Delete the note “{ $text }”?
+pinned-limit = You can pin up to { $limit } notes — unpin one first
+button-add-list = ☑️ List
+button-find = 🔍 Find
+button-reset-search = ✖️ Clear search
+button-add-items = ➕ Items
+button-edit = ✏️ Edit
+items-full = This note already has { $limit } items
+note-edit-ask = ✍️ Send the new text of the note (up to { $limit } characters):
+hint-note-edit = Send the new text of the note.
+note-updated = ✅ Note updated.
+items-ask = ✍️ Send the items, one per line (up to { $limit } in a note):
+hint-items = Send the items, one per line.
+items-room = Only { $count } more { $count ->
+        [one] item
+       *[other] items
+    } will fit — send fewer:
+item-too-long = The item “{ $text }” is longer than { $limit } characters — shorten it and try again:
+items-added = ✅ Items added: { $count }
+list-ask =
+    ☑️ Send a list: the title on the first line, then each item on its own line. For example:
+    Shopping
+    milk
+    bread
+hint-list = Send the title and the items, each on its own line.
+list-need-item = I need at least one item — one per line after the title.
+list-too-long = A list can have up to { $limit } items — send a shorter one:
+list-saved = ✅ List saved.
+search-ask = 🔍 What should I look for? Send a word or part of one:
+hint-search = Send a word to search for.
+search-bad = A search is up to { $limit } characters. Make it shorter:
+search-empty = 🔍 Nothing found for “{ $query }”. Try another word:
+search-found = 🔍 Found { $count } { $count ->
+        [one] note
+       *[other] notes
+    }
+search-title = 🔍 “{ $query }” — { $count } { $count ->
+        [one] note
+       *[other] notes
+    }:
 
 ## Reminders
 reminders-empty = ⏰ No active reminders. Tap “➕ Add” to create one.
@@ -193,6 +268,11 @@ day-today = Today
 day-tomorrow = Tomorrow
 day-after-tomorrow = The day after tomorrow
 unknown-hint = To create a reminder, just write, e.g. “tomorrow at 9 buy milk”. An expense — like this: “coffee 250”.
+unknown-keep = 🤔 I didn't get that. If it's a note, tap “📝 Save as a note”.
+button-keep = 📝 Save as a note
+button-open-note = 📝 Open
+keep-gone = That message is no longer available
+keep-too-long = Too long for a note — up to { $limit } characters
 button-snooze-10m = +10 min
 button-snooze-1h = +1 h
 button-snooze-tomorrow = Tomorrow
@@ -258,6 +338,20 @@ city-not-found = I couldn't find “{ $name }”. Check the name and send it aga
 city-unavailable = ⚠️ City search is unavailable. Please try later.
 city-choose = I found several cities — pick yours:
 city-saved = ✅ City saved: { $city }
+button-cities = 🏙 Cities
+cities-title = 🏙 Cities
+cities-home = 🏠 { $city } — home city: reminders and the morning digest follow its time
+cities-item = • { $city }
+cities-none = No other cities yet — add up to { $limit }, and their weather will be one tap away under “🌤 Weather”.
+button-change-home = ✏️ Change home city
+button-delete-city = 🗑 { $city }
+button-add-city = ➕ Add a city
+city-add-ask = 🏙 Which city should I add? Send its name:
+hint-city-add = Send the name of the city to add.
+city-choose-add = I found several cities — pick the one you mean:
+city-added = ✅ City added: { $city }. Its weather is the “{ $city }” button under “🌤 Weather”.
+city-duplicate = This city is already on your list. Send another one:
+cities-limit = You can add up to { $limit } cities.
 time-ask = 🕗 When should I send the morning digest? Format HH:MM, e.g. 07:30
 hint-time = Send a time as HH:MM, e.g. 07:30.
 time-bad = That doesn't look like a time. I need HH:MM, e.g. 07:30:

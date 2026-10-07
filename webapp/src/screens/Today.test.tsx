@@ -1,12 +1,15 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { keys } from "../api/queries";
-import type { TodayLesson } from "../api/types";
+import type { ClassesWeather, ForecastDay, PinnedNote, TodayLesson } from "../api/types";
 import { installTelegram } from "../test/fakeTelegram";
 import { habit, today } from "../test/fixtures";
 import { mockApi } from "../test/mockApi";
 import { renderWithApp } from "../test/render";
 import { TodayScreen } from "./Today";
+
+// The visible text is matched as Testing Library normalises it: a plain space where the app keeps
+// a percent on the number's line with a no-break one.
 
 describe("Today", () => {
   it("shows the whole day", async () => {
@@ -96,6 +99,55 @@ describe("Today", () => {
     mockApi({ "GET /today": { status: 400, body: { status: 400, code: "http_error", title: "Bad" } } });
     renderWithApp(<TodayScreen />);
     expect(await screen.findByRole("button", { name: "Повторить" })).toBeInTheDocument();
+  });
+});
+
+describe("Today's weather", () => {
+  const tomorrow: ForecastDay = {
+    date: "2026-09-29", emoji: "🌧", description: "дождь", tmin: 6.1, tmax: 11.0, precip_chance: 80,
+  };
+
+  it("opens the weather screen, and credits Open-Meteo under the card", async () => {
+    const app = installTelegram();
+    mockApi({ "GET /today": today });
+    renderWithApp(<TodayScreen />);
+    const card = await screen.findByRole("link", { name: /^Москва/ });
+    expect(card).toHaveAttribute("href", "/weather");
+    expect(within(card).getByText("+10°")).toBeInTheDocument();
+    expect(within(card).getByText("ощущается как +7°")).toBeInTheDocument();
+    expect(within(card).getByText("+6…+13°")).toBeInTheDocument();
+    expect(within(card).queryByText(/Завтра/)).not.toBeInTheDocument(); // before 17:00 the server sends none
+    const credit = screen.getByRole("button", { name: "open-meteo.com" });
+    expect(card).not.toContainElement(credit);
+    expect(credit.closest("p")).toHaveTextContent("Данные о погоде: open-meteo.com");
+    fireEvent.click(credit);
+    expect(app.openLink).toHaveBeenCalledWith("https://open-meteo.com/");
+  });
+
+  it("opens the weather screen without the weather too, and credits no one then", async () => {
+    installTelegram();
+    mockApi({ "GET /today": { ...today, weather: null } });
+    renderWithApp(<TodayScreen />);
+    const card = await screen.findByRole("link", { name: /Погода временно недоступна/ });
+    expect(card).toHaveAttribute("href", "/weather");
+    expect(screen.queryByText(/open-meteo/)).not.toBeInTheDocument();
+  });
+
+  it("tells tomorrow's weather in the evening, with a chance from 20 %", async () => {
+    installTelegram();
+    mockApi({ "GET /today": { ...today, tomorrow } });
+    const { unmount } = renderWithApp(<TodayScreen />);
+    const card = await screen.findByRole("link", { name: /^Москва/ });
+    const line = card.querySelector(".weather-today__tomorrow");
+    expect(line?.textContent?.replace(/\s+/g, " ")).toBe("Завтра: 🌧\uFE0F +6…+11°, 💧 80 %");
+    // The icon in a span of its own, which the light theme draws with an edge.
+    expect(line?.querySelector(".weather-today__icon")?.textContent).toBe("🌧\uFE0F");
+    unmount();
+    mockApi({ "GET /today": { ...today, tomorrow: { ...tomorrow, emoji: "☁️", precip_chance: 10 } } });
+    renderWithApp(<TodayScreen />, { lang: "en" });
+    const english = (await screen.findByRole("link", { name: /^Москва/ })).querySelector(".weather-today__tomorrow");
+    expect(english?.textContent?.replace(/\s+/g, " ")).toBe("Tomorrow: ☁️ +6…+11°");
+    expect(english?.querySelector(".weather-today__icon")?.textContent).toBe("☁️");
   });
 });
 
@@ -255,6 +307,68 @@ describe("Today lessons", () => {
     });
     expect(screen.getByText("Пары закончились")).toBeInTheDocument();
   });
+
+  // The whole day's, as the server sends it: 10:40 there, 14:10 back.
+  const classesWeather: ClassesWeather = {
+    start: "10:40", start_temp: 8.2, start_chance: 40, end: "14:10", end_temp: 11.6, end_chance: 70,
+  };
+  const withClasses = { ...today, has_schedule: true, lessons, week_label: null, classes_weather: classesWeather };
+  const there = "🎓 На пары (10:40): +8°, 💧 40 % · после пар (14:10): +12°, 💧 70 %";
+  const back = "🎓 После пар (14:10): +12°, 💧 70 %";
+
+  it("tells the weather of the way there and back, then of the way back, then nothing", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-28T07:00:00Z")); // 10:00 in Moscow, before the first lesson
+    installTelegram();
+    mockApi({ "GET /today": withClasses });
+    const first = renderWithApp(<TodayScreen />);
+    const line = await screen.findByText(there);
+    expect(line.closest("section")).toContainElement(screen.getByText("Математический анализ")); // the lessons' card
+    first.unmount();
+    vi.setSystemTime(new Date("2026-09-28T08:00:00Z")); // during the first lesson
+    const during = renderWithApp(<TodayScreen />);
+    expect(await screen.findByText(back)).toBeInTheDocument();
+    expect(screen.queryByText(/На пары/)).not.toBeInTheDocument();
+    during.unmount();
+    vi.setSystemTime(new Date("2026-09-28T11:10:00Z")); // the last one has just ended
+    renderWithApp(<TodayScreen />);
+    expect(await screen.findByText("Пары закончились")).toBeInTheDocument();
+    expect(screen.queryByText(/🎓/)).not.toBeInTheDocument();
+  });
+
+  it("tells the way back alone without the forecast of the way there, and nothing without the end's", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-09-28T07:00:00Z"));
+    installTelegram();
+    mockApi({ "GET /today": { ...withClasses, classes_weather: { ...classesWeather, start_temp: null } } });
+    const { unmount } = renderWithApp(<TodayScreen />);
+    expect(await screen.findByText(back)).toBeInTheDocument();
+    unmount();
+    mockApi({ "GET /today": { ...withClasses, classes_weather: null } });
+    renderWithApp(<TodayScreen />);
+    expect(await screen.findByText("Математический анализ")).toBeInTheDocument();
+    expect(screen.queryByText(/🎓/)).not.toBeInTheDocument();
+  });
+
+  it("drops the way there by itself when the first lesson begins", async () => {
+    fakeClock("2026-09-28T07:39:00Z"); // a minute before the first lesson
+    installTelegram();
+    const { calls } = mockApi({ "GET /today": withClasses });
+    renderWithApp(<TodayScreen />);
+    expect(await screen.findByText(there)).toBeInTheDocument();
+    act(() => {
+      vi.advanceTimersByTime(90_000);
+    });
+    expect(screen.getByText(back)).toBeInTheDocument();
+    expect(screen.queryByText(/На пары/)).not.toBeInTheDocument();
+    expect(calls.filter((call) => call.path === "/today")).toHaveLength(1); // no refetch behind it
+    // The same timer then waits for the end of the last lesson.
+    act(() => {
+      vi.advanceTimersByTime(4 * 60 * 60_000);
+    });
+    expect(screen.getByText("Пары закончились")).toBeInTheDocument();
+    expect(screen.queryByText(/🎓/)).not.toBeInTheDocument();
+  });
 });
 
 describe("Today's money", () => {
@@ -287,5 +401,55 @@ describe("Today's money", () => {
     renderWithApp(<TodayScreen />);
     expect(await screen.findByText("📝 4 заметки")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /^Деньги/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("Today's notes", () => {
+  const pinned: PinnedNote[] = [
+    { id: 12, text: "Покупки", done: 1, total: 2 },
+    { id: 4, text: "Пароль от wifi: hunter2 https://example.com/r\nи логин на второй строке", done: 0, total: 0 },
+  ];
+
+  /** The card a heading names. */
+  function cardOf(name: string): HTMLElement {
+    const card = screen.getByRole("heading", { name }).closest("section");
+    if (!card) throw new Error(`no card ${name}`);
+    return card;
+  }
+
+  it("shows the pinned notes, each opening its note, and the way to all of them", async () => {
+    installTelegram();
+    mockApi({ "GET /today": { ...today, notes_count: 12, pinned_notes: pinned } });
+    renderWithApp(<TodayScreen />);
+    await screen.findByRole("heading", { name: "Заметки" });
+    const card = cardOf("Заметки");
+    const shopping = within(card).getByRole("link", { name: "Покупки Отмечено 1 из 2" });
+    expect(shopping).toHaveAttribute("href", "/notes/12");
+    expect(within(shopping).getByText("✅ 1/2")).toBeInTheDocument();
+    // A plain line, its address too: the whole line opens the note, and nothing in it is a button.
+    const password = within(card).getByRole("link", { name: /^Пароль от wifi: hunter2/ });
+    expect(password).toHaveAttribute("href", "/notes/4");
+    expect(password).toHaveAccessibleName(/hunter2 https:\/\/example\.com\/r/);
+    expect(within(card).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(password).queryByText(/✅/)).not.toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: "Все заметки (12)" })).toHaveAttribute("href", "/notes");
+    expect(screen.queryByText(/📝/)).not.toBeInTheDocument();
+  });
+
+  it("speaks English too", async () => {
+    installTelegram();
+    mockApi({ "GET /today": { ...today, notes_count: 1, pinned_notes: [{ id: 12, text: "Shopping", done: 2, total: 5 }] } });
+    renderWithApp(<TodayScreen />, { lang: "en" });
+    await screen.findByRole("heading", { name: "Notes" });
+    expect(screen.getByRole("link", { name: "Shopping 2 of 5 checked" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "All notes (1)" })).toBeInTheDocument();
+  });
+
+  it("counts the notes, as before, when none is pinned", async () => {
+    installTelegram();
+    mockApi({ "GET /today": today });
+    renderWithApp(<TodayScreen />);
+    expect(await screen.findByRole("link", { name: "📝 4 заметки" })).toHaveAttribute("href", "/notes");
+    expect(screen.queryByRole("heading", { name: "Заметки" })).not.toBeInTheDocument();
   });
 });

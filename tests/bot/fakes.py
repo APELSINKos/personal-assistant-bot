@@ -10,7 +10,7 @@ from typing import Any
 from aiogram import Bot
 from aiogram.client.session.base import BaseSession
 from aiogram.methods import EditMessageText, SendMessage, TelegramMethod
-from aiogram.types import CallbackQuery, Chat, Message, Update, User
+from aiogram.types import CallbackQuery, Chat, Message, MessageEntity, Update, User
 
 _ids = itertools.count(1000)
 
@@ -22,6 +22,9 @@ class FakeSession(BaseSession):
         self.timeouts: list[int | None] = []  # the per-request timeout of each call
         self.errors: list[BaseException] = []  # raised one per call, oldest first
         self.results: dict[type[Any], Any] = {}
+        # The messages given back for SendMessage and EditMessageText, in order: a sent
+        # message's id is the one a button pressed under it carries.
+        self.messages: list[Message] = []
         # Called at the start of make_request, before the call is recorded — lets tests
         # observe ambient state (e.g. whether the write lock was released) at exactly
         # the point a request goes out, since aiogram's request middlewares (including
@@ -45,12 +48,14 @@ class FakeSession(BaseSession):
         if type(method) in self.results:
             return self.results[type(method)]
         if isinstance(method, SendMessage | EditMessageText):
-            return Message(
+            message = Message(
                 message_id=next(_ids),
                 date=datetime.now(UTC),
                 chat=Chat(id=int(method.chat_id or 1), type="private"),
                 text=method.text,
             )
+            self.messages.append(message)
+            return message
         return True
 
     async def stream_content(self, *args: Any, **kwargs: Any) -> AsyncGenerator[bytes, None]:
@@ -79,6 +84,7 @@ def message_update(
     chat_type: str = "private",
     sticker: bool = False,
     document: dict[str, Any] | None = None,
+    entities: list[MessageEntity] | None = None,
 ) -> Update:
     extra: dict[str, Any] = {}
     if document is not None:
@@ -100,14 +106,18 @@ def message_update(
         chat=chat,
         from_user=tg_user(user_id, lang),
         text=text,
+        entities=entities,
         **extra,
     )
     return Update(update_id=next(_ids), message=msg)
 
 
-def callback_update(data: str, *, user_id: int = 1, lang: str = "ru") -> Update:
+def callback_update(
+    data: str, *, user_id: int = 1, lang: str = "ru", message_id: int | None = None
+) -> Update:
+    """A button pressed under a message of its own, or under the bot's message `message_id`."""
     msg = Message(
-        message_id=next(_ids),
+        message_id=next(_ids) if message_id is None else message_id,
         date=datetime.now(UTC),
         chat=Chat(id=user_id, type="private"),
         text="list",

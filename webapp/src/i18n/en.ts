@@ -1,4 +1,5 @@
 import type { StreakUnit } from "../api/types";
+import type { ShownChance } from "../lib/format";
 import type { AlertWords, BudgetWords, Dict, HistoryWords } from "./ru";
 
 function plural(n: number, one: string, other: string): string {
@@ -42,6 +43,40 @@ export const en: Dict = {
     refreshing: "Refreshing…",
     lessons: "Classes",
     lessonsOver: "Classes are over for today",
+    tomorrow: (emoji: string, range: string) => `Tomorrow: ${emoji} ${range}`,
+    // Every weather text takes its `chance` from shownChance (lib/format.ts): null leaves it unsaid.
+    // A line of «Сегодня» may wrap: the drop stays with its number.
+    withChance: (text: string, chance: ShownChance | null) =>
+      chance === null ? text : `${text}, 💧\u00a0${chance}%`,
+    classes: (start: string, startWeather: string, end: string, endWeather: string) =>
+      `🎓 To classes (${start}): ${startWeather} · after (${end}): ${endWeather}`,
+    classesAfter: (end: string, endWeather: string) => `🎓 After classes (${end}): ${endWeather}`,
+    allNotes: (count: number) => `All notes (${count})`,
+  },
+  weather: {
+    title: "Weather",
+    now: "Now",
+    feels: (temp: string) => `Feels like ${temp}`,
+    wind: (speed: string, gusts: string | null) =>
+      gusts === null ? `Wind ${speed} m/s` : `Wind ${speed} m/s, gusts up to ${gusts} m/s`,
+    humidity: (percent: number) => `Humidity ${percent}%`,
+    hours: "24 hours",
+    days: "7 days",
+    chart: (min: string, max: string) => `Temperature over 24 hours: from ${min} to ${max}`,
+    stripLabel: "24-hour forecast",
+    // `chance` and `percent`: from shownChance, as in today.withChance.
+    hourLabel: (time: string, description: string, temp: string, chance: ShownChance | null) =>
+      `${time}, ${description}, ${temp}${chance === null ? "" : `, precipitation ${chance}%`}`,
+    dayLabel: (day: string, description: string, min: string, max: string, chance: ShownChance | null) =>
+      `${day}: ${description}, ${min} to ${max}${chance === null ? "" : `, precipitation ${chance}%`}`,
+    chance: (percent: ShownChance | null) =>
+      percent === null ? "" : `💧 ${percent}%`,
+    sun: (sunrise: string, sunset: string) => `🌅 ${sunrise} · 🌇 ${sunset}`,
+    polarNight: "🌑 Polar night",
+    polarDay: "☀️ Polar day",
+    credit: "Weather data: open-meteo.com",
+    cityGone: "This city is no longer on your list",
+    unavailable: "Weather is temporarily unavailable",
   },
   calendar: {
     title: "Calendar",
@@ -136,6 +171,25 @@ export const en: Dict = {
     confirmDelete: "Delete the note?",
     delete: "Delete the note",
     add: "Add a note",
+    search: "Search notes",
+    nothingFound: "Nothing found",
+    found: (count: number) => `Notes found: ${count}`,
+    pinned: "Pinned",
+    others: "Other notes",
+    limit: (limit: number) => `You've reached the limit of ${limit} notes. Delete some.`,
+    items: "Items",
+    newItem: "New item",
+    addItem: "Add",
+    clearDone: "Remove checked",
+    removeItem: (text: string) => `Delete the item “${text}”`,
+    pin: "Pin",
+    unpin: "Unpin",
+    itemsLimit: (limit: number) => `Up to ${limit} items`,
+    needTitle: "Add a title for the list",
+    progress: (done: number, total: number) => `✅ ${done}/${total}`,
+    progressLabel: (done: number, total: number) => `${done} of ${total} checked`,
+    gone: "This is already gone",
+    links: "Links",
   },
   money: {
     alert: ({ threshold, percent, name, month, spent, budget }: AlertWords) => {
@@ -215,8 +269,6 @@ export const en: Dict = {
     swap: "Swap the currencies",
   },
   more: {
-    city: "City",
-    searchCity: "Find a city",
     noCities: "Nothing found",
     citiesFound: (n: number) => `Cities found: ${n}`,
     morning: "Morning digest",
@@ -230,6 +282,17 @@ export const en: Dict = {
     source: "Source code on GitHub",
     currency: "Currency",
     currencyHint: "Amounts already noted aren't converted — only the sign changes.",
+    cities: "Cities",
+    homeHint: "reminders and the morning digest follow its time",
+    changeHome: "Change home city",
+    addCity: "Add a city",
+    newHome: "New home city",
+    cityToAdd: "City to add",
+    citiesLimit: "Up to 5 cities including your home city",
+    deleteCity: "Remove city",
+    data: "Data",
+    // The licence's name does not break across lines.
+    credits: "Weather — open-meteo.com, city names — geonames.org; licence CC\u00a0BY\u00a04.0 (creativecommons.org/licenses/by/4.0), the app rounds the data and adds tips.",
   },
   errors: {
     generic: "Something went wrong. Please try again.",
@@ -251,6 +314,10 @@ export const en: Dict = {
     too_large: "The calendar is too big or too complex to read",
     not_calendar: "This doesn't look like an .ics calendar",
     source: "Pick a group, a link or a file",
+    limit_pinned_note: "You can pin up to 5 notes — unpin one first",
+    limit_note_item: "This note already has 20 items",
+    limit_city: "You already have 5 cities including home — remove one",
+    duplicate_city: "This city is already on your list",
   },
   schedule: {
     title: "Schedule",

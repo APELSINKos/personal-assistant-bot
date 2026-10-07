@@ -1,4 +1,5 @@
 import type { HabitColor, MoneyKind, StreakUnit } from "../api/types";
+import type { ShownChance } from "../lib/format";
 
 const rules = new Intl.PluralRules("ru");
 
@@ -76,6 +77,40 @@ export const ru = {
     refreshing: "Обновляю…",
     lessons: "Пары",
     lessonsOver: "Пары закончились",
+    tomorrow: (emoji: string, range: string) => `Завтра: ${emoji} ${range}`,
+    // Every weather text takes its `chance` from shownChance (lib/format.ts): null leaves it unsaid.
+    // A line of «Сегодня» may wrap: the drop stays with its number, as the percent sign does.
+    withChance: (text: string, chance: ShownChance | null) =>
+      chance === null ? text : `${text}, 💧\u00a0${chance}\u00a0%`,
+    classes: (start: string, startWeather: string, end: string, endWeather: string) =>
+      `🎓 На пары (${start}): ${startWeather} · после пар (${end}): ${endWeather}`,
+    classesAfter: (end: string, endWeather: string) => `🎓 После пар (${end}): ${endWeather}`,
+    allNotes: (count: number) => `Все заметки (${count})`,
+  },
+  weather: {
+    title: "Погода",
+    now: "Сейчас",
+    feels: (temp: string) => `Ощущается как ${temp}`,
+    wind: (speed: string, gusts: string | null) =>
+      gusts === null ? `Ветер ${speed} м/с` : `Ветер ${speed} м/с, порывы до ${gusts} м/с`,
+    humidity: (percent: number) => `Влажность ${percent}\u00a0%`,
+    hours: "24 часа",
+    days: "7 дней",
+    chart: (min: string, max: string) => `Температура на сутки: от ${min} до ${max}`,
+    stripLabel: "Прогноз на 24 часа",
+    // `chance` and `percent`: from shownChance, as in today.withChance.
+    hourLabel: (time: string, description: string, temp: string, chance: ShownChance | null) =>
+      `${time}, ${description}, ${temp}${chance === null ? "" : `, осадки ${chance}\u00a0%`}`,
+    dayLabel: (day: string, description: string, min: string, max: string, chance: ShownChance | null) =>
+      `${day}: ${description}, от ${min} до ${max}${chance === null ? "" : `, осадки ${chance}\u00a0%`}`,
+    chance: (percent: ShownChance | null) =>
+      percent === null ? "" : `💧 ${percent}\u00a0%`,
+    sun: (sunrise: string, sunset: string) => `🌅 ${sunrise} · 🌇 ${sunset}`,
+    polarNight: "🌑 Полярная ночь",
+    polarDay: "☀️ Полярный день",
+    credit: "Данные о погоде: open-meteo.com",
+    cityGone: "Этого города уже нет в списке",
+    unavailable: "Погода временно недоступна",
   },
   calendar: {
     title: "Календарь",
@@ -171,6 +206,26 @@ export const ru = {
     confirmDelete: "Удалить заметку?",
     delete: "Удалить заметку",
     add: "Добавить заметку",
+    search: "Найти в заметках",
+    nothingFound: "Ничего не нашлось",
+    found: (count: number) => `Найдено заметок: ${count}`,
+    pinned: "Закреплённые",
+    others: "Остальные",
+    limit: (limit: number) => `Достигнут лимит — ${limit} заметок. Удали лишние.`,
+    items: "Пункты",
+    newItem: "Новый пункт",
+    addItem: "Добавить",
+    clearDone: "Убрать отмеченные",
+    removeItem: (text: string) => `Удалить пункт «${text}»`,
+    pin: "Закрепить",
+    unpin: "Открепить",
+    itemsLimit: (limit: number) => `Не больше ${limit} пунктов`,
+    needTitle: "Напиши название списка",
+    progress: (done: number, total: number) => `✅ ${done}/${total}`,
+    // What a screen reader says for `progress`.
+    progressLabel: (done: number, total: number) => `Отмечено ${done} из ${total}`,
+    gone: "Этого уже нет",
+    links: "Ссылки",
   },
   money: {
     alert: ({ threshold, percent, name, month, spent, budget }: AlertWords) => {
@@ -249,8 +304,6 @@ export const ru = {
     swap: "Поменять валюты местами",
   },
   more: {
-    city: "Город",
-    searchCity: "Найти город",
     noCities: "Ничего не нашлось",
     citiesFound: (n: number) => `Найдено городов: ${n}`,
     morning: "Утренняя сводка",
@@ -263,6 +316,17 @@ export const ru = {
     source: "Исходный код на GitHub",
     currency: "Валюта",
     currencyHint: "Суммы уже сделанных записей не пересчитываются — меняется только знак.",
+    cities: "Города",
+    homeHint: "по его времени приходят напоминания и сводка",
+    changeHome: "Сменить домашний",
+    addCity: "Добавить город",
+    newHome: "Новый домашний город",
+    cityToAdd: "Какой город добавить",
+    citiesLimit: "До 5 городов вместе с домашним",
+    deleteCity: "Удалить город",
+    data: "Данные",
+    // The licence's name does not break across lines.
+    credits: "Погода — open-meteo.com, названия городов — geonames.org; лицензия CC\u00a0BY\u00a04.0 (creativecommons.org/licenses/by/4.0), приложение округляет данные и добавляет советы.",
   },
   errors: {
     generic: "Что-то пошло не так. Попробуй ещё раз.",
@@ -284,6 +348,10 @@ export const ru = {
     too_large: "Календарь слишком большой или сложный — разобрать его не получится",
     not_calendar: "Это не похоже на календарь .ics",
     source: "Выбери группу, ссылку или файл",
+    limit_pinned_note: "Закрепить можно не больше 5 заметок — открепи одну",
+    limit_note_item: "В заметке уже 20 пунктов",
+    limit_city: "Уже 5 городов вместе с домашним — удали лишний",
+    duplicate_city: "Этот город уже в списке",
   },
   schedule: {
     title: "Расписание",

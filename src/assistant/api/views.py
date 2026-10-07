@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -12,7 +13,14 @@ from assistant.api.schemas import (
     BestStreak,
     CategoryTotalOut,
     CityOut,
+    ClassesWeatherOut,
     CurrencyRateOut,
+    ForecastCityOut,
+    ForecastDayOut,
+    ForecastHourOut,
+    ForecastNowOut,
+    ForecastOut,
+    FoundCityOut,
     HabitDetailOut,
     HabitOut,
     MeOut,
@@ -20,7 +28,9 @@ from assistant.api.schemas import (
     MoneyEntryOut,
     MoneyMonthOut,
     MorningOut,
+    NoteItemOut,
     NoteOut,
+    PinnedNoteOut,
     RateHistoryOut,
     RateOut,
     RatePointOut,
@@ -34,20 +44,33 @@ from assistant.api.schemas import (
     TodayMoneyOut,
     TodayOut,
     TodayReminder,
+    WeatherCityOut,
     WeatherOut,
 )
 from assistant.core.clients.cbr import Point, Rates
+from assistant.core.clients.openmeteo import City
 from assistant.core.i18n import Translator, resolve_language, translator
-from assistant.core.models import MoneyCategory, MoneyEntry, Note, Reminder, ScheduleSource, User
+from assistant.core.models import (
+    MoneyCategory,
+    MoneyEntry,
+    Reminder,
+    ScheduleSource,
+    User,
+    WeatherCity,
+)
 from assistant.core.money_style import OTHER
-from assistant.core.services import money, reminders, schedule
+from assistant.core.services import digest, money, reminders, schedule, weather
 from assistant.core.services.digest import TodayData
 from assistant.core.services.habits import HabitDetail, HabitStats
 from assistant.core.services.money_month import Alert, CategoryTotal, Month
+from assistant.core.services.notes import Item, NoteView
 from assistant.core.services.recurrence import Rule, describe
-from assistant.core.services.weather import WeatherNow
+from assistant.core.services.weather import Day, Forecast, Hour, WeatherNow
 from assistant.core.services.weather import describe as describe_weather
 from assistant.core.timeutil import to_local
+
+# The hours after «now» in the forecast: the app's strip of 24 hours begins with «now» itself.
+STRIP_HOURS = 23
 
 
 def user_language(user: User) -> str:
@@ -72,8 +95,29 @@ def me_out(user: User) -> MeOut:
     )
 
 
+def found_city_out(city: City) -> FoundCityOut:
+    return FoundCityOut(**asdict(city))
+
+
+def weather_city_out(city: WeatherCity) -> WeatherCityOut:
+    return WeatherCityOut(
+        id=city.id,
+        name=city.name,
+        admin=city.admin,
+        country=city.country,
+        lat=city.lat,
+        lon=city.lon,
+        timezone=city.timezone,
+        geo_id=city.geo_id,
+    )
+
+
+def _tips(now: WeatherNow, t: Translator) -> list[str]:
+    return [t(tip.key, **tip.params) for tip in now.tips]
+
+
 def weather_out(now: WeatherNow, t: Translator) -> WeatherOut:
-    emoji, key = describe_weather(now.code)
+    emoji, key = describe_weather(now.code, now.is_day)
     return WeatherOut(
         city=now.city,
         temperature=now.temperature,
@@ -84,7 +128,68 @@ def weather_out(now: WeatherNow, t: Translator) -> WeatherOut:
         description=t(key),
         tmin=now.tmin,
         tmax=now.tmax,
-        tips=[t(tip.key, **tip.params) for tip in now.tips],
+        tips=_tips(now, t),
+    )
+
+
+def _clock(moment: datetime) -> str:
+    return moment.strftime("%H:%M")
+
+
+def _hour_out(hour: Hour, t: Translator) -> ForecastHourOut:
+    emoji, key = describe_weather(hour.code, hour.is_day)
+    return ForecastHourOut(
+        time=_clock(hour.at),
+        emoji=emoji,
+        description=t(key),
+        temperature=hour.temperature,
+        precip_chance=hour.precip_chance,
+    )
+
+
+def day_out(day: Day, t: Translator) -> ForecastDayOut:
+    emoji, key = describe_weather(day.code)
+    return ForecastDayOut(
+        date=day.day,
+        emoji=emoji,
+        description=t(key),
+        tmin=day.tmin,
+        tmax=day.tmax,
+        precip_chance=day.precip_chance,
+    )
+
+
+def forecast_out(
+    forecast: Forecast, city: ForecastCityOut, now: datetime, t: Translator
+) -> ForecastOut:
+    """The city's forecast at the moment `now` (aware): its hours and days counted on the
+    city's clock, from the hour going on and from the city's today."""
+    local = weather.local_now(forecast, now)
+    days = weather.days_from(forecast, local.date())
+    first = days[0] if days else None
+    polar = weather.polar(first) if first is not None else None
+    sun = first if polar is None else None  # no times on a polar day or night
+    current = forecast.now
+    emoji, key = describe_weather(current.code, current.is_day)
+    return ForecastOut(
+        city=city,
+        now=ForecastNowOut(
+            temperature=current.temperature,
+            feels_like=current.feels_like,
+            wind=current.wind,
+            gusts=current.gusts,
+            humidity=current.humidity,
+            is_day=current.is_day,
+            emoji=emoji,
+            description=t(key),
+            precip_chance=weather.chance_after(forecast, local),
+        ),
+        tips=_tips(current, t),
+        hours=[_hour_out(hour, t) for hour in weather.next_hours(forecast, local, STRIP_HOURS)],
+        days=[day_out(day, t) for day in days],
+        sunrise=_clock(sun.sunrise) if sun is not None and sun.sunrise is not None else None,
+        sunset=_clock(sun.sunset) if sun is not None and sun.sunset is not None else None,
+        polar=polar,  # type: ignore[arg-type]
     )
 
 
@@ -129,9 +234,18 @@ def habit_detail_out(detail: HabitDetail) -> HabitDetailOut:
     )
 
 
-def note_out(note: Note) -> NoteOut:
+def item_out(item: Item) -> NoteItemOut:
+    return NoteItemOut(id=item.id, text=item.text, done=item.done)
+
+
+def note_out(note: NoteView) -> NoteOut:
     return NoteOut(
-        id=note.id, text=note.text, created_at=note.created_at, updated_at=note.updated_at
+        id=note.id,
+        text=note.text,
+        pinned=note.pinned,
+        items=[item_out(item) for item in note.items],
+        created_at=note.created_at,
+        updated_at=note.updated_at,
     )
 
 
@@ -163,7 +277,33 @@ def reminder_out(reminder: Reminder, tz: str, t: Translator) -> ReminderOut:
     )
 
 
+def _tomorrow(data: TodayData, t: Translator) -> ForecastDayOut | None:
+    """Tomorrow's weather in the evening of the user's day, as in «Мой день»."""
+    day = digest.tomorrow_weather(data)
+    return day_out(day, t) if day is not None else None
+
+
+def _classes_weather(data: TodayData) -> ClassesWeatherOut | None:
+    """The way to today's first class and back from the last one, whatever the time now."""
+    found = digest.classes_weather(data)
+    if found is None:
+        return None
+    return ClassesWeatherOut(
+        start=_clock(found.start),
+        start_temp=found.start_temp,
+        start_chance=found.start_chance,
+        end=_clock(found.end),
+        end_temp=found.end_temp,
+        end_chance=found.end_chance,
+    )
+
+
+def pinned_note_out(note: NoteView) -> PinnedNoteOut:
+    return PinnedNoteOut(id=note.id, text=note.text, done=note.done, total=note.total)
+
+
 def today_out(data: TodayData, t: Translator) -> TodayOut:
+    """«Сегодня» of the user, on the clock data.local_now is on."""
     zone = data.local_now.tzinfo
     return TodayOut(
         date=data.local_now.date(),
@@ -217,6 +357,9 @@ def today_out(data: TodayData, t: Translator) -> TodayOut:
         )
         if data.money is not None
         else None,
+        tomorrow=_tomorrow(data, t),
+        classes_weather=_classes_weather(data),
+        pinned_notes=[pinned_note_out(note) for note in data.pinned],
     )
 
 

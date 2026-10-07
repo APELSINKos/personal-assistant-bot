@@ -373,19 +373,6 @@ a {
   }
 }
 
-.note-card {
-  display: block;
-  cursor: pointer;
-}
-
-.note-card__text {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  white-space: pre-wrap;
-}
-
 /* Floating add button, and the room it keeps after a list */
 .fab-room {
   height: 64px;
@@ -406,7 +393,18 @@ a {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
 }
 
+/* At a limit the button stays in its place, dimmed: a tap says why nothing opens. */
+.fab[aria-disabled="true"] {
+  opacity: 0.45;
+  box-shadow: none;
+}
+
 /* Bottom navigation */
+/* A control that the keyboard brings into view stops above the fixed bar, not under it. */
+html {
+  scroll-padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 16px);
+}
+
 .tabs {
   position: fixed;
   inset: auto 0 0;
@@ -497,6 +495,23 @@ select.input {
   outline-offset: 2px;
 }
 
+/* A ring of the app's own on the link cards, the language options and the morning switch: the
+   browser's is nearly black, and the dark glass hides it. In --accent-text rather than --accent:
+   the same mint in the dark theme, and in the light one a darker green that stays above 3:1 on the
+   light glows, where the brighter accent fell to about 2.8:1, under the browser's own ring. */
+.card--link:focus-visible,
+.segmented__option:focus-visible,
+.switch:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+/* Inside the red delete button, in the colour of its icon: the accent on its pink is too faint. */
+.swipe__delete:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -5px;
+}
+
 /* Visually hidden but still announced — used to fold extra context (e.g. a toggle's state) into
    a control's accessible name without displacing its visible label. */
 .visually-hidden {
@@ -529,6 +544,20 @@ textarea.input {
   margin: -8px 0 14px;
   color: var(--error-text);
   font-size: 13px;
+}
+
+/* The reminder form: the phrase and its button share a row (a .field alone would stack them, and
+   the counter under the field would land under the button), and so do the date and the time. A
+   flex item is never narrower than its content unless told so: the native date and time fields
+   would push the page past a 320 px screen. */
+.reminder-phrase {
+  display: flex;
+}
+
+.reminder-phrase .input,
+.reminder-when > *,
+.reminder-when .input {
+  min-width: 0;
 }
 
 .button {
@@ -660,7 +689,16 @@ a.button {
   background: var(--glass);
 }
 
-.result:disabled {
+/* The app's own ring, drawn inside the row: the results stand one under another, and a ring outside
+   would run into the next one. The browser's default ring is nearly invisible in the dark theme. */
+.result:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* A city search's results keep the focus while a city saves, so they are off by aria-disabled. */
+.result:disabled,
+.result[aria-disabled="true"] {
   opacity: 0.5;
   cursor: default;
 }
@@ -1066,6 +1104,50 @@ a.button {
   width: 100%;
 }
 
+/* «Ещё» → «Города»: the home city over the extra ones, each of which a swipe deletes; the search
+   opens under the two buttons that ask for it. */
+.city-home {
+  display: grid;
+  margin: 0 0 12px;
+}
+
+.city-home__name,
+.city-list__name {
+  font-weight: 600;
+}
+
+.city-home__hint,
+.city-list__area {
+  font-size: 13px;
+}
+
+.city-list {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+/* A row of the card: lower than a card of its own. */
+.city-list .swipe__content {
+  display: grid;
+  padding: 10px 14px;
+}
+
+.city-actions {
+  display: grid;
+  gap: 8px;
+}
+
+/* The button whose search is open: the same button closes it. --accent-text clears 3:1 for a
+   state's edge on the light card, where --accent does not. */
+.city-actions .button[aria-expanded="true"] {
+  border-color: var(--accent-text);
+}
+
+.city-search {
+  margin-top: 14px;
+}
+
 /* A habit's own screen. --habit is set on it from the habit's colour (tokens.css): it fills
    done days and edges the streak tile, but never colours text — the light palette clears 3:1
    for shapes, not 4.5:1 for small text. */
@@ -1266,6 +1348,13 @@ a.button {
   grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 0;
   margin: 0 -12px;
+}
+
+/* Seven in a row under 360 px keep each emoji at least 44 px wide, as in the category form. */
+@media (max-width: 359px) {
+  .emoji-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
 }
 
 .emoji-grid__item {

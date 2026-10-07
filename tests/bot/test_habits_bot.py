@@ -1,22 +1,33 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from aiogram.methods import AnswerCallbackQuery, EditMessageText
 from sqlalchemy import select
 
 from assistant.bot.keyboards import HabitCb
+from assistant.bot.routers import habits as habits_router
 from assistant.bot.routers.habits import habits_view, mark_view
+from assistant.core import timeutil
 from assistant.core.i18n import translator
 from assistant.core.models import Habit, HabitMark
 from assistant.core.services import habits
 from assistant.core.services.habits import HabitStats
-from assistant.core.timeutil import local_today
 from tests.bot.fakes import callback_update, message_update
 
 RU, EN = translator("ru"), translator("en")
+# 00:30 on 2 October in Moscow, still 1 October in UTC: the day is the user's.
+NOW = datetime(2026, 10, 1, 21, 30, tzinfo=UTC)
+TODAY = date(2026, 10, 2)
+
+
+@pytest.fixture(autouse=True)
+def frozen_clock(monkeypatch) -> None:
+    monkeypatch.setattr(habits_router, "clock", lambda: NOW)
+    # The router passes its `now` on everywhere: a fallback to the real clock fails the test.
+    monkeypatch.setattr(timeutil, "utcnow", lambda: pytest.fail("the real clock was read"))
 
 
 def _stats(**changes: object) -> HabitStats:
@@ -96,7 +107,7 @@ def test_mark_view() -> None:
     ]
 
 
-async def test_add_habit_dialog(feed, fake) -> None:
+async def test_add_habit_dialog(feed, fake, session) -> None:
     await feed(message_update("🎯 Привычки"))
     assert fake.sent_texts()[-1] == "🎯 Привычек пока нет. Нажми «➕ Добавить», чтобы начать."
     await feed(callback_update(HabitCb(action="add").pack()))
@@ -105,6 +116,8 @@ async def test_add_habit_dialog(feed, fake) -> None:
     assert fake.sent_texts()[-1] == "Название — это текст от 1 до 50 символов. Попробуй ещё раз:"
     await feed(message_update("Спорт"))
     assert fake.sent_texts()[-2] == "✅ Привычка «Спорт» добавлена."
+    [habit] = (await session.scalars(select(Habit))).all()
+    assert habit.created_on == TODAY  # the user's day by the section's clock
     # then the goal: daily until the user picks fewer days a week
     assert fake.sent_texts()[-1].startswith("🎯 Сколько раз в неделю — «Спорт»?")
     await feed(callback_update(HabitCb(action="add").pack()))
@@ -114,10 +127,10 @@ async def test_add_habit_dialog(feed, fake) -> None:
 
 async def test_toggle_cycle_and_foreign_habit(feed, fake, session, make_user) -> None:
     user = await make_user()
-    habit = await habits.create(session, user, "Спорт")
+    habit = await habits.create(session, user, "Спорт", now=NOW)
     await session.commit()
     await feed(callback_update(HabitCb(action="mark").pack()))
-    assert fake.of(EditMessageText)[-1].text.startswith("📅 Отметь привычки за ")
+    assert fake.of(EditMessageText)[-1].text.startswith("📅 Отметь привычки за 2 октября\n")
     toggle = HabitCb(action="toggle", id=habit.id).pack()
     seen = []
     for _ in range(3):
@@ -131,7 +144,7 @@ async def test_toggle_cycle_and_foreign_habit(feed, fake, session, make_user) ->
 
 async def test_delete_with_confirmation(feed, fake, session, make_user) -> None:
     user = await make_user()
-    habit = await habits.create(session, user, "Спорт")
+    habit = await habits.create(session, user, "Спорт", now=NOW)
     await session.commit()
     await feed(callback_update(HabitCb(action="delete").pack()))
     assert fake.of(EditMessageText)[-1].text == "Какую привычку удалить?"
@@ -154,7 +167,7 @@ async def test_mark_without_habits(feed, fake) -> None:
 
 async def test_old_buttons_never_hit_a_newer_habit(feed, fake, session, make_user) -> None:
     user = await make_user()
-    first = await habits.create(session, user, "Спорт")
+    first = await habits.create(session, user, "Спорт", now=NOW)
     await session.commit()
     await feed(callback_update(HabitCb(action="mark").pack()))
     old_toggle = fake.of(EditMessageText)[-1].reply_markup.inline_keyboard[0][0].callback_data
@@ -162,7 +175,7 @@ async def test_old_buttons_never_hit_a_newer_habit(feed, fake, session, make_use
     old_delete = fake.of(EditMessageText)[-1].reply_markup.inline_keyboard[0][0].callback_data
     await feed(callback_update(old_delete))
     assert fake.of(AnswerCallbackQuery)[-1].text == "🗑 Удалено"
-    second = await habits.create(session, user, "Чтение")
+    second = await habits.create(session, user, "Чтение", now=NOW)
     await session.commit()
     assert second.id != first.id  # ids of deleted habits are never reused
     await feed(callback_update(old_toggle))
@@ -178,14 +191,13 @@ async def test_toggle_outside_the_habit_days_answers_like_a_stale_button(
 ) -> None:
     user = await make_user()
     # Created "tomorrow" from the user's point of view, e.g. after moving west that day.
-    tomorrow = local_today(user.timezone) + timedelta(days=1)
-    habit = Habit(user_id=user.id, name="Спорт", created_on=tomorrow)
+    habit = Habit(user_id=user.id, name="Спорт", created_on=TODAY + timedelta(days=1))
     session.add(habit)
     await session.commit()
     await feed(callback_update(HabitCb(action="toggle", id=habit.id).pack()))
     answer = fake.of(AnswerCallbackQuery)[-1]
     assert answer.text == "Эта кнопка устарела — открой раздел заново из меню."
-    assert fake.of(EditMessageText)[-1].text.startswith("📅 Отметь привычки за ")
+    assert fake.of(EditMessageText)[-1].text.startswith("📅 Отметь привычки за 2 октября\n")
     assert not any(text.startswith("⚠️") for text in fake.sent_texts())
     assert (await session.scalars(select(HabitMark))).all() == []
 

@@ -7,6 +7,7 @@ import { Card } from "../components/Card";
 import { Fab } from "../components/Fab";
 import { MainAction } from "../components/MainAction";
 import { ErrorState, Loader } from "../components/States";
+import { useTextLimit } from "../components/TextLimit";
 import { useT } from "../i18n";
 import { CATEGORY_EMOJI, CATEGORY_LIMIT } from "../lib/money";
 import { confirmAction, useBackButton, useClosingConfirmation } from "../telegram";
@@ -102,7 +103,8 @@ function CategoryEditor({ category }: { category?: MoneyCategory }) {
   const [draft, setDraft] = useState(initial);
   const change = (patch: Partial<typeof initial>) => setDraft({ ...draft, ...patch });
   const name = draft.name.trim();
-  const valid = name.length > 0 && name.length <= MAX_NAME;
+  const nameLimit = useTextLimit(name, MAX_NAME);
+  const valid = name !== "" && !nameLimit.over;
   const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
   const busy = create.isPending || update.isPending;
 
@@ -149,8 +151,9 @@ function CategoryEditor({ category }: { category?: MoneyCategory }) {
       )}
       <label className="field">
         <span className="field__label">{t.money.name}</span>
-        <input className="input" maxLength={MAX_NAME} value={draft.name} onChange={(event) => change({ name: event.target.value })} />
+        <input className="input" value={draft.name} {...nameLimit.field} onChange={(event) => change({ name: event.target.value })} />
       </label>
+      {nameLimit.hint}
       <div className="field">
         <span className="field__label" id="category-emoji">{t.money.emoji}</span>
         <div className="emoji-grid category-emoji" role="group" aria-labelledby="category-emoji">

@@ -4,7 +4,8 @@ own card — its year as a picture, the last days, the weekly goal, emoji and co
 from __future__ import annotations
 
 import math
-from datetime import date, timedelta
+from collections.abc import Callable
+from datetime import date, datetime, timedelta
 
 from aiogram import Bot, F, Router
 from aiogram.types import (
@@ -26,8 +27,10 @@ from assistant.core.habit_style import COLORS, DAILY, EMOJI
 from assistant.core.i18n import Translator, format_day, weekday_short
 from assistant.core.services import cards, habits
 from assistant.core.services.habits import HabitStats
-from assistant.core.timeutil import local_today
+from assistant.core.timeutil import local_today, utcnow
 
+# Replaced in tests to freeze time.
+clock: Callable[[], datetime] = utcnow
 STRIP = {True: "🟩", False: "🟥", None: "⬜"}
 MARK = {True: "✅", False: "❌", None: "⬜"}
 NEXT_MARK: dict[bool | None, bool | None] = {None: True, True: False, False: None}
@@ -245,43 +248,45 @@ def _number(value: str, low: int, high: int) -> int | None:
     return number if low <= number <= high and str(number) == value else None
 
 
-async def _items(ctx: Ctx) -> list[HabitStats]:
-    return await habits.list_with_stats(ctx.session, ctx.user)
+async def _items(ctx: Ctx, now: datetime) -> list[HabitStats]:
+    return await habits.list_with_stats(ctx.session, ctx.user, now=now)
 
 
-async def _gone(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
+async def _gone(query: CallbackQuery, ctx: Ctx, bot: Bot, now: datetime) -> None:
     """The habit of the button no longer exists: say so and show the list."""
     await query.answer(ctx.t("already-deleted"))
-    await replies.edit(bot, query, *habits_view(await _items(ctx), ctx.t))
+    await replies.edit(bot, query, *habits_view(await _items(ctx, now), ctx.t))
 
 
 @section("habits")
 async def show_habits(message: Message, ctx: Ctx) -> None:
-    text, markup = habits_view(await _items(ctx), ctx.t)
+    text, markup = habits_view(await _items(ctx, clock()), ctx.t)
     await message.answer(text, reply_markup=markup)
 
 
 async def on_list(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
     await query.answer()
-    await replies.edit(bot, query, *habits_view(await _items(ctx), ctx.t))
+    await replies.edit(bot, query, *habits_view(await _items(ctx, clock()), ctx.t))
 
 
 async def on_open(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bot) -> None:
+    now = clock()
     try:
-        stats = await habits.stats_for(ctx.session, ctx.user, callback_data.id)
+        stats = await habits.stats_for(ctx.session, ctx.user, callback_data.id, now=now)
     except NotFound:
-        await _gone(query, ctx, bot)
+        await _gone(query, ctx, bot, now)
         return
     await query.answer()
-    await replies.edit(bot, query, *habit_view(stats, local_today(ctx.user.timezone), ctx.t))
+    await replies.edit(bot, query, *habit_view(stats, local_today(ctx.user.timezone, now), ctx.t))
 
 
 async def on_map(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bot) -> None:
     """The habit's year as a picture: the same card the Mini App shares, to forward anywhere."""
+    now = clock()
     try:
-        detail = await habits.detail(ctx.session, ctx.user, callback_data.id)
+        detail = await habits.detail(ctx.session, ctx.user, callback_data.id, now=now)
     except NotFound:
-        await _gone(query, ctx, bot)
+        await _gone(query, ctx, bot, now)
         return
     wait = ctx.cards.check(ctx.user.id)
     if wait is not None:
@@ -289,7 +294,7 @@ async def on_map(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bo
         return
     await query.answer()
     me = await bot.me()
-    card = cards.card_for(detail, local_today(ctx.user.timezone), me.username or "")
+    card = cards.card_for(detail, local_today(ctx.user.timezone, now), me.username or "")
     image = await cards.draw_card(card, ctx.t)
     await bot.send_photo(
         ctx.user.id,
@@ -299,21 +304,23 @@ async def on_map(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bo
 
 
 async def on_days(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bot) -> None:
+    now = clock()
     try:
-        stats = await habits.stats_for(ctx.session, ctx.user, callback_data.id)
+        stats = await habits.stats_for(ctx.session, ctx.user, callback_data.id, now=now)
     except NotFound:
-        await _gone(query, ctx, bot)
+        await _gone(query, ctx, bot, now)
         return
     await query.answer()
-    await replies.edit(bot, query, *days_view(stats, local_today(ctx.user.timezone), ctx.t))
+    await replies.edit(bot, query, *days_view(stats, local_today(ctx.user.timezone, now), ctx.t))
 
 
 async def on_day(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bot) -> None:
-    today = local_today(ctx.user.timezone)
+    now = clock()
+    today = local_today(ctx.user.timezone, now)
     try:
-        stats = await habits.stats_for(ctx.session, ctx.user, callback_data.id)
+        stats = await habits.stats_for(ctx.session, ctx.user, callback_data.id, now=now)
     except NotFound:
-        await _gone(query, ctx, bot)
+        await _gone(query, ctx, bot, now)
         return
     try:
         day = date.fromisoformat(callback_data.value)
@@ -325,7 +332,7 @@ async def on_day(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bo
     current = stats.last_days[-1 - (today - day).days]
     try:
         stats = await habits.set_mark(
-            ctx.session, ctx.user, stats.habit.id, day, NEXT_MARK[current]
+            ctx.session, ctx.user, stats.habit.id, day, NEXT_MARK[current], now=now
         )
     except InvalidInput:  # a day before the habit began
         await query.answer(ctx.t("stale-button"))
@@ -335,10 +342,11 @@ async def on_day(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bo
 
 
 async def on_goal(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bot) -> None:
+    now = clock()
     try:
-        stats = await habits.stats_for(ctx.session, ctx.user, callback_data.id)
+        stats = await habits.stats_for(ctx.session, ctx.user, callback_data.id, now=now)
     except NotFound:
-        await _gone(query, ctx, bot)
+        await _gone(query, ctx, bot, now)
         return
     await query.answer()
     await replies.edit(bot, query, *goal_view(stats, ctx.t))
@@ -349,20 +357,24 @@ async def on_set_goal(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bo
     if goal is None:
         await query.answer(ctx.t("stale-button"))
         return
+    now = clock()
     try:
-        stats = await habits.update(ctx.session, ctx.user, callback_data.id, weekly_goal=goal)
+        stats = await habits.update(
+            ctx.session, ctx.user, callback_data.id, now=now, weekly_goal=goal
+        )
     except NotFound:
-        await _gone(query, ctx, bot)
+        await _gone(query, ctx, bot, now)
         return
     await replies.answer_quietly(query)
-    await replies.edit(bot, query, *habit_view(stats, local_today(ctx.user.timezone), ctx.t))
+    await replies.edit(bot, query, *habit_view(stats, local_today(ctx.user.timezone, now), ctx.t))
 
 
 async def on_style(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bot) -> None:
+    now = clock()
     try:
-        stats = await habits.stats_for(ctx.session, ctx.user, callback_data.id)
+        stats = await habits.stats_for(ctx.session, ctx.user, callback_data.id, now=now)
     except NotFound:
-        await _gone(query, ctx, bot)
+        await _gone(query, ctx, bot, now)
         return
     await query.answer()
     await replies.edit(bot, query, *emoji_view(stats, ctx.t))
@@ -373,10 +385,13 @@ async def on_emoji(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: 
     if index is None:
         await query.answer(ctx.t("stale-button"))
         return
+    now = clock()
     try:
-        stats = await habits.update(ctx.session, ctx.user, callback_data.id, emoji=EMOJI[index])
+        stats = await habits.update(
+            ctx.session, ctx.user, callback_data.id, now=now, emoji=EMOJI[index]
+        )
     except NotFound:
-        await _gone(query, ctx, bot)
+        await _gone(query, ctx, bot, now)
         return
     await replies.answer_quietly(query)
     await replies.edit(bot, query, *color_view(stats, ctx.t))
@@ -386,22 +401,24 @@ async def on_color(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: 
     if callback_data.value not in COLORS:
         await query.answer(ctx.t("stale-button"))
         return
+    now = clock()
     try:
         stats = await habits.update(
-            ctx.session, ctx.user, callback_data.id, color=callback_data.value
+            ctx.session, ctx.user, callback_data.id, now=now, color=callback_data.value
         )
     except NotFound:
-        await _gone(query, ctx, bot)
+        await _gone(query, ctx, bot, now)
         return
     await replies.answer_quietly(query)
-    await replies.edit(bot, query, *habit_view(stats, local_today(ctx.user.timezone), ctx.t))
+    await replies.edit(bot, query, *habit_view(stats, local_today(ctx.user.timezone, now), ctx.t))
 
 
 async def on_rename(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bot) -> None:
+    now = clock()
     try:
-        stats = await habits.stats_for(ctx.session, ctx.user, callback_data.id)
+        stats = await habits.stats_for(ctx.session, ctx.user, callback_data.id, now=now)
     except NotFound:
-        await _gone(query, ctx, bot)
+        await _gone(query, ctx, bot, now)
         return
     await query.answer()
     await ctx.state.set_state(HabitForm.rename)
@@ -414,7 +431,7 @@ async def save_rename(message: Message, ctx: Ctx) -> None:
     data = await ctx.state.get_data()
     try:
         stats = await habits.update(
-            ctx.session, ctx.user, int(data["habit_id"]), name=message.text or ""
+            ctx.session, ctx.user, int(data["habit_id"]), now=clock(), name=message.text or ""
         )
     except NotFound:
         await ctx.state.clear()
@@ -431,21 +448,23 @@ async def save_rename(message: Message, ctx: Ctx) -> None:
 
 
 async def on_mark(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
-    items = await _items(ctx)
+    now = clock()
+    items = await _items(ctx, now)
     if not items:
         await query.answer(ctx.t("habits-need-one"), show_alert=True)
         return
     await query.answer()
-    today = local_today(ctx.user.timezone)
+    today = local_today(ctx.user.timezone, now)
     await replies.edit(bot, query, *mark_view(items, today, ctx.t))
 
 
 async def on_toggle(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bot) -> None:
-    today = local_today(ctx.user.timezone)
+    now = clock()
+    today = local_today(ctx.user.timezone, now)
     try:
-        stats = await habits.stats_for(ctx.session, ctx.user, callback_data.id)
+        stats = await habits.stats_for(ctx.session, ctx.user, callback_data.id, now=now)
         await habits.set_mark(
-            ctx.session, ctx.user, stats.habit.id, today, NEXT_MARK[stats.done_today]
+            ctx.session, ctx.user, stats.habit.id, today, NEXT_MARK[stats.done_today], now=now
         )
     except NotFound:
         await query.answer(ctx.t("already-deleted"))
@@ -455,7 +474,7 @@ async def on_toggle(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot:
         await query.answer(ctx.t("stale-button"))
     else:
         await replies.answer_quietly(query)
-    items = await _items(ctx)
+    items = await _items(ctx, now)
     if items:
         await replies.edit(bot, query, *mark_view(items, today, ctx.t))
     else:
@@ -464,16 +483,17 @@ async def on_toggle(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot:
 
 async def on_delete_menu(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
     await query.answer()
-    items = await _items(ctx)
+    items = await _items(ctx, clock())
     view = delete_view(items, ctx.t) if items else habits_view(items, ctx.t)
     await replies.edit(bot, query, *view)
 
 
 async def on_ask(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bot) -> None:
+    now = clock()
     try:
-        stats = await habits.stats_for(ctx.session, ctx.user, callback_data.id)
+        stats = await habits.stats_for(ctx.session, ctx.user, callback_data.id, now=now)
     except NotFound:
-        await _gone(query, ctx, bot)
+        await _gone(query, ctx, bot, now)
         return
     await query.answer()
     await replies.edit(bot, query, *confirm_view(stats, ctx.t))
@@ -482,11 +502,11 @@ async def on_ask(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bo
 async def on_delete(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bot) -> None:
     removed = await habits.delete(ctx.session, ctx.user.id, callback_data.id)
     await replies.answer_quietly(query, ctx.t("deleted" if removed else "already-deleted"))
-    await replies.edit(bot, query, *habits_view(await _items(ctx), ctx.t))
+    await replies.edit(bot, query, *habits_view(await _items(ctx, clock()), ctx.t))
 
 
 async def on_add(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
-    if len(await _items(ctx)) >= LIMITS.habits:
+    if len(await _items(ctx, clock())) >= LIMITS.habits:
         await query.answer(ctx.t("habits-limit", limit=LIMITS.habits), show_alert=True)
         return
     await query.answer()
@@ -498,8 +518,9 @@ async def on_add(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
 
 
 async def save_habit(message: Message, ctx: Ctx) -> None:
+    now = clock()
     try:
-        habit = await habits.create(ctx.session, ctx.user, message.text or "")
+        habit = await habits.create(ctx.session, ctx.user, message.text or "", now=now)
     except InvalidInput as error:
         key = "habit-duplicate" if error.params.get("reason") == "duplicate" else "habit-bad-name"
         await message.answer(ctx.t(key, limit=LIMITS.habit_length))
@@ -513,7 +534,8 @@ async def save_habit(message: Message, ctx: Ctx) -> None:
     await ctx.state.clear()
     await message.answer(ctx.t("habit-added", name=habit.name), reply_markup=main_menu(ctx.t))
     # Then the goal: a new habit is daily until the user picks fewer days a week.
-    text, markup = goal_view(await habits.stats_for(ctx.session, ctx.user, habit.id), ctx.t)
+    stats = await habits.stats_for(ctx.session, ctx.user, habit.id, now=now)
+    text, markup = goal_view(stats, ctx.t)
     await message.answer(text, reply_markup=markup)
 
 

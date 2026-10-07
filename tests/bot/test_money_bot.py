@@ -1,22 +1,24 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime
 
+import pytest
 from aiogram.methods import AnswerCallbackQuery, EditMessageText, GetMe, SendMessage, SendPhoto
 from aiogram.types import Update
 from aiogram.types import User as TgUser
 
 from assistant.bot.keyboards import MoneyCb
+from assistant.bot.routers import money as money_router
 from assistant.bot.texts import TEXT_LIMIT, utf16_len
-from assistant.core.i18n import translator
+from assistant.core import timeutil
+from assistant.core.i18n import Translator, translator
 from assistant.core.models import MoneyCategory, User
 from assistant.core.money_style import CATEGORY_EMOJI, EXPENSE
-from assistant.core.services import money, money_month
-from assistant.core.services.money_cards import month_title
-from assistant.core.services.money_phrases import format_amount
-from assistant.core.timeutil import local_today
+from assistant.core.services import money, money_cards, money_month
 from tests.bot.fakes import callback_update, message_update
 
+# 00:30 on 1 September in Moscow, still 31 August in UTC: the month is the user's.
+NOW = datetime(2026, 8, 31, 21, 30, tzinfo=UTC)
 NBSP = "\u00a0"
 STALE = "Эта кнопка устарела — открой раздел заново из меню."
 BOT = TgUser(id=99, is_bot=True, first_name="Помощник", username="assistant_bot")
@@ -30,10 +32,6 @@ def rub(amount: str) -> str:
     return amount.replace(" ", NBSP) + f"{NBSP}₽"
 
 
-def money_text(hundredths: int) -> str:
-    return format_amount(hundredths, "RUB", "ru")
-
-
 def buttons(message: SendMessage | SendPhoto) -> list[list[str]]:
     markup = message.reply_markup
     return [[button.text for button in row] for row in markup.inline_keyboard] if markup else []
@@ -43,9 +41,16 @@ async def preset(session, user: User, key: str) -> MoneyCategory:
     return next(item for item in await money.categories(session, user) if item.preset == key)
 
 
+@pytest.fixture(autouse=True)
+def frozen_clock(monkeypatch) -> None:
+    monkeypatch.setattr(money_router, "clock", lambda: NOW)
+    # The router passes its `now` on everywhere: a fallback to the real clock fails the test.
+    monkeypatch.setattr(timeutil, "utcnow", lambda: pytest.fail("the real clock was read"))
+
+
 async def spend(session, user: User, key: str, amount: int, day: date | None = None) -> None:
     category = await preset(session, user, key)
-    await money.add_entry(session, user, amount=amount, category_id=category.id, day=day)
+    await money.add_entry(session, user, amount=amount, category_id=category.id, day=day, now=NOW)
     await session.commit()
 
 
@@ -68,19 +73,16 @@ async def test_start_names_the_money_section(feed, fake) -> None:
 
 async def test_the_month_so_far(feed, fake, session, make_user) -> None:
     user = await make_user()
-    today = local_today(user.timezone)
     await money.set_budget(session, user, 3000000)
     await spend(session, user, "groceries", 520000)
     await spend(session, user, "cafe", 310000)
     await spend(session, user, "salary", 2500000)
     await feed(message_update("💰 Финансы"))
-    days_left = ((today.replace(day=28) + timedelta(days=4)).replace(day=1) - today).days
-    per_day = (3000000 - 830000) // days_left
     assert fake.sent_texts()[-1].split("\n") == [
-        f"💰 {month_title(today.replace(day=1), 'ru')}",
+        "💰 Сентябрь 2026",
         f"Потрачено: {rub('8 300')} из {rub('30 000')} (28 %)",
         f"Доходы: {rub('25 000')} · баланс +{rub('16 700')}",
-        f"Осталось {rub('21 700')} — по {money_text(per_day)} в день",
+        f"Осталось {rub('21 700')} — по {rub('723,33')} в день",  # 30 days left, today included
         "",
         f"▰▰▰▱▱ 🛒 Продукты — {rub('5 200')} (63 %)",
         f"▰▰▱▱▱ ☕ Кафе — {rub('3 100')} (37 %)",
@@ -119,27 +121,23 @@ async def test_an_empty_month_in_english(feed, fake, make_user) -> None:
 
 async def test_the_month_report_and_the_one_before(feed, fake, session, make_user) -> None:
     user = await make_user()
-    today = local_today(user.timezone)
-    first = today.replace(day=1)
-    before = (first - timedelta(days=1)).replace(day=1)
     fake.results[GetMe] = BOT
     await spend(session, user, "cafe", 25000)
     await feed(press("report"))
     [photo] = fake.of(SendPhoto)
-    assert photo.caption == f"💰 {month_title(first, 'ru')}: потрачено {rub('250')}"
+    assert photo.caption == f"💰 Сентябрь 2026: потрачено {rub('250')}"
     assert buttons(photo) == []  # nothing earlier
-    await spend(session, user, "cafe", 99900, first - timedelta(days=1))
+    await spend(session, user, "cafe", 99900, date(2026, 8, 31))
     await feed(press("report"))
-    assert buttons(fake.of(SendPhoto)[-1]) == [[f"◀️ {month_title(before, 'ru')}"]]
-    await feed(press("report", before.strftime("%Y-%m")))
+    assert buttons(fake.of(SendPhoto)[-1]) == [["◀️ Август 2026"]]
+    await feed(press("report", "2026-08"))
     last = fake.of(SendPhoto)[-1]
-    assert last.caption == f"💰 {month_title(before, 'ru')}: потрачено {rub('999')}"
+    assert last.caption == f"💰 Август 2026: потрачено {rub('999')}"
 
 
 async def test_a_forged_or_future_month_is_a_stale_button(feed, fake, make_user) -> None:
-    user = await make_user()
-    later = (local_today(user.timezone).replace(day=28) + timedelta(days=4)).replace(day=1)
-    for value in ("2026-99", "nope", later.strftime("%Y-%m")):
+    await make_user()
+    for value in ("2026-99", "nope", "2026-10"):  # October is still ahead
         await feed(press("report", value))
         assert fake.of(AnswerCallbackQuery)[-1].text == STALE
     assert fake.of(SendPhoto) == []
@@ -158,8 +156,16 @@ async def test_at_most_six_pictures_a_minute(feed, fake, monotonic) -> None:
     assert len(fake.of(SendPhoto)) == 7
 
 
-async def test_the_rates_with_the_converter_and_30_days(feed, fake, cbr) -> None:
+async def test_the_rates_with_the_converter_and_30_days(feed, fake, cbr, monkeypatch) -> None:
     fake.results[GetMe] = BOT
+    drawn: list[money_cards.RatesCard] = []
+    draw = money_cards.draw_rates
+
+    async def draw_and_keep(card: money_cards.RatesCard, t: Translator) -> bytes:
+        drawn.append(card)
+        return await draw(card, t)
+
+    monkeypatch.setattr(money_cards, "draw_rates", draw_and_keep)
     await feed(press("rates"))
     [rates] = fake.of(SendMessage)
     assert rates.text.startswith("💱 Курс ЦБ РФ на 28 сентября")
@@ -169,6 +175,8 @@ async def test_the_rates_with_the_converter_and_30_days(feed, fake, cbr) -> None
     await feed(press("chart"))
     [photo] = fake.of(SendPhoto)
     assert photo.caption == "📈 Курсы ЦБ за 30 дней"
+    [card] = drawn
+    assert card.today == date(2026, 9, 1)  # the user's day by the section's clock
     cbr.history_fail = True
     await feed(press("chart"))
     assert fake.sent_texts()[-1] == "⚠️ Не удалось получить курсы. Попробуй чуть позже."
@@ -207,9 +215,7 @@ async def test_the_entries_of_the_month_ten_a_page(feed, fake, session, make_use
 async def test_an_entry_is_deleted_after_a_confirmation(feed, fake, session, make_user) -> None:
     user = await make_user()
     await spend(session, user, "cafe", 25000)
-    [(entry, _)] = await money_month.entries(
-        session, user, local_today(user.timezone).replace(day=1)
-    )
+    [(entry, _)] = await money_month.entries(session, user, date(2026, 9, 1))
     await feed(callback_update(MoneyCb(action="delask", id=entry.id).pack()))
     assert edited(fake).text == f"🗑 Удалить «☕ Кафе — {rub('250')}»?"
     assert buttons(edited(fake)) == [["🗑 Да, удалить", "↩️ Назад"]]
@@ -269,7 +275,7 @@ async def test_the_budgets_fit_telegram_at_their_most(feed, fake, session, make_
         await money.update_category(session, user, category.id, budget=money.MAX_HUNDREDTHS)
         for _ in range(2):
             await money.add_entry(
-                session, user, amount=money.MAX_HUNDREDTHS, category_id=category.id
+                session, user, amount=money.MAX_HUNDREDTHS, category_id=category.id, now=NOW
             )
     await session.commit()
     await feed(press("budget"))

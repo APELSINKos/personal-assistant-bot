@@ -1,26 +1,34 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import timedelta
+from datetime import UTC, date, datetime
 
+import pytest
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import AnswerCallbackQuery, EditMessageText, SendMessage
 from aiogram.types import Update
 from sqlalchemy import select
 
 from assistant.bot.keyboards import EntryCb
-from assistant.bot.money_texts import month_name
+from assistant.bot.routers import money_entry
+from assistant.core import timeutil
 from assistant.core.config import LIMITS
-from assistant.core.i18n import translator
 from assistant.core.models import MoneyCategory, MoneyEntry, User
 from assistant.core.money_style import CATEGORY_EMOJI
 from assistant.core.services import money
-from assistant.core.timeutil import local_today
 from tests.bot.fakes import callback_update, message_update
 
+# 00:30 on 1 September in Moscow, still 31 August in UTC: the day is the user's.
+NOW = datetime(2026, 8, 31, 21, 30, tzinfo=UTC)
 NBSP = "\u00a0"
-RU = translator("ru")
 STALE = "Эта кнопка устарела — открой раздел заново из меню."
+
+
+@pytest.fixture(autouse=True)
+def frozen_clock(monkeypatch) -> None:
+    monkeypatch.setattr(money_entry, "clock", lambda: NOW)
+    # The router passes its `now` on everywhere: a fallback to the real clock fails the test.
+    monkeypatch.setattr(timeutil, "utcnow", lambda: pytest.fail("the real clock was read"))
 
 
 def rub(amount: str) -> str:
@@ -44,27 +52,24 @@ async def preset(session, user: User, key: str) -> MoneyCategory:
     return next(item for item in await money.categories(session, user) if item.preset == key)
 
 
-async def this_month(user: User) -> str:
-    return month_name(local_today(user.timezone).replace(day=1), RU).capitalize()
-
-
 async def test_a_phrase_becomes_an_expense_at_once(feed, fake, session, make_user) -> None:
-    user = await make_user()
+    await make_user()
     await feed(message_update("кофе 250"))
     [entry] = await entries(session)
-    assert (entry.amount, entry.note, entry.day) == (25000, "кофе", local_today(user.timezone))
+    assert (entry.amount, entry.note, entry.day) == (25000, "кофе", date(2026, 9, 1))
     [reply] = fake.of(SendMessage)
-    assert reply.text == f"✅ ☕ Кафе — {rub('250')} · кофе\n{await this_month(user)}: {rub('250')}"
+    assert reply.text == f"✅ ☕ Кафе — {rub('250')} · кофе\nСентябрь: {rub('250')}"
     assert rows(reply) == [["🗂 Категория", "↩️ Отменить"]]
 
 
 async def test_yesterday_an_income_and_a_bare_number(feed, fake, session, make_user) -> None:
-    user = await make_user()
+    await make_user()
     await feed(message_update("вчера такси 300"))
     await feed(message_update("+5000 стипендия"))
     await feed(message_update("250"))
     taxi, stipend, other = await entries(session)
-    assert taxi.day == local_today(user.timezone) - timedelta(days=1)
+    assert taxi.day == date(2026, 8, 31)
+    assert fake.sent_texts()[0].endswith(f"\nАвгуст: {rub('300')}")  # the month of the entry
     first, second, third = (text.split("\n")[0] for text in fake.sent_texts())
     assert first == f"✅ 🚌 Транспорт — {rub('300')} · такси · вчера"
     assert second == f"✅ 🎓 Стипендия — +{rub('5 000')} · стипендия"
@@ -83,6 +88,14 @@ async def test_a_reminder_phrase_stays_a_reminder_and_a_quantity_is_not_money(
     assert reminder.startswith("⏰ Завтра, 09:00 — купить молоко")
     assert quantity.startswith("🤔 Не понял")
     assert dollars == "Суммы записываются в ₽ — валюта меняется в ⚙️ Настройках."
+
+
+async def test_a_phone_number_is_not_money(feed, fake, session, make_user) -> None:
+    await make_user()
+    for phrase in ("тел 8 999 123 45 67", "кофе 250 тел 8 999"):
+        await feed(message_update(phrase))
+        assert fake.sent_texts()[-1].startswith("🤔 Не понял")
+    assert await entries(session) == []
 
 
 async def test_another_category_is_remembered_for_the_note(feed, fake, session, make_user) -> None:
@@ -164,7 +177,7 @@ async def test_a_command_with_a_number_is_not_money(feed, fake, session, make_us
 async def test_another_users_entry_is_gone_for_this_one(feed, fake, session, make_user) -> None:
     stranger = await make_user(2)
     cafe = await preset(session, stranger, "cafe")
-    theirs = await money.add_entry(session, stranger, amount=100, category_id=cafe.id)
+    theirs = await money.add_entry(session, stranger, amount=100, category_id=cafe.id, now=NOW)
     await session.commit()
     await make_user(1)
     await feed(press("undo", theirs.id))
@@ -207,15 +220,22 @@ async def test_an_emoji_without_the_dialog_is_a_stale_button(
 async def test_a_budget_warning_follows_the_entry(feed, fake, session, make_user) -> None:
     user = await make_user()
     await money.set_budget(session, user, 100000)
+    groceries = await preset(session, user, "groceries")
+    await money.update_category(session, user, groceries.id, budget=90000)
     await session.commit()
     await feed(message_update("кофе 790"))
     await feed(message_update("кофе 20"))
-    month = month_name(local_today(user.timezone).replace(day=1), RU)
     assert fake.sent_texts()[-1] == (
-        f"⚠️ Потрачено 81 % бюджета на {month}: {rub('810')} из {rub('1 000')}"
+        f"⚠️ Потрачено 81 % бюджета на сентябрь: {rub('810')} из {rub('1 000')}"
     )
     await feed(message_update("кофе 1"))
     assert not fake.sent_texts()[-1].startswith("⚠️")
+    # Moved into a category with a budget of its own, an entry warns for that budget.
+    coffee = (await entries(session))[0]
+    await feed(press("set", coffee.id, groceries.id))
+    assert fake.sent_texts()[-1] == (
+        f"⚠️ Потрачено 88 % бюджета «🛒 Продукты» на сентябрь: {rub('790')} из {rub('900')}"
+    )
 
 
 async def test_the_month_limit(feed, fake, session, make_user, monkeypatch) -> None:

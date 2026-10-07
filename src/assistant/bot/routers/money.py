@@ -4,6 +4,7 @@ rates."""
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from datetime import date, datetime, timedelta
 
 from aiogram import Bot, F, Router
@@ -27,8 +28,10 @@ from assistant.core.money_style import EXPENSE
 from assistant.core.services import money as money_service
 from assistant.core.services import money_cards, money_month
 from assistant.core.services.money_phrases import to_hundredths
-from assistant.core.timeutil import local_today
+from assistant.core.timeutil import local_today, utcnow
 
+# Replaced in tests to freeze time.
+clock: Callable[[], datetime] = utcnow
 RATE_LINES = ("USD", "EUR")
 ENTRIES_PAGE = 10
 DELETE_ROW = 5
@@ -64,25 +67,25 @@ async def names(ctx: Ctx) -> dict[int, str]:
     return {item.id: money_service.name_of(item, ctx.t) for item in found}
 
 
-async def _section(ctx: Ctx) -> tuple[str, InlineKeyboardMarkup]:
-    month = await money_month.month(ctx.session, ctx.user)
+async def _section(ctx: Ctx, now: datetime) -> tuple[str, InlineKeyboardMarkup]:
+    month = await money_month.month(ctx.session, ctx.user, now=now)
     return section_text(month, await names(ctx), ctx.user.currency, ctx.t), section_markup(ctx)
 
 
 @section("money")
 async def show_money(message: Message, ctx: Ctx) -> None:
-    text, markup = await _section(ctx)
+    text, markup = await _section(ctx, clock())
     await message.answer(text, reply_markup=markup)
 
 
 async def on_home(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
     await query.answer()
-    await replies.edit(bot, query, *await _section(ctx))
+    await replies.edit(bot, query, *await _section(ctx, clock()))
 
 
-async def _entries(ctx: Ctx, page: int) -> tuple[str, InlineKeyboardMarkup]:
+async def _entries(ctx: Ctx, page: int, now: datetime) -> tuple[str, InlineKeyboardMarkup]:
     """This month's entries, the newest first, ten a page, each with a delete button."""
-    today = local_today(ctx.user.timezone)
+    today = local_today(ctx.user.timezone, now)
     rows = await money_month.entries(ctx.session, ctx.user, today.replace(day=1))
     chunk, page, pages = paginate(rows, page, ENTRIES_PAGE)
     first = page * ENTRIES_PAGE + 1
@@ -103,7 +106,7 @@ async def _entries(ctx: Ctx, page: int) -> tuple[str, InlineKeyboardMarkup]:
 
 async def on_entries(query: CallbackQuery, callback_data: MoneyCb, ctx: Ctx, bot: Bot) -> None:
     await query.answer()
-    await replies.edit(bot, query, *await _entries(ctx, callback_data.page))
+    await replies.edit(bot, query, *await _entries(ctx, callback_data.page, clock()))
 
 
 async def on_delete_ask(query: CallbackQuery, callback_data: MoneyCb, ctx: Ctx, bot: Bot) -> None:
@@ -112,7 +115,7 @@ async def on_delete_ask(query: CallbackQuery, callback_data: MoneyCb, ctx: Ctx, 
         entry = await money_service.entry(ctx.session, ctx.user, callback_data.id)
     except NotFound:
         await query.answer(ctx.t("already-deleted"))
-        await replies.edit(bot, query, *await _entries(ctx, page))
+        await replies.edit(bot, query, *await _entries(ctx, page, clock()))
         return
     category = await money_service.category(ctx.session, ctx.user, entry.category_id)
     name = money_service.name_of(category, ctx.t)
@@ -133,11 +136,11 @@ async def on_delete_ask(query: CallbackQuery, callback_data: MoneyCb, ctx: Ctx, 
 async def on_delete(query: CallbackQuery, callback_data: MoneyCb, ctx: Ctx, bot: Bot) -> None:
     removed = await money_service.delete_entry(ctx.session, ctx.user, callback_data.id)
     await replies.answer_quietly(query, ctx.t("deleted" if removed else "already-deleted"))
-    await replies.edit(bot, query, *await _entries(ctx, callback_data.page))
+    await replies.edit(bot, query, *await _entries(ctx, callback_data.page, clock()))
 
 
-async def _budget(ctx: Ctx) -> tuple[str, InlineKeyboardMarkup]:
-    month = await money_month.month(ctx.session, ctx.user)
+async def _budget(ctx: Ctx, now: datetime) -> tuple[str, InlineKeyboardMarkup]:
+    month = await money_month.month(ctx.session, ctx.user, now=now)
     expenses = await money_service.categories(ctx.session, ctx.user, kind=EXPENSE)
     text = budget_text(month, expenses, await names(ctx), ctx.user.currency, ctx.t)
     markup = InlineKeyboardMarkup(
@@ -154,7 +157,7 @@ async def _budget(ctx: Ctx) -> tuple[str, InlineKeyboardMarkup]:
 
 async def on_budget(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
     await query.answer()
-    await replies.edit(bot, query, *await _budget(ctx))
+    await replies.edit(bot, query, *await _budget(ctx, clock()))
 
 
 async def on_budget_categories(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
@@ -228,7 +231,7 @@ async def got_budget(message: Message, ctx: Ctx) -> None:
     await ctx.state.clear()
     saved = ctx.t("money-budget-saved" if value else "money-budget-removed")
     await message.answer(saved, reply_markup=main_menu(ctx.t))
-    text, markup = await _budget(ctx)
+    text, markup = await _budget(ctx, clock())
     await message.answer(text, reply_markup=markup)
 
 
@@ -245,7 +248,8 @@ def _month(value: str, today: date) -> date | None:
 
 async def on_report(query: CallbackQuery, callback_data: MoneyCb, ctx: Ctx, bot: Bot) -> None:
     """The month as a picture, to forward anywhere; a button under it shows the month before."""
-    today = local_today(ctx.user.timezone)
+    now = clock()
+    today = local_today(ctx.user.timezone, now)
     first = _month(callback_data.value, today)
     if first is None:
         await query.answer(ctx.t("stale-button"))
@@ -255,7 +259,7 @@ async def on_report(query: CallbackQuery, callback_data: MoneyCb, ctx: Ctx, bot:
         await query.answer(ctx.t("habit-cards-wait", seconds=math.ceil(wait)), show_alert=True)
         return
     await query.answer()
-    month = await money_month.month(ctx.session, ctx.user, first)
+    month = await money_month.month(ctx.session, ctx.user, first, now=now)
     me = await bot.me()
     report = money_cards.report_for(month, await names(ctx), ctx.user.currency, me.username or "")
     image = await money_cards.draw_report(report, ctx.t)
@@ -299,7 +303,7 @@ async def on_chart(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
         await bot.send_message(ctx.user.id, ctx.t("rates-unavailable"))
         return
     me = await bot.me()
-    card = money_cards.RatesCard(lines, local_today(ctx.user.timezone), me.username or "")
+    card = money_cards.RatesCard(lines, local_today(ctx.user.timezone, clock()), me.username or "")
     image = await money_cards.draw_rates(card, ctx.t)
     await bot.send_photo(
         ctx.user.id,

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  addDaysIso, bigDate, dayHeading, dayMonth, daysBetween, formatNumber, formatTemp, lessonMeta,
-  localTimeHm, localTodayIso, monthGrid, monthTitle, rangeLabel, shortMoment, weekOf, weekdayShort,
+  addDaysIso, bigDate, codePoints, dayHeading, dayMonth, daysBetween, formatNumber, formatRange, formatTemp,
+  lessonMeta, localTimeHm, localTodayIso, monthGrid, monthTitle, rangeLabel, shortMoment, shownChance, weekOf,
+  weekdayShort,
 } from "./format";
 
 describe("format", () => {
@@ -22,6 +23,18 @@ describe("format", () => {
     expect([9.6, -3.7, -0.4, 0.2, null].map(formatTemp)).toEqual(["+10°", "-4°", "0°", "0°", "—"]);
   });
 
+  it("writes a day's range with the degree sign once", () => {
+    expect(formatRange(1.6, 7.2)).toBe("+2…+7°");
+    expect(formatRange(-4.2, 0.3)).toBe("-4…0°");
+    expect(formatRange(null, 7)).toBe("—…+7°");
+  });
+
+  it("mentions a chance of precipitation from 20 %, or from the threshold it is given", () => {
+    expect([null, 0, 19, 20, 80].map((chance) => shownChance(chance))).toEqual([null, null, null, 20, 80]);
+    // The way to classes: the server sends nothing under 30 % there, and the app holds to it too.
+    expect([null, 29, 30, 70].map((chance) => shownChance(chance, 30))).toEqual([null, null, 30, 70]);
+  });
+
   it("does date arithmetic in the city's zone", () => {
     expect(addDaysIso("2026-12-31", 1)).toBe("2027-01-01");
     const late = new Date("2026-09-28T22:30:00Z");
@@ -35,6 +48,18 @@ describe("format", () => {
     expect(dayMonth("2026-09-28", "en")).toBe("September 28");
     expect(dayMonth("2025-06-02", "ru", true)).toBe("2 июня 2025");
     expect(dayMonth("2025-06-02", "en", true)).toBe("June 2, 2025");
+  });
+
+  it("counts a text in code points, as the server does", () => {
+    expect(codePoints("")).toBe(0);
+    expect(codePoints("Straße")).toBe(6);
+    expect(codePoints("😀")).toBe(1); // two UTF-16 units
+    expect("😀".repeat(300)).toHaveLength(600);
+    expect(codePoints("😀".repeat(300))).toBe(300); // a note of 300 emoji fits in 500
+    // As Python's len(): a family is five code points, a flag two, «й» written as «и» and a breve two.
+    expect(codePoints(String.fromCodePoint(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467))).toBe(5);
+    expect(codePoints("🇷🇺")).toBe(2);
+    expect(codePoints(String.fromCharCode(0x438, 0x306))).toBe(2);
   });
 });
 

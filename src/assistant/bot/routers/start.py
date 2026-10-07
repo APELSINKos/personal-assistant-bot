@@ -8,12 +8,16 @@ from aiogram.types import Message
 
 from assistant.bot.context import Ctx
 from assistant.bot.keyboards import app_markup, is_cancel, main_menu
+from assistant.bot.replies import NO_PREVIEW
 
 
 async def start(message: Message, ctx: Ctx) -> None:
     await ctx.state.clear()
     name = ctx.user.first_name or ctx.t("friend")
-    await message.answer(ctx.t("welcome", name=name), reply_markup=main_menu(ctx.t))
+    # The credits name the sites of the data: no preview card of one under the welcome.
+    await message.answer(
+        ctx.t("welcome", name=name), reply_markup=main_menu(ctx.t), link_preview_options=NO_PREVIEW
+    )
     markup = app_markup(ctx.t, ctx.settings.webapp_url)
     if markup is not None:
         await message.answer(ctx.t("app-open"), reply_markup=markup)
