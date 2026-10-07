@@ -363,3 +363,10 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* In the light theme the white cloud and the yellow sun melt into the white card, and in the week
+   and the strip the icon is the only sign of the weather: a thin edge in the text's colour keeps
+   every icon clear of the card. The dark theme needs none. */
+[data-theme="light"] :is(.strip__icon, .week__icon, .weather-now__icon, .weather-today__icon) {
+  filter: drop-shadow(0 0 1px var(--text)) drop-shadow(0 0 0.5px var(--text));
+}

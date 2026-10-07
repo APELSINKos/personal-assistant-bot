@@ -138,7 +138,7 @@ describe("Today's weather", () => {
     mockApi({ "GET /today": { ...today, tomorrow } });
     const { unmount } = renderWithApp(<TodayScreen />);
     const card = await screen.findByRole("link", { name: /^Москва/ });
-    expect(within(card).getByText("Завтра: 🌧 +6…+11°, 💧 80 %")).toBeInTheDocument();
+    expect(within(card).getByText("Завтра: 🌧\uFE0F +6…+11°, 💧 80 %")).toBeInTheDocument();
     unmount();
     mockApi({ "GET /today": { ...today, tomorrow: { ...tomorrow, emoji: "☁️", precip_chance: 10 } } });
     renderWithApp(<TodayScreen />, { lang: "en" });

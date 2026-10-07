@@ -21,6 +21,19 @@ export const CURVE_HEIGHT = 40;
 // Room over the highest point and under the lowest, so the 2 px line is never cut.
 const CURVE_PAD = 6;
 
+/**
+ * The server's weather icons whose default face is text: without the variation selector Edge and
+ * WebView2 (Telegram Desktop on Windows) draw them as flat glyphs of a text font. Partly cloudy,
+ * fog, drizzle, rain, snow, a storm and no data; the sun and the cloud come with the selector, and
+ * the moon is an emoji by default.
+ */
+const TEXT_ICONS = new Set(["\u{1F324}", "\u{1F32B}", "\u{1F326}", "\u{1F327}", "\u{1F328}", "\u26C8", "\u{1F321}"]);
+
+/** A weather icon drawn as a colour emoji everywhere: the selector after those that need it. */
+export function asEmoji(icon: string): string {
+  return TEXT_ICONS.has(icon) ? `${icon}\uFE0F` : icon;
+}
+
 /** One cell of the strip: now, or an hour of the forecast. */
 export interface StripCell {
   time: string;

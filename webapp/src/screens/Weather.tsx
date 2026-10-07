@@ -12,7 +12,7 @@ import { toast } from "../components/toastStore";
 import { useLang, useT } from "../i18n";
 import { capitalize, formatTemp, shownChance } from "../lib/format";
 import {
-  CELL_WIDTH, CURVE_HEIGHT, rangeBar, stripCells, temperatureCurve, weekDayLabel, weekDayName, windWords,
+  asEmoji, CELL_WIDTH, CURVE_HEIGHT, rangeBar, stripCells, temperatureCurve, weekDayLabel, weekDayName, windWords,
 } from "../lib/weather";
 import { haptic } from "../telegram";
 
@@ -141,7 +141,7 @@ function NowCard({ forecast }: { forecast: Forecast }) {
     <Card title={forecast.city.name} index={0}>
       <div className="weather-now">
         <span className="weather-now__temp">{formatTemp(now.temperature)}</span>
-        <span className="weather-now__icon" aria-hidden>{now.emoji}</span>
+        <span className="weather-now__icon" aria-hidden>{asEmoji(now.emoji)}</span>
       </div>
       <p className="weather-now__desc">{capitalize(now.description)}</p>
       {facts.length > 0 && (
@@ -197,7 +197,7 @@ function HoursStrip({ forecast }: { forecast: Forecast }) {
                 aria-label={t.weather.hourLabel(cell.time, cell.description, temperature, chance)}
               >
                 <span className="strip__time">{cell.time}</span>
-                <span className="strip__icon" aria-hidden>{cell.emoji}</span>
+                <span className="strip__icon" aria-hidden>{asEmoji(cell.emoji)}</span>
                 <span className="strip__temp">{temperature}</span>
                 <span className="strip__chance" aria-hidden>{t.weather.chance(chance)}</span>
               </li>
@@ -236,7 +236,7 @@ function WeekCard({ days }: { days: ForecastDay[] }) {
                 <span className="week__name">{weekDayLabel(index, day.date, lang, t.calendar.words)}</span>
                 {chance !== null && <span className="week__chance" aria-hidden>{t.weather.chance(chance)}</span>}
               </span>
-              <span className="week__icon" aria-hidden>{day.emoji}</span>
+              <span className="week__icon" aria-hidden>{asEmoji(day.emoji)}</span>
               <span className="week__temp week__temp--low">{formatTemp(day.tmin)}</span>
               <span className="week__bar" aria-hidden>
                 <span className="week__range" style={{ "--from": bar.from, "--width": bar.width } as CSSProperties} />

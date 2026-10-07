@@ -400,6 +400,11 @@ a {
 }
 
 /* Bottom navigation */
+/* A control that the keyboard brings into view stops above the fixed bar, not under it. */
+html {
+  scroll-padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 16px);
+}
+
 .tabs {
   position: fixed;
   inset: auto 0 0;
@@ -488,6 +493,21 @@ select.input {
 .cal-item:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* The same ring on the link cards, the language options and the morning switch: the browser's own
+   is nearly black, and the dark glass hides it. */
+.card--link:focus-visible,
+.segmented__option:focus-visible,
+.switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Inside the red delete button, in the colour of its icon: the accent on its pink is too faint. */
+.swipe__delete:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -5px;
 }
 
 /* Visually hidden but still announced — used to fold extra context (e.g. a toggle's state) into

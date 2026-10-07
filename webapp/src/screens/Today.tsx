@@ -12,7 +12,7 @@ import { ErrorState, Loader } from "../components/States";
 import { useLang, useT, type Lang } from "../i18n";
 import { bigDate, capitalize, formatNumber, formatRange, formatTemp, lessonMeta, shownChance } from "../lib/format";
 import { budgetText, formatAmount, monthName } from "../lib/money";
-import { classesLine, nextClassesChange } from "../lib/weather";
+import { asEmoji, classesLine, nextClassesChange } from "../lib/weather";
 
 /**
  * The weather now, and from 17:00 tomorrow's; a tap opens the «Погода» screen — also without the
@@ -30,7 +30,7 @@ function WeatherCard({ weather, tomorrow }: { weather: Weather | null; tomorrow:
     );
   }
   const later = tomorrow && t.today.withChance(
-    t.today.tomorrow(tomorrow.emoji, formatRange(tomorrow.tmin, tomorrow.tmax)),
+    t.today.tomorrow(asEmoji(tomorrow.emoji), formatRange(tomorrow.tmin, tomorrow.tmax)),
     shownChance(tomorrow.precip_chance),
   );
   return (
@@ -43,7 +43,7 @@ function WeatherCard({ weather, tomorrow }: { weather: Weather | null; tomorrow:
         <span className="row">
           <span className="temp">{formatTemp(weather.temperature)}</span>
           <span className="weather__desc">
-            <span>{weather.emoji} {weather.description}</span>
+            <span><span className="weather-today__icon">{asEmoji(weather.emoji)}</span> {weather.description}</span>
             {weather.feels_like !== null && (
               <span className="muted">{t.today.feelsLike(formatTemp(weather.feels_like))}</span>
             )}

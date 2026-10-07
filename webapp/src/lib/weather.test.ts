@@ -4,8 +4,8 @@ import { dict } from "../i18n";
 import { forecast } from "../test/fixtures";
 import { NBSP } from "./money";
 import {
-  CELL_WIDTH, CURVE_HEIGHT, classesLine, nextClassesChange, rangeBar, smoothPath, stripCells, temperatureCurve,
-  weekDayLabel, weekDayName, windWords,
+  asEmoji, CELL_WIDTH, CURVE_HEIGHT, classesLine, nextClassesChange, rangeBar, smoothPath, stripCells,
+  temperatureCurve, weekDayLabel, weekDayName, windWords,
 } from "./weather";
 
 /** Every y of a path's points and control points. */
@@ -57,6 +57,21 @@ describe("the 24-hour strip", () => {
     expect(temperatureCurve([])).toBeNull();
     // The same temperature all day: a flat line across the middle.
     expect(temperatureCurve([4, 4, 4])?.points).toEqual([[26, 20], [78, 20], [130, 20]]);
+  });
+});
+
+describe("the icons", () => {
+  it("asks for the colour face of the seven icons that are text by default", () => {
+    // Partly cloudy, fog, drizzle, rain, snow, a storm and no data, as the server sends them.
+    const text = ["\u{1F324}", "\u{1F32B}", "\u{1F326}", "\u{1F327}", "\u{1F328}", "\u26C8", "\u{1F321}"];
+    expect(text.map(asEmoji)).toEqual(text.map((icon) => `${icon}\uFE0F`));
+  });
+
+  it("leaves every other icon as it is", () => {
+    // The sun and the cloud carry the selector already, the moon and the drop are emoji by default.
+    for (const icon of ["\u2600\uFE0F", "\u2601\uFE0F", "\u{1F319}", "\u{1F4A7}", "\u{1F327}\uFE0F", ""]) {
+      expect(asEmoji(icon)).toBe(icon);
+    }
   });
 });
 
