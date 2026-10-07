@@ -380,6 +380,26 @@ async def test_a_sixth_pin_is_refused_and_a_pinned_note_stays_as_it_is(
     assert answer.text is None and not answer.show_alert
 
 
+async def test_an_expired_query_at_the_pin_limit_is_no_error(
+    feed, fake, session, make_user
+) -> None:
+    # A tap that waited out a restart is too old for the alert: nothing more goes wrong.
+    await make_user()
+    for number in range(5):
+        await make_note(session, f"закреплённая {number}", pinned=True)
+    extra = await make_note(session, "шестая")
+    fake.errors.append(
+        TelegramBadRequest(
+            method=AnswerCallbackQuery(callback_query_id="1"),
+            message="Bad Request: query is too old and response timeout expired",
+        )
+    )
+    await feed(press("pin", extra.id))
+    assert [answer.show_alert for answer in fake.of(AnswerCallbackQuery)] == [True]
+    assert fake.sent_texts() == []  # no "something went wrong"
+    assert (await notes.get_view(session, 1, extra.id)).pinned_at is None
+
+
 async def test_clearing_removes_the_checked_items(feed, fake, session, make_user) -> None:
     await make_user()
     note = await make_note(session, "Покупки", ["молоко", "хлеб", "сыр"])
@@ -549,6 +569,21 @@ async def test_expired_query_after_delete_still_refreshes_the_list(
     assert await notes.count(session, 1) == 0
     # The list is refreshed, and there is no "something went wrong".
     assert fake.sent_texts() == [EMPTY]
+
+
+async def test_an_expired_query_still_asks_before_a_delete(feed, fake, session, make_user) -> None:
+    await make_user()
+    note = await make_note(session, "секрет")
+    fake.errors.append(
+        TelegramBadRequest(
+            method=AnswerCallbackQuery(callback_query_id="1"),
+            message="Bad Request: query is too old and response timeout expired",
+        )
+    )
+    await feed(press("delask", note.id))
+    # The question comes all the same, and there is no "something went wrong".
+    assert fake.sent_texts() == [confirm_view(note, 0, RU)[0]]
+    assert await notes.count(session, 1) == 1
 
 
 async def test_a_forged_item_button_is_a_stale_button(feed, fake) -> None:

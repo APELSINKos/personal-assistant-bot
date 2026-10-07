@@ -340,7 +340,9 @@ async def on_pin(query: CallbackQuery, callback_data: NoteCb, ctx: Ctx, bot: Bot
         await _gone(query, ctx, bot)
         return
     except LimitReached:
-        await query.answer(ctx.t("pinned-limit", limit=LIMITS.pinned_notes), show_alert=True)
+        await replies.answer_quietly(
+            query, ctx.t("pinned-limit", limit=LIMITS.pinned_notes), show_alert=True
+        )
         return
     await _show_card(query, ctx, bot, callback_data.id, callback_data.page)
 
@@ -360,7 +362,7 @@ async def on_delete_ask(query: CallbackQuery, callback_data: NoteCb, ctx: Ctx, b
     except NotFound:
         await _gone(query, ctx, bot)
         return
-    await query.answer()
+    await replies.answer_quietly(query)
     await _edit(bot, query, confirm_view(note, callback_data.page, ctx.t))
 
 
