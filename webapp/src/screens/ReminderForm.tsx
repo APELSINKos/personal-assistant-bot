@@ -233,7 +233,7 @@ export function ReminderForm() {
     <>
       <h1 className="screen__title">{id === null ? t.reminderForm.newTitle : t.reminderForm.editTitle}</h1>
       {write.refused && <WriteRefusedCard />}
-      <div className="row field">
+      <div className="row field reminder-phrase">
         <input
           className="input"
           style={{ flex: 1 }}
@@ -305,7 +305,7 @@ export function ReminderForm() {
           )}
         </>
       )}
-      <div className="row">
+      <div className="row reminder-when">
         {showDate && (
           <label className="field" style={{ flex: 1 }}>
             <span className="field__label">

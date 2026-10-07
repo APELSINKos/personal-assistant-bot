@@ -544,6 +544,20 @@ textarea.input {
   font-size: 13px;
 }
 
+/* The reminder form: the phrase and its button share a row (a .field alone would stack them, and
+   the counter under the field would land under the button), and so do the date and the time. A
+   flex item is never narrower than its content unless told so: the native date and time fields
+   would push the page past a 320 px screen. */
+.reminder-phrase {
+  display: flex;
+}
+
+.reminder-phrase .input,
+.reminder-when > *,
+.reminder-when .input {
+  min-width: 0;
+}
+
 .button {
   min-height: 48px;
   padding: 0 18px;
@@ -1332,6 +1346,13 @@ a.button {
   grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 0;
   margin: 0 -12px;
+}
+
+/* Seven in a row under 360 px keep each emoji at least 44 px wide, as in the category form. */
+@media (max-width: 359px) {
+  .emoji-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
 }
 
 .emoji-grid__item {

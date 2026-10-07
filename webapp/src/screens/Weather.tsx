@@ -90,6 +90,19 @@ function CityWeather({ id }: { id: number }) {
 function CityChips({ home, cities, current }: { home: string; cities: WeatherCity[]; current: number }) {
   const t = useT();
   const [, navigate] = useLocation();
+  const row = useRef<HTMLDivElement>(null);
+  // Opened by its address (a reload of an extra city's weather), the row starts at its left end,
+  // where the pressed chip may not be: it is brought into view then and whenever the city changes,
+  // and once more when the fonts are in, as the chips' own font may come after them and widen them.
+  // Optional calls: jsdom has neither scrollIntoView nor document.fonts.
+  useEffect(() => {
+    const show = () => {
+      const pressed = row.current?.querySelector<HTMLElement>('[aria-pressed="true"]');
+      pressed?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    };
+    show();
+    void document.fonts?.ready.then(show);
+  }, [current]);
   const chips = [{ id: 0, name: `🏠 ${home}` }, ...cities.map((city) => ({ id: city.id, name: city.name }))];
   const open = (id: number) => {
     if (id === current) return;
@@ -98,7 +111,7 @@ function CityChips({ home, cities, current }: { home: string; cities: WeatherCit
     navigate(id === 0 ? "/weather" : `/weather/${id}`, { replace: true });
   };
   return (
-    <div className="city-chips" role="group" aria-label={t.more.cities}>
+    <div ref={row} className="city-chips" role="group" aria-label={t.more.cities}>
       {chips.map((chip) => (
         <button
           key={chip.id}

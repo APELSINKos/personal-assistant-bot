@@ -222,6 +222,32 @@ describe("Weather in the extra cities", () => {
       .toHaveAttribute("aria-pressed", "true");
   });
 
+  it("scrolls the pressed chip into view when the screen opens and when the city changes", async () => {
+    installTelegram();
+    mockApi({ "GET /me": me, "GET /me/cities": [tula], "GET /weather": forecast, "GET /weather?city=3": TULA });
+    // jsdom lays nothing out and has neither scrollIntoView nor document.fonts: stand-ins for this test.
+    const scrolled: Element[] = [];
+    const scrollIntoView = vi.fn(function (this: Element) {
+      scrolled.push(this);
+    });
+    Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, writable: true, value: scrollIntoView });
+    Object.defineProperty(document, "fonts", { configurable: true, value: { ready: Promise.resolve() } });
+    try {
+      renderWeather("/weather/3");
+      const chips = await screen.findByRole("group", { name: "Города" });
+      const other = within(chips).getByRole("button", { name: "Тула" });
+      // At once, and again once the fonts are in: the chips' own font may widen them.
+      await waitFor(() => expect(scrolled).toEqual([other, other]));
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
+      const home = within(chips).getByRole("button", { name: /Москва/ });
+      fireEvent.click(home);
+      await waitFor(() => expect(scrolled).toEqual([other, other, home, home]));
+    } finally {
+      Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+      Reflect.deleteProperty(document, "fonts");
+    }
+  });
+
   it("goes to the home city when the city is gone, and asks for the list again", async () => {
     installTelegram();
     const { calls } = mockApi({

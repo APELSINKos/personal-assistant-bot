@@ -53,7 +53,12 @@ function TextField({
 }: { value: string; onChange: (value: string) => void; list: boolean; hint: string | null }) {
   const t = useT();
   const hintId = useId();
+  const counterId = useId();
   const length = codePoints(value.trim());
+  const over = length > MAX_TEXT;
+  // The line under the field describes it, and so does the counter while the text is too long:
+  // a screen reader then hears the limit, not only that the field is invalid.
+  const described = [hint === null ? null : hintId, over ? counterId : null].filter((id) => id !== null).join(" ");
   return (
     <>
       <div className="field">
@@ -64,11 +69,11 @@ function TextField({
           id="note-text"
           className={list ? "input editor editor--list" : "input editor"}
           value={value}
-          aria-invalid={length > MAX_TEXT}
-          aria-describedby={hint === null ? undefined : hintId}
+          aria-invalid={over}
+          aria-describedby={described === "" ? undefined : described}
           onChange={(event) => onChange(event.target.value)}
         />
-        <span className={length > MAX_TEXT ? "field__counter field__counter--over" : "field__counter"}>
+        <span id={counterId} className={over ? "field__counter field__counter--over" : "field__counter"}>
           {t.notes.counter(length, MAX_TEXT)}
         </span>
       </div>
@@ -81,13 +86,17 @@ function TextField({
  * The field of a new item and «Добавить». The field empties at once, so the next item can be
  * typed while the last one is on its way; at the limit, or with an item too long, «Добавить» is
  * off and the line under the field says why. Items still on their way (`adding`) take their
- * places at once, but the line speaks of the items shown.
+ * places at once, but the line speaks of the items shown. What is typed (`draft`) is kept by the
+ * screen: a new note saves an item typed but not added.
  */
-function ItemField({ count, adding = 0, onAdd }: { count: number; adding?: number; onAdd: (text: string) => void }) {
+function ItemField({
+  count, adding = 0, draft, setDraft, onAdd,
+}: {
+  count: number; adding?: number; draft: string; setDraft: (draft: string) => void; onAdd: (text: string) => void;
+}) {
   const t = useT();
   const field = useRef<HTMLInputElement>(null);
   const hintId = useId();
-  const [draft, setDraft] = useState("");
   const text = cleanItem(draft);
   const length = codePoints(text);
   const full = count >= MAX_ITEMS;
@@ -153,14 +162,19 @@ function NewNote() {
   const titleId = useId();
   const [text, setText] = useState("");
   const [items, setItems] = useState<DraftItem[]>([]);
+  const [itemDraft, setItemDraft] = useState("");
   const [pinned, setPinned] = useState(false);
   const nextKey = useRef(0);
 
   const trimmed = text.trim();
   const length = codePoints(trimmed);
   const valid = length > 0 && length <= MAX_TEXT;
+  // An item typed but not added goes with the note when the add button would take it.
+  const typed = cleanItem(itemDraft);
+  const typedLength = codePoints(typed);
+  const pending = typedLength > 0 && typedLength <= MAX_ITEM && items.length < MAX_ITEMS ? typed : null;
   // Anything typed or added is asked about before it is left behind.
-  const started = trimmed !== "" || items.length > 0;
+  const started = trimmed !== "" || items.length > 0 || typed !== "";
   const leave = async () => {
     if (!started || (await confirmAction(t.notes.confirmDiscard))) navigate("/notes");
   };
@@ -170,7 +184,9 @@ function NewNote() {
   const save = () => {
     if (!valid || create.isPending) return;
     const note: NoteInput = { text: trimmed };
-    if (items.length > 0) note.items = items.map((item) => item.text);
+    const all = items.map((item) => item.text);
+    if (pending !== null) all.push(pending);
+    if (all.length > 0) note.items = all;
     if (pinned) note.pinned = true;
     create.mutate(note, { onSuccess: () => navigate("/notes") });
   };
@@ -210,7 +226,7 @@ function NewNote() {
             ))}
           </ul>
         )}
-        <ItemField count={items.length} onAdd={add} />
+        <ItemField count={items.length} draft={itemDraft} setDraft={setItemDraft} onAdd={add} />
       </section>
       <MainAction text={t.common.save} onClick={save} disabled={!valid} busy={create.isPending} />
     </>
@@ -316,6 +332,7 @@ function SavedItems({ note }: { note: Note }) {
   const remove = useDeleteItem();
   const clear = useClearDone();
   const adding = useAddingItems(note.id);
+  const [draft, setDraft] = useState("");
   return (
     <section className="items" aria-labelledby={titleId}>
       <h2 className="field__label" id={titleId}>{t.notes.items}</h2>
@@ -341,7 +358,13 @@ function SavedItems({ note }: { note: Note }) {
           })}
         </ul>
       )}
-      <ItemField count={note.items.length} adding={adding} onAdd={(text) => add.mutate({ note: note.id, text })} />
+      <ItemField
+        count={note.items.length}
+        adding={adding}
+        draft={draft}
+        setDraft={setDraft}
+        onAdd={(text) => add.mutate({ note: note.id, text })}
+      />
       {note.items.some((item) => item.done) && (
         <button type="button" className="button items__clear" onClick={() => clear.mutate(note.id)}>
           {t.notes.clearDone}

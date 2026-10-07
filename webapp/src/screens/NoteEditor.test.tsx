@@ -137,6 +137,18 @@ describe("NoteEditor", () => {
     pressMainButton(app);
     await waitFor(() => expect(calls).toContainEqual({ method: "PATCH", path: "/notes/11", body: { text: `${emoji}!` } }));
   });
+
+  it("ties the counter to the field while the text is over the limit, for a screen reader", async () => {
+    installTelegram();
+    mockApi({ "GET /notes": [note] });
+    renderWithApp(<NoteEditor />, { path: "/notes/11" });
+    const editor = await screen.findByLabelText("Текст заметки");
+    expect(editor).not.toHaveAccessibleDescription();
+    fireEvent.change(editor, { target: { value: "я".repeat(501) } });
+    expect(editor).toHaveAccessibleDescription("501/500");
+    fireEvent.change(editor, { target: { value: "я".repeat(500) } });
+    expect(editor).not.toHaveAccessibleDescription();
+  });
 });
 
 describe("A new note", () => {
@@ -194,6 +206,63 @@ describe("A new note", () => {
     fireEvent.change(screen.getByLabelText("Текст заметки"), { target: { value: "Покупки" } });
     expect(screen.queryByText("Напиши название списка")).not.toBeInTheDocument();
     expect(canSave(app)).toBe(true);
+  });
+
+  it("saves an item typed but not added with the note", async () => {
+    const app = installTelegram();
+    const { calls } = mockApi({ "GET /notes": [], "POST /notes": { status: 201, body: checklist } });
+    const { history } = renderEditor("/notes/new");
+    fireEvent.change(screen.getByLabelText("Текст заметки"), { target: { value: "Покупки" } });
+    const field = screen.getByRole("textbox", { name: "Новый пункт" });
+    fireEvent.change(field, { target: { value: "молоко" } });
+    fireEvent.click(screen.getByRole("button", { name: "Добавить" }));
+    fireEvent.change(field, { target: { value: "  хлеб\t " } }); // never added
+    pressMainButton(app);
+    await waitFor(() => expect(history.at(-1)).toBe("/notes"));
+    expect(calls).toContainEqual({ method: "POST", path: "/notes", body: { text: "Покупки", items: ["молоко", "хлеб"] } });
+  });
+
+  it("leaves out a typed item longer than 100 characters, as the add button would", async () => {
+    const app = installTelegram();
+    const { calls } = mockApi({ "GET /notes": [], "POST /notes": { status: 201, body: checklist } });
+    const { history } = renderEditor("/notes/new");
+    fireEvent.change(screen.getByLabelText("Текст заметки"), { target: { value: "Покупки" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Новый пункт" }), { target: { value: "я".repeat(101) } });
+    pressMainButton(app);
+    await waitFor(() => expect(history.at(-1)).toBe("/notes"));
+    expect(calls).toContainEqual({ method: "POST", path: "/notes", body: { text: "Покупки" } });
+  });
+
+  it("leaves out a typed item past the 20th", async () => {
+    const app = installTelegram();
+    const { calls } = mockApi({ "GET /notes": [], "POST /notes": { status: 201, body: checklist } });
+    const { history } = renderEditor("/notes/new");
+    fireEvent.change(screen.getByLabelText("Текст заметки"), { target: { value: "Поездка" } });
+    const field = screen.getByRole("textbox", { name: "Новый пункт" });
+    const add = screen.getByRole("button", { name: "Добавить" });
+    const twenty = Array.from({ length: 20 }, (_, index) => `пункт ${index + 1}`);
+    for (const item of twenty) {
+      fireEvent.change(field, { target: { value: item } });
+      fireEvent.click(add);
+    }
+    fireEvent.change(field, { target: { value: "ещё один" } });
+    pressMainButton(app);
+    await waitFor(() => expect(history.at(-1)).toBe("/notes"));
+    expect(calls).toContainEqual({ method: "POST", path: "/notes", body: { text: "Поездка", items: twenty } });
+  });
+
+  it("asks before leaving an item that is only typed", async () => {
+    const app = installTelegram({
+      showConfirm: vi.fn((_message: string, callback: (ok: boolean) => void) => callback(false)),
+    });
+    mockApi({ "GET /notes": [] });
+    const { history } = renderEditor("/notes/new");
+    expect(app.enableClosingConfirmation).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole("textbox", { name: "Новый пункт" }), { target: { value: "молоко" } });
+    expect(app.enableClosingConfirmation).toHaveBeenCalled();
+    await pressBack(app);
+    expect(app.showConfirm).toHaveBeenCalledWith("Выйти без сохранения?", expect.any(Function));
+    expect(history.at(-1)).toBe("/notes/new");
   });
 
   it("leaves without asking when nothing was typed or added", async () => {

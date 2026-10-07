@@ -338,6 +338,22 @@ describe("useUpdateMe", () => {
     });
     await waitFor(() => expect(client.getQueryData<Me>(keys.me)).toEqual(last));
   });
+
+  it("asks for the weather again after a change of language: the server words it in that language", async () => {
+    const client = createQueryClient();
+    client.setQueryData(keys.me, me);
+    const invalidate = vi.spyOn(client, "invalidateQueries");
+    mockApi({ "PATCH /me": { ...me, language: "en", language_setting: "en" } });
+    const { result } = renderHook(() => useUpdateMe(), { wrapper: wrapperFor(client) });
+    act(() => result.current.mutate({ language: "en" }));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.weather }); // every forecast and the cities
+    // Another setting leaves the weather as it is.
+    invalidate.mockClear();
+    act(() => result.current.mutate({ morning_enabled: false }));
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.today }));
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: keys.weather });
+  });
 });
 
 describe("useDeleteReminder", () => {

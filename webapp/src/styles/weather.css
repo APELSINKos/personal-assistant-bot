@@ -13,6 +13,8 @@
   padding: 4px 4px 8px;
   overflow-x: auto;
   scrollbar-width: thin;
+  /* A chip brought into view (Weather.tsx) keeps its focus ring inside the row as well. */
+  scroll-padding-inline: 4px;
 }
 
 /* A finger swipes the row: a touch screen shows no bar and keeps no room for it. */
