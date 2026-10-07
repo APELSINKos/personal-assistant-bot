@@ -157,6 +157,11 @@ def test_amounts_in_hundredths(number: str, thousands: bool, expected: int | Non
         ("номер: 8 800 2000 600", None),
         ("кофе 250 8 999 1234567", None),
         ("кофе 8 999 1234", Quick(123400, "кофе 8 999", None)),  # eight digits are no number
+        # Joined only from a group of its own that is 8, 7 or +7: a note's digits are no number.
+        ("заказ 8123456 1500", Quick(150000, "заказ 8123456", None)),
+        ("wb 8765432 1290", Quick(129000, "wb 8765432", None)),
+        ("посылка 80012345 990", Quick(99000, "посылка 80012345", None)),
+        ("кофе 750 8 999 1234", Quick(123400, "кофе 750 8 999", None)),
         # A phone word with a colon.
         ("тел: 8 999", None),
         ("кофе 250 тел: 8 999", None),
