@@ -150,6 +150,16 @@ def test_amounts_in_hundredths(number: str, thousands: bool, expected: int | Non
         # A phone word before more than two groups, of any length.
         ("тел 8 999 1234567", None),
         ("моб +7 999 123 4567", None),
+        # A whole number in the last groups, after any word: 8 or 7 and ten digits, or +7 and ten.
+        ("Маша 8 999 1234567", None),
+        ("мама +7 916 1234567", None),
+        ("Вася 8 999 123 4567", None),
+        ("номер: 8 800 2000 600", None),
+        ("кофе 250 8 999 1234567", None),
+        ("кофе 8 999 1234", Quick(123400, "кофе 8 999", None)),  # eight digits are no number
+        # A phone word with a colon.
+        ("тел: 8 999", None),
+        ("кофе 250 тел: 8 999", None),
         # Every phone word, in any case.
         ("Тел 8 999", None),
         ("кофе 250 ТЕЛ. 8 999", None),

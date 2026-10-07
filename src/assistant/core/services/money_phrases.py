@@ -80,6 +80,9 @@ PHONE_WORDS = frozenset({"тел", "тел.", "телефон", "номер", "�
 PHONE_STARTS = frozenset({"8", "7", "+7"})
 _PHONE_TAIL = re.compile(r"\d{3} \d{2} \d{2}")  # «… 123 45 67»: the last digits of a number
 _GROUP = re.compile(r"\+?\d+")
+# A whole number in the last groups, joined: 8 or 7 and ten digits, or +7 and ten. No amount has
+# eleven digits (LIMITS.amount_max is a billion).
+_WHOLE_NUMBER = re.compile(r"(?:\+7|[78])\d{10}")
 
 
 @dataclass(frozen=True)
@@ -146,7 +149,8 @@ def _trim(words: list[str], at_end: bool) -> list[str]:
 
 def _phone_at_end(phrase: str) -> bool:
     """The phrase ends with a phone number: the tail of one («… 123 45 67»: 3, 2 and 2 digits,
-    the last bare), or a phone word and then at least two groups of digits, the first «8», «7»
+    the last bare), a whole number in the last groups after any word, or a phone word (a colon
+    after it too) and then at least two groups of digits, the first «8», «7»
     or «+7» («тел 8 999»). The groups are the words as typed, not the amount's grouping:
     «+7 999» is two groups here, «+7» and «999»."""
     words = phrase.split()
@@ -155,9 +159,11 @@ def _phone_at_end(phrase: str) -> bool:
     groups = 0
     while groups < len(words) and _GROUP.fullmatch(words[-1 - groups]):
         groups += 1
+    if any(_WHOLE_NUMBER.fullmatch("".join(words[-n:])) for n in range(2, groups + 1)):
+        return True
     return (
         2 <= groups < len(words)
-        and words[-1 - groups].casefold() in PHONE_WORDS
+        and words[-1 - groups].casefold().rstrip(":") in PHONE_WORDS
         and words[-groups] in PHONE_STARTS
     )
 
