@@ -321,8 +321,11 @@ a {
   font-weight: 700;
 }
 
+/* The delete button follows the row's content in the DOM, so Tab reaches a row before its delete;
+   the content's z-index keeps it painted over the button, inside the row's own stacking context. */
 .swipe {
   position: relative;
+  isolation: isolate;
   margin-bottom: 8px;
   overflow: hidden;
   border-radius: var(--radius-card);
@@ -347,6 +350,7 @@ a {
 
 .swipe__content {
   position: relative;
+  z-index: 1;
   padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius-card);

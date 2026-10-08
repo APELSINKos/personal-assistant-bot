@@ -261,16 +261,23 @@ function Entries({
             const category = categories.get(entry.category_id);
             if (!category) return null;
             const income = category.kind === "income";
+            const title = entry.note || category.name;
+            const amount = formatAmount(entry.amount, data.currency, lang, income);
             return (
-              <SwipeRow key={entry.id} onDelete={() => remove.mutate(entry.id)} deleteLabel={t.money.deleteEntry}>
+              <SwipeRow
+                key={entry.id}
+                onDelete={() => remove.mutate(entry.id)}
+                deleteLabel={t.money.deleteRow(title, amount)}
+                question={t.money.confirmDelete}
+              >
                 <Link href={`/money/${entry.id}/edit`} className="money-entry">
                   <span className="money-entry__emoji" aria-hidden>{category.emoji}</span>
                   <span className="money-entry__text">
-                    <span className="money-entry__title">{entry.note || category.name}</span>
+                    <span className="money-entry__title">{title}</span>
                     {entry.note && <span className="money-entry__sub">{category.name}</span>}
                   </span>
                   <span className={income ? "money-entry__amount money-entry__amount--income" : "money-entry__amount"}>
-                    {formatAmount(entry.amount, data.currency, lang, income)}
+                    {amount}
                   </span>
                 </Link>
               </SwipeRow>

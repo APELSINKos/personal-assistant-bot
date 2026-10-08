@@ -215,6 +215,7 @@ export const en: Dict = {
     emptyCategory: "No entries in this category this month.",
     showAll: (name: string) => `Show all the entries, not only “${name}”`,
     deleteEntry: "Delete the entry",
+    deleteRow: (title: string, amount: string) => `Delete the entry “${title}”, ${amount}`,
     add: "Add an entry",
     newEntry: "New entry",
     editEntry: "Entry",
@@ -288,7 +289,8 @@ export const en: Dict = {
     newHome: "New home city",
     cityToAdd: "City to add",
     citiesLimit: "Up to 5 cities including your home city",
-    deleteCity: "Remove city",
+    deleteCity: (name: string) => `Remove the city “${name}”`,
+    confirmDeleteCity: (name: string) => `Remove the city “${name}”?`,
     data: "Data",
     // The licence's name does not break across lines.
     credits: "Weather — open-meteo.com, city names — geonames.org; licence CC\u00a0BY\u00a04.0 (creativecommons.org/licenses/by/4.0), the app rounds the data and adds tips.",

@@ -1,12 +1,14 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { keys } from "../api/queries";
 import type { City, Me, WeatherCity } from "../api/types";
 import { Toasts } from "../components/Toasts";
 import { GEONAMES_URL, LICENCE_URL, OPEN_METEO_URL } from "../lib/links";
+import type { TgWebApp } from "../telegram";
 import { installTelegram } from "../test/fakeTelegram";
 import { me, scheduleSource, tula } from "../test/fixtures";
 import { mockApi, type ApiCall } from "../test/mockApi";
+import { stubPointer } from "../test/pointer";
 import { renderWithApp } from "../test/render";
 import { MoreScreen, REPO_URL } from "./More";
 
@@ -65,8 +67,8 @@ function extraCities(start: WeatherCity[]) {
   };
 }
 
-function showMore(routes: Record<string, unknown>) {
-  const app = installTelegram();
+function showMore(routes: Record<string, unknown>, telegram: Partial<TgWebApp> = {}) {
+  const app = installTelegram(telegram);
   const api = mockApi({ "GET /me": me, "GET /health": HEALTH, "GET /me/cities": [tula], ...routes });
   return { app, ...api, ...renderWithApp(<><MoreScreen /><Toasts /></>, { path: "/more" }) };
 }
@@ -212,14 +214,28 @@ describe("More → Cities", () => {
     expect(sent(calls, "POST")).toHaveLength(1);
   });
 
-  it("deletes an extra city without a question", async () => {
+  it("on a phone, deletes an extra city swiped away without a question", async () => {
+    stubPointer("touch");
     const { app, calls } = showMore(extraCities([tula, SOCHI]));
     const row = (await screen.findByText("Тула")).closest("li") as HTMLElement;
-    fireEvent.click(within(row).getByRole("button", { name: "Удалить город" }));
+    fireEvent.click(within(row).getByRole("button", { name: "Удалить город «Тула»" }));
     await waitFor(() => expect(screen.queryByText("Тула")).not.toBeInTheDocument());
     expect(sent(calls, "DELETE")).toEqual([{ method: "DELETE", path: "/me/cities/3", body: undefined }]);
     expect(screen.getByText("Сочи")).toBeInTheDocument();
     expect(app.showConfirm).not.toHaveBeenCalled();
+  });
+
+  it("with a mouse, asks before deleting a city and keeps it on «Отмена»", async () => {
+    stubPointer("mouse");
+    const { app, calls } = showMore(extraCities([tula, SOCHI]), {
+      showConfirm: vi.fn((_message: string, callback: (ok: boolean) => void) => callback(false)),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Удалить город «Тула»" }));
+    expect(app.showConfirm).toHaveBeenCalledWith("Удалить город «Тула»?", expect.any(Function));
+    // Time enough for a DELETE that should not be sent to go out and come back.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(sent(calls, "DELETE")).toEqual([]);
+    expect(screen.getByText("Тула")).toBeInTheDocument();
   });
 
   it("turns «Добавить город» off at four extra cities and says why under it", async () => {

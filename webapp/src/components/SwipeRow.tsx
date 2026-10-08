@@ -1,12 +1,20 @@
 import { Trash2 } from "lucide-react";
 import { useRef, useState, type ReactNode, type TouchEvent } from "react";
+import { confirmAction } from "../telegram";
 
 const OPEN = -88;
+/** A pointer that hovers — a mouse; app.css shows the delete button at rest under the same query. */
+const WITH_MOUSE = "(hover: hover)";
 
-/** A row that reveals a delete button when swiped left (always visible with a mouse). */
+/**
+ * A row that reveals a delete button when swiped left. With a mouse the button is always on screen
+ * and a click (or Tab and Enter) is the only step, so a row given a `question` asks it there first;
+ * on a phone the swipe is that step. The button follows the row's content, so the keyboard and a
+ * screen reader reach a row before its own delete.
+ */
 export function SwipeRow({
-  onDelete, deleteLabel, children,
-}: { onDelete: () => void; deleteLabel: string; children: ReactNode }) {
+  onDelete, deleteLabel, question, children,
+}: { onDelete: () => void; deleteLabel: string; question?: string; children: ReactNode }) {
   const start = useRef<{ x: number; y: number; base: number } | null>(null);
   const [offset, setOffset] = useState(0);
 
@@ -25,12 +33,15 @@ export function SwipeRow({
     start.current = null;
     setOffset((value) => (value < OPEN / 2 ? OPEN : 0));
   };
+  const remove = async () => {
+    if (question !== undefined && window.matchMedia(WITH_MOUSE).matches && !(await confirmAction(question))) {
+      return;
+    }
+    onDelete();
+  };
 
   return (
     <div className="swipe" data-open={offset !== 0 ? "true" : "false"}>
-      <button type="button" className="swipe__delete" onClick={onDelete} aria-label={deleteLabel}>
-        <Trash2 size={20} aria-hidden />
-      </button>
       <div
         className="swipe__content"
         style={{ transform: `translateX(${offset}px)` }}
@@ -40,6 +51,9 @@ export function SwipeRow({
       >
         {children}
       </div>
+      <button type="button" className="swipe__delete" onClick={() => void remove()} aria-label={deleteLabel}>
+        <Trash2 size={20} aria-hidden />
+      </button>
     </div>
   );
 }

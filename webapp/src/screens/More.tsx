@@ -166,7 +166,11 @@ function CitiesCard({ home, list, index }: { home: string; list: UseQueryResult<
             const area = placeNames(city).slice(1).join(", ");
             return (
               <li key={city.id}>
-                <SwipeRow onDelete={() => remove.mutate(city.id)} deleteLabel={t.more.deleteCity}>
+                <SwipeRow
+                  onDelete={() => remove.mutate(city.id)}
+                  deleteLabel={t.more.deleteCity(city.name)}
+                  question={t.more.confirmDeleteCity(city.name)}
+                >
                   <span className="city-list__name">{city.name}</span>
                   {area && <span className="muted city-list__area">{area}</span>}
                 </SwipeRow>

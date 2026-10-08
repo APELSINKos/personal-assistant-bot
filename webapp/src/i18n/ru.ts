@@ -251,6 +251,7 @@ export const ru = {
     emptyCategory: "В этой категории в этом месяце записей нет.",
     showAll: (name: string) => `Показать все записи, не только «${name}»`,
     deleteEntry: "Удалить запись",
+    deleteRow: (title: string, amount: string) => `Удалить запись «${title}», ${amount}`,
     add: "Добавить запись",
     newEntry: "Новая запись",
     editEntry: "Запись",
@@ -322,7 +323,8 @@ export const ru = {
     newHome: "Новый домашний город",
     cityToAdd: "Какой город добавить",
     citiesLimit: "До 5 городов вместе с домашним",
-    deleteCity: "Удалить город",
+    deleteCity: (name: string) => `Удалить город «${name}»`,
+    confirmDeleteCity: (name: string) => `Удалить город «${name}»?`,
     data: "Данные",
     // The licence's name does not break across lines.
     credits: "Погода — open-meteo.com, названия городов — geonames.org; лицензия CC\u00a0BY\u00a04.0 (creativecommons.org/licenses/by/4.0), приложение округляет данные и добавляет советы.",
