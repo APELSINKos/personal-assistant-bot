@@ -156,7 +156,10 @@ morning-reminders = { $count ->
         [0] 📌 No reminders for today
        *[other] 📌 Today:
     }
-morning-habits = 🎯 Habits for today: { $count } — don't forget to mark them
+morning-habits = 🎯 Habits for today: { $count } — don't forget to mark { $count ->
+        [one] it
+       *[other] them
+    }
 
 ## Exchange rates
 rates-title = 💱 Bank of Russia rates for { $date }

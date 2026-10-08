@@ -46,13 +46,30 @@ WEATHER = WeatherNow(
 RATES = Rates(date(2026, 9, 28), Rate(84.1975, -0.3118), Rate(96.6671, 0.0))
 
 
+def habit_today(mark: bool | None) -> HabitStats:
+    """A daily habit with today's mark: done (True), skipped (False) or none yet (None)."""
+    return HabitStats(
+        habit=Habit(name="Спорт", weekly_goal=7, emoji="🎯"),
+        done_today=mark,
+        streak=5,
+        done_days=5,
+        total_days=5,
+        last_days=(True,) * 8 + (mark,),
+        record=5,
+        percent=100,
+        week_done=1,
+        week_goal=7,
+        week="1......",
+    )
+
+
 def day_data(**changes: object) -> TodayData:
     values: dict[str, object] = {
         "local_now": datetime(2026, 9, 28, 8, 0, tzinfo=MSK),
         "part_of_day": "morning",
         "weather": WEATHER,
         "reminders": [Reminder(text="встреча", due_at=datetime(2026, 9, 28, 9, 30, tzinfo=UTC))],
-        "habits": [],
+        "habits": [habit_today(True), habit_today(None), habit_today(None)],
         "habits_done": 1,
         "habits_total": 3,
         "notes_count": 4,
@@ -340,14 +357,16 @@ def test_morning_text() -> None:
         "📌 Сегодня:\n"
         "• 12:30 — встреча\n"
         "\n"
-        "🎯 Привычек на сегодня: 3 — не забудь отметить\n"
+        "🎯 Привычек на сегодня: 2 — не забудь отметить\n"  # one of the three is marked
         "🔥 Лучшая серия: «Спорт» — 5 дней\n"
         "💵 84,20 ₽ · 💶 96,67 ₽"
     )
 
 
 def test_morning_text_minimal() -> None:
-    data = day_data(weather=None, reminders=[], habits_total=0, best_streak=None, rates=None)
+    data = day_data(
+        weather=None, reminders=[], habits=[], habits_total=0, best_streak=None, rates=None
+    )
     assert texts.morning_text(data, "Alex", RU) == (
         "☀️ Доброе утро, Alex!\n"
         "📅 28 сентября, понедельник\n"
@@ -356,6 +375,27 @@ def test_morning_text_minimal() -> None:
         "\n"
         "📌 На сегодня напоминаний нет"
     )
+
+
+def habits_line(marks: Sequence[bool | None], t: Translator) -> list[str]:
+    """The digest's line of habits, if any, for habits with these marks today."""
+    habits = [habit_today(mark) for mark in marks]
+    data = day_data(habits=habits, habits_done=marks.count(True), habits_total=len(marks))
+    return [line for line in texts.morning_text(data, "Alex", t).split("\n") if "🎯" in line]
+
+
+def test_the_digest_counts_only_the_habits_not_yet_marked() -> None:
+    # «Спорт» marked just after midnight, or in the app at 07:05: one habit of the two to go.
+    assert habits_line([True, None], RU) == ["🎯 Привычек на сегодня: 1 — не забудь отметить"]
+    assert habits_line([True, None], EN) == ["🎯 Habits for today: 1 — don't forget to mark it"]
+    assert habits_line([None, False, None], RU) == [
+        "🎯 Привычек на сегодня: 2 — не забудь отметить"
+    ]
+    assert habits_line([None, False, None], EN) == [
+        "🎯 Habits for today: 2 — don't forget to mark them"
+    ]
+    # Done or skipped, every habit has its mark: nothing to remind of.
+    assert habits_line([True, False], RU) == habits_line([True, False], EN) == []
 
 
 def test_the_digest_tells_the_weather_now_and_the_days_highest() -> None:
@@ -590,7 +630,7 @@ def test_the_digest_with_the_way_to_the_classes() -> None:
         "• 09:00–10:30 ЛК Физика · А-16\n"
         "• 14:50–16:20 ПР Разработка баз данных · И-212-б\n"
         "\n"
-        "🎯 Привычек на сегодня: 3 — не забудь отметить\n"
+        "🎯 Привычек на сегодня: 2 — не забудь отметить\n"
         "🔥 Лучшая серия: «Спорт» — 5 дней\n"
         "💵 84,20 ₽ · 💶 96,67 ₽"
     )
@@ -767,6 +807,8 @@ def fullest_day() -> TodayData:
         weather=replace(forecast.now, tips=TIPS),
         forecast=forecast,
         reminders=[Reminder(text="🎉" * 200, due_at=due) for _ in range(20)],
+        # Each line of habits at its longest: «10 из 10» in «Мой день», 10 to mark in the digest.
+        habits=[habit_today(None)] * 10,
         habits_total=10,
         habits_done=10,
         best_streak=Streak("П" * 50, 3650, "days"),

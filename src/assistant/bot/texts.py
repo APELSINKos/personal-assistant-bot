@@ -403,8 +403,8 @@ def _morning_weather_line(now: WeatherNow, t: Translator) -> str:
 
 def morning_text(data: TodayData, name: str, t: Translator) -> str:
     """The morning digest: the weather now with the day's highest, every tip, the way to the
-    classes and the data's source; the day's reminders and classes; habits, money and rates.
-    Never tomorrow: the day has only begun."""
+    classes and the data's source; the day's reminders and classes; the habits still to mark,
+    money and rates. Never tomorrow: the day has only begun."""
     return _within_limit(data, lambda shown, lessons: _morning(data, name, t, shown, lessons))
 
 
@@ -426,8 +426,10 @@ def _morning(data: TodayData, name: str, t: Translator, shown: int, lessons: int
     lines += _reminder_lines(data, t, shown)
     lines += _lesson_lines(data, t, lessons)
     extra: list[str] = []
-    if data.habits_total:
-        extra.append(t("morning-habits", count=data.habits_total))
+    # Only the habits with no mark yet: one marked after midnight or in the app needs no nudge.
+    unmarked = sum(1 for item in data.habits if item.done_today is None)
+    if unmarked:
+        extra.append(t("morning-habits", count=unmarked))
     if data.best_streak is not None:
         extra.append(streak_line(data.best_streak, t))
     extra += _money_morning(data, t)
