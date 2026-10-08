@@ -60,7 +60,7 @@ export function errorCode(error: unknown): string {
 }
 
 /** A 404: what the request was about is gone already — deleted in the bot or on another device. */
-function isGone(error: unknown): boolean {
+export function isGone(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404;
 }
 

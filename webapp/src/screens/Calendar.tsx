@@ -114,7 +114,8 @@ export function CalendarScreen() {
   const agenda = useAgenda(week[0] ?? "", week[6] ?? "", day !== "");
   const month = useAgenda(grid[0]?.[0] ?? "", grid.at(-1)?.[6] ?? "", monthOpen && day !== "");
 
-  if (me.isError) return <ErrorState onRetry={() => void me.refetch()} />;
+  // A failed refresh keeps the calendar on screen: only a first load that failed is an error.
+  if (me.isLoadingError) return <ErrorState onRetry={() => void me.refetch()} />;
   if (!day) return <Loader />;
 
   // While the week itself hasn't loaded, an already-fetched month range that covers it (e.g. the
@@ -267,14 +268,16 @@ export function CalendarScreen() {
         </div>
       )}
 
+      {/* A failed refresh keeps the day's count and items on screen: only a first load that failed
+          is an error. */}
       <div className="cal-dayhead">
         <h2 className="cal-dayhead__title">{heading(day)}</h2>
-        {!agenda.isError && days && (
+        {!agenda.isLoadingError && days && (
           <p className="muted">{summary(dayItems)}</p>
         )}
       </div>
 
-      {agenda.isError ? (
+      {agenda.isLoadingError ? (
         <ErrorState onRetry={() => void agenda.refetch()} />
       ) : !days ? (
         <Loader />

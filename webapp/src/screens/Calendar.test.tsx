@@ -1,10 +1,12 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { keys } from "../api/queries";
 import type { AgendaItem, LessonItem, ReminderItem } from "../api/types";
 import { addDaysIso, weekOf } from "../lib/format";
 import { installTelegram } from "../test/fakeTelegram";
 import { me } from "../test/fixtures";
 import { mockApi } from "../test/mockApi";
+import { RATE_LIMITED, refresh } from "../test/refresh";
 import { renderWithApp } from "../test/render";
 import { CalendarScreen } from "./Calendar";
 
@@ -248,6 +250,28 @@ describe("Calendar", () => {
     client.setQueryDefaults(["agenda"], { retry: false }); // the app retries a 5xx twice first
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.queryByText("Ничего не запланировано")).not.toBeInTheDocument();
+  });
+
+  it("keeps the day on screen when a refresh of the week or of the user fails", async () => {
+    at("2026-09-29T09:00:00Z");
+    installTelegram();
+    const days = week("2026-09-28", { "2026-09-29": [item(3, "09:00", "Врач")] });
+    mockApi({ "GET /me": me, "GET /agenda?from=2026-09-28&to=2026-10-04": days });
+    const { client } = renderWithApp(<CalendarScreen />, { path: "/calendar" });
+    expect(await screen.findByText("Врач")).toBeInTheDocument();
+    expect(screen.getByText("1 напоминание")).toBeInTheDocument();
+
+    mockApi({ "GET /me": me, "GET /agenda?from=2026-09-28&to=2026-10-04": RATE_LIMITED });
+    await refresh(client, ["agenda"]);
+    expect(screen.getByText("Врач")).toBeInTheDocument();
+    expect(screen.getByText("1 напоминание")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    mockApi({ "GET /me": RATE_LIMITED, "GET /agenda?from=2026-09-28&to=2026-10-04": days });
+    await refresh(client, keys.me);
+    expect(screen.getByRole("heading", { level: 1, name: /Календарь/ })).toBeInTheDocument();
+    expect(screen.getByText("Врач")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("ignores a mostly vertical drag but moves the week on a horizontal one", async () => {

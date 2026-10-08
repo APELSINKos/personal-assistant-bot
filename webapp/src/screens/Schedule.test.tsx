@@ -7,6 +7,7 @@ import { BOT_CHAT_URL } from "../lib/links";
 import { installTelegram } from "../test/fakeTelegram";
 import { me, scheduleSource } from "../test/fixtures";
 import { mockApi, type ApiCall } from "../test/mockApi";
+import { RATE_LIMITED, refresh } from "../test/refresh";
 import { renderWithApp } from "../test/render";
 import { ScheduleScreen } from "./Schedule";
 
@@ -255,6 +256,22 @@ describe("Schedule", () => {
     expect(await screen.findByText("Это не похоже на календарь .ics")).toBeInTheDocument();
     expect(calls).toContainEqual({ method: "PUT", path: "/schedule", body: { url: "https://uni.example/login" } });
     expect(screen.getByRole("button", { name: "Подключить" })).toBeInTheDocument();
+  });
+
+  it("keeps a link typed for another source when a refresh fails", async () => {
+    installTelegram();
+    mockApi({ "GET /me": me, "GET /schedule": { source: scheduleSource } });
+    const { client } = show();
+    fireEvent.click(await screen.findByRole("button", { name: "Сменить источник" }));
+    const link = "webcal://uni.example/timetable.ics";
+    fireEvent.change(screen.getByLabelText("Ссылка на календарь"), { target: { value: link } });
+    mockApi({ "GET /me": RATE_LIMITED, "GET /schedule": { source: scheduleSource } });
+    await refresh(client, keys.me);
+    expect(screen.getByLabelText("Ссылка на календарь")).toHaveValue(link);
+    mockApi({ "GET /me": RATE_LIMITED, "GET /schedule": RATE_LIMITED });
+    await refresh(client, keys.schedule);
+    expect(screen.getByLabelText("Ссылка на календарь")).toHaveValue(link);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("uploads a picked .ics file", async () => {

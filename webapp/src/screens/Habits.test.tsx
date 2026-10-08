@@ -1,16 +1,16 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { keys } from "../api/queries";
 import { Toasts } from "../components/Toasts";
 import type { TgWebApp } from "../telegram";
 import { installTelegram } from "../test/fakeTelegram";
 import { habit, me } from "../test/fixtures";
 import { pressMainButton } from "../test/mainButton";
 import { mockApi } from "../test/mockApi";
+import { RATE_LIMITED, refresh } from "../test/refresh";
 import { renderWithApp } from "../test/render";
 import { HabitForm } from "./HabitForm";
 import { HabitsScreen } from "./Habits";
-
-const RATE_LIMITED = { status: 429, body: { status: 429, code: "rate_limited", title: "Too many requests" } };
 
 /** Whether Telegram's main button («Сохранить») can be pressed now. */
 function canSave(app: TgWebApp): boolean | undefined {
@@ -195,5 +195,23 @@ describe("Habit form", () => {
     mockApi({ "GET /me": me, "GET /habits/7": { status: 404, body: { status: 404, code: "not_found" } } });
     renderWithApp(<HabitForm />, { path: "/habits/7/edit" });
     expect(await screen.findByText("Этой привычки уже нет.")).toBeInTheDocument();
+  });
+
+  it("keeps the form, its draft and «Сохранить» when a refresh of the habit fails", async () => {
+    const app = installTelegram();
+    const detail = { ...habit, year_from: "2025-09-29", year: ".".repeat(371) };
+    mockApi({ "GET /me": me, "GET /habits/7": detail });
+    const { client } = renderWithApp(<HabitForm />, { path: "/habits/7/edit" });
+    fireEvent.change(await screen.findByLabelText("Название"), { target: { value: "Бег" } });
+    vi.mocked(app.MainButton.hide).mockClear();
+    mockApi({ "GET /me": me, "GET /habits/7": RATE_LIMITED });
+    await refresh(client, keys.habit(7));
+    expect(screen.getByLabelText("Название")).toHaveValue("Бег");
+    expect(app.MainButton.hide).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    // Deleted meanwhile, it says so.
+    mockApi({ "GET /me": me, "GET /habits/7": { status: 404, body: { status: 404, code: "not_found" } } });
+    await refresh(client, keys.habit(7));
+    expect(screen.getByText("Этой привычки уже нет.")).toBeInTheDocument();
   });
 });

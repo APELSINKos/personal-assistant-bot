@@ -253,8 +253,10 @@ export function ScheduleScreen() {
   const schedule = useSchedule();
   const [changing, setChanging] = useState(false);
 
-  if (me.isError) return <ErrorState onRetry={() => void me.refetch()} />;
-  if (schedule.isError) return <ErrorState onRetry={() => void schedule.refetch()} />;
+  // A failed refresh keeps the screen, and a link typed into it: only a first load that failed is
+  // an error.
+  if (me.isLoadingError) return <ErrorState onRetry={() => void me.refetch()} />;
+  if (schedule.isLoadingError) return <ErrorState onRetry={() => void schedule.refetch()} />;
   if (me.isPending || schedule.isPending) return <Loader />;
 
   const source = schedule.data.source;

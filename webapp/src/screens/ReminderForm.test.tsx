@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { keys } from "../api/queries";
 import type { Reminder } from "../api/types";
 import { Toasts } from "../components/Toasts";
 import { getCalendarDay } from "../lib/calendarDay";
@@ -8,6 +9,7 @@ import { installTelegram } from "../test/fakeTelegram";
 import { me, reminder } from "../test/fixtures";
 import { pressMainButton } from "../test/mainButton";
 import { mockApi } from "../test/mockApi";
+import { RATE_LIMITED, refresh } from "../test/refresh";
 import { renderWithApp } from "../test/render";
 import { ReminderForm } from "./ReminderForm";
 
@@ -468,6 +470,19 @@ describe("ReminderForm", () => {
     const { client } = renderWithApp(<ReminderForm />, { path: "/calendar/999" });
     await ready(client);
     expect(await screen.findByText("Этого уже нет")).toBeInTheDocument();
+  });
+
+  it("keeps the form and its draft when a refresh of the reminders fails", async () => {
+    at("2026-09-29T09:00:00Z");
+    installTelegram();
+    mockApi({ "GET /me": me, "GET /reminders": [reminder] });
+    const { client } = renderWithApp(<ReminderForm />, { path: "/calendar/3" });
+    await ready(client);
+    fireEvent.change(await screen.findByDisplayValue("Созвон"), { target: { value: "Созвон с Петей" } });
+    mockApi({ "GET /me": me, "GET /reminders": RATE_LIMITED });
+    await refresh(client, keys.reminders);
+    expect(screen.getByLabelText("О чём напомнить")).toHaveValue("Созвон с Петей");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("rolls the default date and time past midnight", async () => {

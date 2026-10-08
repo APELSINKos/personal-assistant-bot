@@ -1,11 +1,13 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { keys } from "../api/queries";
 import type { HabitDetail } from "../api/types";
 import { Toasts } from "../components/Toasts";
 import { withMark } from "../lib/habits";
 import { installTelegram } from "../test/fakeTelegram";
 import { habit, me } from "../test/fixtures";
 import { mockApi } from "../test/mockApi";
+import { RATE_LIMITED, refresh } from "../test/refresh";
 import { renderWithApp } from "../test/render";
 import { HabitScreen } from "./Habit";
 
@@ -174,6 +176,18 @@ describe("Habit screen", () => {
     show({ status: 404, body: { status: 404, code: "not_found", title: "Not found" } });
     expect(await screen.findByText("Этой привычки уже нет.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "К привычкам" })).toHaveAttribute("href", "/habits");
+  });
+
+  it("keeps the habit on screen when a refresh fails, and still says so when it is deleted meanwhile", async () => {
+    const { client } = show();
+    expect(await screen.findByRole("heading", { level: 1, name: "Спорт" })).toBeInTheDocument();
+    mockApi({ "GET /me": me, "GET /habits/7": RATE_LIMITED });
+    await refresh(client, keys.habit(7));
+    expect(screen.getByRole("heading", { level: 1, name: "Спорт" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    mockApi({ "GET /me": me, "GET /habits/7": { status: 404, body: { status: 404, code: "not_found", title: "Not found" } } });
+    await refresh(client, keys.habit(7));
+    expect(screen.getByText("Этой привычки уже нет.")).toBeInTheDocument();
   });
 
   it("speaks English", async () => {

@@ -185,7 +185,8 @@ export function ReminderForm() {
   });
 
   if (id !== null && reminders.isPending) return <Loader />;
-  if (id !== null && reminders.isError) {
+  // A failed refresh keeps the form and its draft: only a first load that failed is an error.
+  if (id !== null && reminders.isLoadingError) {
     return (
       <>
         <h1 className="screen__title">{t.reminderForm.editTitle}</h1>

@@ -5,6 +5,7 @@ import type { ClassesWeather, ForecastDay, PinnedNote, TodayLesson } from "../ap
 import { installTelegram } from "../test/fakeTelegram";
 import { habit, today } from "../test/fixtures";
 import { mockApi } from "../test/mockApi";
+import { RATE_LIMITED, refresh } from "../test/refresh";
 import { renderWithApp } from "../test/render";
 import { TodayScreen } from "./Today";
 
@@ -99,6 +100,18 @@ describe("Today", () => {
     mockApi({ "GET /today": { status: 400, body: { status: 400, code: "http_error", title: "Bad" } } });
     renderWithApp(<TodayScreen />);
     expect(await screen.findByRole("button", { name: "Повторить" })).toBeInTheDocument();
+  });
+
+  it("keeps the day on screen when a refresh fails", async () => {
+    installTelegram();
+    mockApi({ "GET /today": today });
+    const { client } = renderWithApp(<TodayScreen />);
+    expect(await screen.findByText("28")).toBeInTheDocument();
+    mockApi({ "GET /today": RATE_LIMITED });
+    await refresh(client, keys.today);
+    expect(client.getQueryState(keys.today)?.status).toBe("error");
+    expect(screen.getByText("28")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
 

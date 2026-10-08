@@ -1,8 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, type CSSProperties } from "react";
 import { useLocation, useRoute } from "wouter";
-import { ApiError } from "../api/client";
-import { keys, useForecast, useMe, useWeatherCities } from "../api/queries";
+import { isGone, keys, useForecast, useMe, useWeatherCities } from "../api/queries";
 import type { Forecast, ForecastDay, WeatherCity } from "../api/types";
 import { Card } from "../components/Card";
 import { PullToRefresh } from "../components/PullToRefresh";
@@ -54,10 +53,6 @@ function CityGone() {
     navigate("/weather", { replace: true });
   }, [client, navigate, t]);
   return <Loader />;
-}
-
-function isGone(error: unknown): boolean {
-  return error instanceof ApiError && error.status === 404;
 }
 
 function CityWeather({ id }: { id: number }) {

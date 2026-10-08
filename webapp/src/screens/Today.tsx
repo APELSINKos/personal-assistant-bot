@@ -215,7 +215,8 @@ export function TodayScreen() {
   const setMark = useSetMark();
 
   if (today.isPending) return <Loader />;
-  if (today.isError) return <ErrorState onRetry={() => void today.refetch()} />;
+  // A failed refresh keeps the day on screen: only a first load that failed is an error.
+  if (today.isLoadingError) return <ErrorState onRetry={() => void today.refetch()} />;
 
   const data = today.data;
   const date = bigDate(data.date, lang);
