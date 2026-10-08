@@ -8,6 +8,7 @@ import asyncio
 import contextlib
 import logging
 import math
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -49,6 +50,11 @@ REFRESH_BATCH = 2  # sources per refresh pass, a download each: stop() waits for
 # every tick: one failure of Open-Meteo at 08:00 must not cost the weather to everyone whose
 # digest is due at that minute. Past them the digest goes without it.
 WEATHER_WAIT_MINUTES = 10
+# A tick that has been running this long is stuck, and so is a scheduler that has not begun one
+# for this long: alive() turns false, the watchdog (core.watchdog) is no longer fed, and systemd
+# restarts the bot. The slowest real tick, every digest at once while Telegram takes its full
+# minute per message, stays well under it.
+STALL_AFTER = 30 * 60.0
 
 
 @dataclass(frozen=True)
@@ -99,6 +105,7 @@ class Scheduler:
         interval: float = 20.0,
         clock: Callable[[], datetime] = utcnow,
         calendars: Calendars | None = None,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self._bot = bot
         self._calendars = calendars
@@ -110,11 +117,14 @@ class Scheduler:
         self._last_cleanup: datetime | None = None
         self._stopping = asyncio.Event()
         self._refreshing: asyncio.Task[None] | None = None
+        self._monotonic = monotonic
+        self._beat = monotonic()  # when the current (or the last) tick began
 
     async def run(self) -> None:
         log.info("Scheduler started, every %.0f s", self._interval)
         try:
             while not self._stopping.is_set():
+                self._beat = self._monotonic()
                 await self.tick()
                 # Sleep until the next tick, but wake up at once when stop() is called.
                 with contextlib.suppress(TimeoutError):
@@ -129,6 +139,11 @@ class Scheduler:
                 self._refreshing.cancel()
                 await asyncio.wait({self._refreshing})
         log.info("Scheduler stopped")
+
+    def alive(self) -> bool:
+        """Whether the current (or the last) tick began less than STALL_AFTER ago: false once
+        a tick hangs or run() has died."""
+        return self._monotonic() - self._beat < STALL_AFTER
 
     def stop(self) -> None:
         """Finish the current tick and the schedule refresh in flight (their writes included)

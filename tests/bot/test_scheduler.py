@@ -706,6 +706,38 @@ async def test_stop_lets_the_current_tick_finish(
     assert finished == [True]
 
 
+def test_alive_until_a_tick_has_run_too_long(bot, sessionmaker, meteo, cbr) -> None:
+    now = [100.0]
+    scheduler = Scheduler(
+        bot, sessionmaker, meteo, cbr, clock=lambda: NOW, monotonic=lambda: now[0]
+    )
+    assert scheduler.alive()
+    now[0] += scheduler_module.STALL_AFTER - 1
+    assert scheduler.alive()
+    # Half an hour without a new tick: the tick hangs or run() has died. The watchdog stops being
+    # fed, and systemd restarts the bot.
+    now[0] += 2
+    assert not scheduler.alive()
+
+
+async def test_every_tick_vouches_for_the_scheduler_again(
+    bot, sessionmaker, meteo, cbr, monkeypatch
+) -> None:
+    now = [100.0]
+    scheduler = Scheduler(
+        bot, sessionmaker, meteo, cbr, clock=lambda: NOW, monotonic=lambda: now[0]
+    )
+    now[0] += scheduler_module.STALL_AFTER + 1
+    assert not scheduler.alive()
+
+    async def tick() -> None:
+        scheduler.stop()
+
+    monkeypatch.setattr(scheduler, "tick", tick)
+    await asyncio.wait_for(scheduler.run(), 1)
+    assert scheduler.alive()
+
+
 async def add_daily(session, *, time_local: str, occurrence: datetime, text: str = "таблетки"):
     reminder = Reminder(
         user_id=1,

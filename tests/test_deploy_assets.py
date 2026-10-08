@@ -48,6 +48,29 @@ def test_units_are_sandboxed(unit: str, module: str) -> None:
     assert not [line for line in lines if line.startswith("IPAddressAllow")]
 
 
+@pytest.mark.parametrize(
+    ("unit", "module"),
+    [("assistant-bot.service", "assistant.bot"), ("assistant-api.service", "assistant.api")],
+)
+def test_the_process_turns_the_watchdog_on_itself(unit: str, module: str) -> None:
+    lines = (DEPLOY / unit).read_text(encoding="utf-8").splitlines()
+    assert "NotifyAccess=main" in lines
+    # NotifyAccess=main takes the keep-alives from the main process only: the interpreter
+    # itself, started with no wrapper.
+    assert [line for line in lines if line.startswith("ExecStart=")] == [
+        f"ExecStart=/opt/assistant/app/.venv/bin/python -m {module}"
+    ]
+    # A watchdog kill (SIGABRT) leaves the stack of every thread in the journal.
+    assert "Environment=PYTHONFAULTHANDLER=1" in lines
+    # WatchdogSec= here would also watch an older commit after a rollback, which never feeds
+    # the watchdog: it would be killed every two minutes.
+    assert not [line for line in lines if line.startswith("WatchdogSec=")]
+    # A start limit would leave the service stopped after a start that failed for a passing
+    # reason; at RestartSec=5 the default one is never reached.
+    assert not [line for line in lines if line.startswith("StartLimit")]
+    assert "RestartSec=5" in lines
+
+
 def test_caddy_serves_the_app_with_the_spec_headers() -> None:
     text = (DEPLOY / "Caddyfile").read_text(encoding="utf-8")
     assert text.count("{$SITE_HOST} {") == 1
@@ -106,6 +129,13 @@ def test_caddy_reads_the_host_from_its_own_environment_file() -> None:
     lines = (DEPLOY / "caddy-assistant.conf").read_text(encoding="utf-8").splitlines()
     assert "EnvironmentFile=/etc/caddy/assistant.env" in lines
     assert "/etc/assistant/assistant.env" not in "\n".join(lines)
+
+
+def test_caddy_comes_back_after_a_crash() -> None:
+    lines = (DEPLOY / "caddy-assistant.conf").read_text(encoding="utf-8").splitlines()
+    # The package's unit never restarts Caddy: after a crash the Mini App would stay down.
+    service = lines[lines.index("[Service]") :]
+    assert "Restart=on-failure" in service and "RestartSec=5" in service
 
 
 def test_deploy_builds_the_webapp_and_checks_the_api() -> None:

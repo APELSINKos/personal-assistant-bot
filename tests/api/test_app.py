@@ -185,5 +185,33 @@ async def test_api_gives_upstream_services_a_short_time_budget(monkeypatch, api_
     assert deadlines == [4.0, 4.0]
 
 
+async def test_the_watchdog_is_fed_while_the_api_serves(monkeypatch, api_settings) -> None:
+    given: list[tuple[object, ...]] = []
+    serving: list[asyncio.Task[object]] = []
+
+    async def keep_alive(*alive: object) -> None:
+        given.append(alive)
+        await asyncio.Event().wait()
+
+    class Server:
+        def __init__(self, config: object) -> None:
+            pass
+
+        async def serve(self) -> None:
+            await asyncio.sleep(0)  # the watchdog's task takes its first step
+            serving.extend(task for task in asyncio.all_tasks() if task.get_name() == "watchdog")
+
+    monkeypatch.setattr(entry, "get_settings", lambda: api_settings)
+    monkeypatch.setattr(entry, "setup_logging", lambda *args: None)
+    monkeypatch.setattr(entry, "keep_alive", keep_alive)
+    monkeypatch.setattr(entry.uvicorn, "Server", Server)
+    await entry.main()
+    # Fed for as long as the event loop runs: the API has no scheduler to vouch for.
+    assert given == [()]
+    [watchdog] = serving
+    await asyncio.wait({watchdog}, timeout=5)
+    assert watchdog.cancelled()  # it stops with the API
+
+
 def test_the_api_waits_for_telegram_15_seconds() -> None:
     assert entry.share_bot("123456:ABC-DEF").session.timeout == 15

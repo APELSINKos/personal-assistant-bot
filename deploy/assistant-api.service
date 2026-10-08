@@ -14,7 +14,17 @@ Group=assistant
 WorkingDirectory=/opt/assistant/app
 EnvironmentFile=/etc/assistant/assistant.env
 Environment=PYTHONUNBUFFERED=1
+# The process turns systemd's watchdog on itself (core/watchdog.py) and feeds it; WatchdogSec=
+# here would also watch an older commit after a rollback, which never feeds it. The keep-alives
+# are taken from the main process only, the interpreter that ExecStart runs. A watchdog kill
+# (SIGABRT) writes the Python stack of every thread to the journal, and Restart= brings the
+# API back.
+NotifyAccess=main
+Environment=PYTHONFAULTHANDLER=1
 ExecStart=/opt/assistant/app/.venv/bin/python -m assistant.api
+# No StartLimitBurst=: a failed start is tried again for as long as it takes (at RestartSec=5
+# the default start limit is never reached), so a start that fails for a passing reason never
+# leaves the API stopped.
 Restart=always
 RestartSec=5
 TimeoutStopSec=20

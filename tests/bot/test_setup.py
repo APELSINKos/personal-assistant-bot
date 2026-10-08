@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -110,6 +111,9 @@ class Idle:
 
     def stop(self) -> None:
         pass
+
+    def alive(self) -> bool:
+        return True
 
 
 class Hanging:
@@ -267,3 +271,40 @@ async def test_the_bot_gives_upstream_services_its_http_timeout_in_all(
     # A forecast call and an exchange with the bank take the HTTP timeout in all: httpx's is
     # per phase, and an answer that trickles in outlasts it.
     assert deadlines == [7.0, 7.0]
+
+
+async def test_the_watchdog_is_fed_while_the_bot_runs(polling, monkeypatch) -> None:
+    started = asyncio.Event()
+    watchdogs: list[tuple[asyncio.Task[Any] | None, Callable[[], bool]]] = []
+
+    async def keep_alive(alive: Callable[[], bool]) -> None:
+        watchdogs.append((asyncio.current_task(), alive))
+        started.set()
+        await asyncio.Event().wait()
+
+    class Stuck(Idle):
+        def alive(self) -> bool:
+            return False
+
+    async def nothing(bot: Bot, settings: Settings) -> None:
+        pass
+
+    monkeypatch.setattr(entry, "keep_alive", keep_alive)
+    monkeypatch.setattr(entry, "Scheduler", Stuck)
+    monkeypatch.setattr(entry, "configure", nothing)
+    main = asyncio.create_task(entry.main())
+    try:
+        await asyncio.wait_for(asyncio.gather(polling.started.wait(), started.wait()), 5)
+        [(task, alive)] = watchdogs
+        assert task is not None and not task.done()
+        # The scheduler's own alive(), not keep_alive's default: a scheduler that no longer
+        # begins its ticks gets the bot restarted.
+        assert not alive()
+        polling.stopped.set()
+        await asyncio.wait({main}, timeout=5)
+        assert main.done()
+        await main
+        await asyncio.wait({task}, timeout=5)
+        assert task.cancelled()  # it stops with the bot
+    finally:
+        main.cancel()

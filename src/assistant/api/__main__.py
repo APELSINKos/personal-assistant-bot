@@ -19,6 +19,7 @@ from assistant.core.config import get_settings
 from assistant.core.db import create_engine, make_sessionmaker
 from assistant.core.i18n import check_translations
 from assistant.core.logging import setup_logging
+from assistant.core.watchdog import keep_alive
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 # Open-Meteo and the Bank of Russia get a shorter budget here than in the bot: a screen of
@@ -42,6 +43,8 @@ async def main() -> None:
     check_translations()
     engine = create_engine(settings.database_url)
     bot = share_bot(settings.bot_token.get_secret_value())
+    # Fed while the event loop runs: a frozen loop answers nothing, /api/health included.
+    watchdog = asyncio.create_task(keep_alive(), name="watchdog")
     try:
         async with (
             httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT) as http,
@@ -68,6 +71,7 @@ async def main() -> None:
             )
             await uvicorn.Server(config).serve()
     finally:
+        watchdog.cancel()
         await bot.session.close()
         await engine.dispose()
 
