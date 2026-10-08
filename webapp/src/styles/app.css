@@ -152,11 +152,13 @@ a {
 }
 
 /* Today */
+/* The date is the screen's h1; its parts set their own fonts, so a heading's size and weight stay off. */
 .big-date {
   display: flex;
   align-items: flex-end;
   gap: 12px;
   margin: 6px 4px 16px;
+  font: inherit;
 }
 
 .big-date__day {

@@ -389,6 +389,16 @@ describe("More", () => {
     expect(calls).toContainEqual({ method: "PATCH", path: "/me", body: { language: "en" } });
   });
 
+  it("has each language named in its own words read in its own language", async () => {
+    installTelegram();
+    mockApi({ "GET /me": me, "GET /health": HEALTH });
+    renderWithApp(<MoreScreen />, { path: "/more" });
+    expect(await screen.findByRole("button", { name: "Русский" })).toHaveAttribute("lang", "ru");
+    expect(screen.getByRole("button", { name: "English" })).toHaveAttribute("lang", "en");
+    // «Авто» is a word of the app's own language, as the page is.
+    expect(screen.getByRole("button", { name: "Авто" })).not.toHaveAttribute("lang");
+  });
+
   it("flips the digest switch at once and puts it back when saving fails", async () => {
     installTelegram();
     const patch = heldPatches();

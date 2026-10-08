@@ -339,7 +339,9 @@ describe("useUpdateMe", () => {
     await waitFor(() => expect(client.getQueryData<Me>(keys.me)).toEqual(last));
   });
 
-  it("asks for the weather again after a change of language: the server words it in that language", async () => {
+  it("asks again for what the server words in the user's language once the language changes", async () => {
+    // Every forecast and the weather's cities, the calendar's repeats, the reminders, the cities found.
+    const worded = [keys.weather, ["agenda"], keys.reminders, ["cities"]];
     const client = createQueryClient();
     client.setQueryData(keys.me, me);
     const invalidate = vi.spyOn(client, "invalidateQueries");
@@ -347,12 +349,12 @@ describe("useUpdateMe", () => {
     const { result } = renderHook(() => useUpdateMe(), { wrapper: wrapperFor(client) });
     act(() => result.current.mutate({ language: "en" }));
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.weather }); // every forecast and the cities
-    // Another setting leaves the weather as it is.
+    for (const queryKey of worded) expect(invalidate).toHaveBeenCalledWith({ queryKey });
+    // Another setting leaves them as they are.
     invalidate.mockClear();
     act(() => result.current.mutate({ morning_enabled: false }));
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.today }));
-    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: keys.weather });
+    for (const queryKey of worded) expect(invalidate).not.toHaveBeenCalledWith({ queryKey });
   });
 });
 

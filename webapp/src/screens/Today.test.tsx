@@ -31,6 +31,16 @@ describe("Today", () => {
     expect(screen.getByText("🔥 Лучшая серия: «Спорт» — 5 дней")).toBeInTheDocument();
   });
 
+  it("heads the screen with the day: its one h1", async () => {
+    installTelegram();
+    mockApi({ "GET /today": today });
+    renderWithApp(<TodayScreen />);
+    const title = await screen.findByRole("heading", { level: 1 });
+    expect(within(title).getByText("28")).toBeInTheDocument();
+    expect(title).toHaveTextContent(/понедельник\s*сентябрь 2026$/);
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+  });
+
   it("names the best streak in English, and only when there is one", async () => {
     installTelegram();
     mockApi({ "GET /today": { ...today, best_streak: { name: "Sport", count: 1, unit: "days" } } });

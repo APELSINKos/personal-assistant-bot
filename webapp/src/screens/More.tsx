@@ -310,11 +310,13 @@ export function MoreScreen() {
 
       <Card title={t.more.language} index={3}>
         <div className="segmented" role="group" aria-label={t.more.language}>
+          {/* Each language is named in its own words, and a screen reader reads them so too. */}
           {(["auto", "ru", "en"] as const).map((option) => (
             <button
               type="button"
               key={option}
               className="segmented__option"
+              lang={option === "auto" ? undefined : option}
               aria-pressed={profile.language_setting === option}
               onClick={() => update.mutate({ language: option })}
             >

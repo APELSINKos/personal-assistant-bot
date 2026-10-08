@@ -759,12 +759,14 @@ export function useUpdateMe() {
       if (client.isMutating({ mutationKey: ME_UPDATE_KEY }) === 1) client.setQueryData(keys.me, me);
       haptic("success");
       // The server words categories and currencies in the user's language, amounts in their currency;
-      // a new language words the forecasts anew as well.
+      // a new language words anew the forecasts, the repeats in the calendar and the reminders, and
+      // the names of the cities a search finds.
+      const worded = body.language === undefined ? [] : [keys.weather, ["agenda"], keys.reminders, ["cities"]];
       return Promise.all([
         client.invalidateQueries({ queryKey: keys.today }),
         client.invalidateQueries({ queryKey: keys.money }),
         client.invalidateQueries({ queryKey: keys.rates }),
-        body.language === undefined ? null : client.invalidateQueries({ queryKey: keys.weather }),
+        ...worded.map((queryKey) => client.invalidateQueries({ queryKey })),
       ]);
     },
     onSettled: (_me, error) => {

@@ -230,14 +230,15 @@ export function TodayScreen() {
 
   return (
     <PullToRefresh onRefresh={() => today.refetch()}>
-      <header className="big-date">
+      {/* The day is the screen's heading, as a title is on the other screens. */}
+      <h1 className="big-date">
         <span className="big-date__day">{date.day}</span>
         <span className="big-date__meta">
           {date.weekday}
           <br />
           {date.month} {date.year}
         </span>
-      </header>
+      </h1>
 
       <WeatherCard weather={data.weather} tomorrow={data.tomorrow} />
 
