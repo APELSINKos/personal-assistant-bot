@@ -24,6 +24,8 @@ async def test_create_list_cancel(client, auth) -> None:
     [
         ("2026-09-28T14:00", "when", "past"),
         ("2026-02-30T10:00", "due_local", "format"),
+        ("9999-12-31T23:59", "when", "invalid"),
+        ("2101-01-01T09:00", "when", "invalid"),
     ],
 )
 async def test_rejected_moments(client, auth, due_local, field, reason) -> None:
@@ -32,6 +34,18 @@ async def test_rejected_moments(client, auth, due_local, field, reason) -> None:
     )
     assert response.status_code == 422
     assert (response.json()["field"], response.json()["reason"]) == (field, reason)
+
+
+async def test_an_edit_cannot_move_a_reminder_past_2100(client, auth) -> None:
+    created = await client.post(
+        "/api/reminders", json={"text": "x", "due_local": "2026-09-29T10:00"}, headers=auth()
+    )
+    url = f"/api/reminders/{created.json()['id']}"
+    response = await client.patch(url, json={"due_local": "9999-12-31T23:59"}, headers=auth())
+    assert response.status_code == 422
+    assert (response.json()["field"], response.json()["reason"]) == ("when", "invalid")
+    listed = await client.get("/api/reminders", headers=auth())
+    assert [r["due_local"] for r in listed.json()] == ["2026-09-29T10:00"]
 
 
 async def test_bad_format_and_status_are_422(client, auth) -> None:

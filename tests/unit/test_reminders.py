@@ -140,6 +140,16 @@ async def test_create_rejects_a_moment_outside_the_calendar(session, make_user) 
     assert error.value.params["reason"] == "invalid"
 
 
+async def test_create_takes_moments_up_to_2100(session, make_user) -> None:
+    user = await make_user()  # Moscow: even 9999 converts to UTC, yet overflows later
+    for wall in (datetime(9999, 12, 31, 23, 59), datetime(2101, 1, 1, 0, 0)):
+        with pytest.raises(InvalidInput) as error:
+            await reminders.create(session, user, "x", wall, now=NOW)
+        assert error.value.params == {"field": "when", "reason": "invalid"}
+    last = await reminders.create(session, user, "x", datetime(2100, 12, 31, 23, 59), now=NOW)
+    assert last.due_at == datetime(2100, 12, 31, 20, 59, tzinfo=UTC)
+
+
 async def test_today_for_includes_todays_firing_of_a_repeat(session, make_user) -> None:
     user = await make_user()  # Moscow
     morning = datetime(2026, 9, 28, 5, 0, tzinfo=UTC)  # 08:00 in Moscow

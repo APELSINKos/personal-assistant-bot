@@ -363,6 +363,13 @@ async def test_a_date_next_year_shows_the_year(feed, fake) -> None:
     assert fake.sent_texts()[-1] == "⏰ вт, 29 февр. 2028, 10:00 — тест"
 
 
+async def test_a_moment_after_2100_is_not_saved(feed, fake, session) -> None:
+    await feed(message_update("31.12.9999 в 23:59 тест"))
+    await feed(callback_update(button_data(fake, "✅ Создать")))
+    assert fake.sent_texts()[-1] == ASK_TIME
+    assert await all_reminders(session) == []
+
+
 async def test_a_stale_card_does_not_break_another_dialog(feed, fake, session) -> None:
     await feed(message_update("завтра в 9 купить молоко"))
     old_ok = button_data(fake, "✅ Создать")

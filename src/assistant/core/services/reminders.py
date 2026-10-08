@@ -15,7 +15,7 @@ from assistant.core.models import Reminder, ReminderStatus, Repeat, User
 from assistant.core.services import recurrence
 from assistant.core.services.phrases import Parsed
 from assistant.core.services.recurrence import Rule
-from assistant.core.timeutil import local_to_utc, local_today, to_local, utcnow
+from assistant.core.timeutil import SUPPORTED_YEARS, local_to_utc, local_today, to_local, utcnow
 
 log = logging.getLogger(__name__)
 
@@ -82,10 +82,11 @@ def _schedule(reminder: Reminder, moment: datetime) -> None:
 
 
 def _to_utc(when_local: datetime, tz: str) -> datetime:
-    try:
-        return local_to_utc(when_local, tz)
-    except OverflowError as error:  # the edges of the calendar: nothing to schedule there
-        raise InvalidInput(field="when", reason="invalid") from error
+    # Checked before any conversion: a moment by the calendar's edge overflows, if not here
+    # then later (on «+10 мин» or after a move east), and breaks every list that shows it.
+    if when_local.year not in SUPPORTED_YEARS:
+        raise InvalidInput(field="when", reason="invalid")
+    return local_to_utc(when_local, tz)
 
 
 def _biweekly_anchor(rule: Rule, tz: str, moment: datetime) -> Rule:
