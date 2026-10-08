@@ -160,6 +160,7 @@ async def _ask_time(send: Send, ctx: Ctx, parsed: Parsed, local_now: datetime) -
         {
             "parsed": phrases.dump(parsed),
             "at": local_now.isoformat(),
+            "tz": ctx.user.timezone,
             "card": card,
             "hint": "hint-reminder-time",
         }
@@ -197,6 +198,7 @@ async def _offer(send: Send, ctx: Ctx, parsed: Parsed, local_now: datetime) -> N
         {
             "parsed": phrases.dump(parsed),
             "at": local_now.isoformat(),
+            "tz": ctx.user.timezone,
             "card": card,
             "hint": "reminder-use-card",
         }
@@ -259,6 +261,7 @@ class _Draft:
     parsed: Parsed
     at: datetime
     card: int
+    tz: str | None  # the zone it was drawn in; a draft kept before 2.6.1 has none
 
 
 async def _draft(ctx: Ctx) -> _Draft | None:
@@ -266,7 +269,13 @@ async def _draft(ctx: Ctx) -> _Draft | None:
     raw, at, card = data.get("parsed"), data.get("at"), data.get("card")
     if not isinstance(raw, dict) or not isinstance(at, str) or not isinstance(card, int):
         return None
-    return _Draft(parsed=phrases.load(raw), at=datetime.fromisoformat(at), card=card)
+    tz = data.get("tz")
+    return _Draft(
+        parsed=phrases.load(raw),
+        at=datetime.fromisoformat(at),
+        card=card,
+        tz=tz if isinstance(tz, str) else None,
+    )
 
 
 def _expired(draft: _Draft) -> bool:
@@ -356,6 +365,13 @@ async def on_create(query: CallbackQuery, callback_data: ReminderCb, ctx: Ctx, b
     await ctx.state.clear()
     parsed, card_now = draft.parsed, draft.at
     send = _send_to(bot, query)
+    if draft.tz is not None and draft.tz != ctx.user.timezone:
+        # The home city changed under the card (in the app), so its time meant the old zone:
+        # the card comes again in the new one, and this tap saves nothing.
+        await replies.answer_quietly(query)
+        await replies.drop_buttons(bot, query)
+        await _offer(send, ctx, parsed, _local_now(ctx))
+        return
     try:
         if parsed.repeat is not Repeat.NONE:
             # The first firing is counted from the press, never from when the card was shown.

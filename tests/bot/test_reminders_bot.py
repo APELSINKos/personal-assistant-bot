@@ -4,13 +4,13 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from aiogram.fsm.storage.base import StorageKey
-from aiogram.methods import AnswerCallbackQuery, SendMessage
+from aiogram.methods import AnswerCallbackQuery, EditMessageReplyMarkup, SendMessage
 from sqlalchemy import select
 
 from assistant.bot.keyboards import ReminderCb, SettingsCb
 from assistant.bot.routers import reminders as reminders_router
 from assistant.core.models import Reminder, ReminderStatus, Repeat
-from assistant.core.services import reminders
+from assistant.core.services import reminders, users
 from tests.bot.fakes import callback_update, message_update
 
 NOW = datetime(2026, 9, 28, 12, 0, tzinfo=UTC)  # Monday, 15:00 in Moscow
@@ -248,6 +248,42 @@ async def test_an_older_card_cannot_create_a_newer_one(feed, fake, session) -> N
     await feed(callback_update(button_data(fake, "✅ Создать")))
     (stored,) = await all_reminders(session)
     assert stored.text == "чай"
+
+
+async def test_a_card_drawn_before_a_change_of_city_is_offered_again(
+    feed, fake, session, make_user, monkeypatch
+) -> None:
+    user = await make_user()  # Moscow, UTC+3
+    await feed(message_update("через 2 часа позвонить маме"))
+    assert fake.sent_texts()[-1] == "⏰ Сегодня, 17:00 — позвонить маме"
+    old_ok = button_data(fake, "✅ Создать")
+    # Meanwhile the app moves the home city to Yekaterinburg, UTC+5.
+    await users.set_city(session, user, "Екатеринбург", 56.84, 60.61, "Asia/Yekaterinburg", now=NOW)
+    await session.commit()
+    press = NOW + timedelta(minutes=5)
+    monkeypatch.setattr(reminders_router, "clock", lambda: press)
+    await feed(callback_update(old_ok))
+    assert fake.of(EditMessageReplyMarkup)[-1].reply_markup is None
+    assert fake.sent_texts()[-1] == "⏰ Сегодня, 19:05 — позвонить маме"
+    assert await all_reminders(session) == []
+    await feed(callback_update(old_ok))  # the old card is gone for good
+    assert fake.of(AnswerCallbackQuery)[-1].text == "Этого уже нет."
+    await feed(callback_update(button_data(fake, "✅ Создать")))
+    (stored,) = await all_reminders(session)
+    assert stored.due_at == press + timedelta(hours=2)
+
+
+async def test_a_card_kept_without_its_zone_is_created_as_before(
+    feed, fake, session, dp, bot
+) -> None:
+    await feed(message_update("через 2 часа позвонить маме"))
+    key = StorageKey(bot_id=bot.id, chat_id=1, user_id=1)
+    data = await dp.storage.get_data(key)
+    data.pop("tz", None)  # a card shown before 2.6.1
+    await dp.storage.set_data(key, data)
+    await feed(callback_update(button_data(fake, "✅ Создать")))
+    (stored,) = await all_reminders(session)
+    assert stored.due_at == NOW + timedelta(hours=2)
 
 
 async def test_a_long_text_is_refused_before_the_card(feed, fake) -> None:
