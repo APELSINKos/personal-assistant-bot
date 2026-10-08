@@ -46,12 +46,13 @@ def local_today(tz_name: str, now: datetime | None = None) -> date:
 def local_to_utc(wall: datetime, tz_name: str) -> datetime:
     """Interpret a naive wall-clock time in a zone.
 
-    With fold=0 a time inside a DST gap resolves to the moment after the gap
-    (02:30 → 03:30) and an ambiguous time resolves to its first occurrence.
+    With fold=0, the default, a time inside a DST gap resolves to the moment after the gap
+    (02:30 → 03:30) and an ambiguous time resolves to its first occurrence. fold=1, which a
+    wall read off the second pass of a repeated hour carries, means the second occurrence.
     """
     if wall.tzinfo is not None:
         raise ValueError("expected a naive wall-clock datetime")
-    return wall.replace(tzinfo=ZoneInfo(tz_name), fold=0).astimezone(UTC)
+    return wall.replace(tzinfo=ZoneInfo(tz_name)).astimezone(UTC)
 
 
 def digest_window_date(now_local: datetime, morning_time: str, minutes: int = 60) -> date | None:

@@ -187,6 +187,45 @@ async def test_a_time_button_after_a_late_press_sets_that_time(feed, fake, monke
     assert fake.sent_texts()[-1] == "⏰ Сегодня, 18:00 — чай"
 
 
+@pytest.mark.parametrize(
+    ("now", "phrase", "card", "due_at"),
+    [
+        # 01:30 CEST on 25.10: at 03:00 the clocks go back to 02:00, so two hours on is 02:30.
+        (
+            datetime(2026, 10, 24, 23, 30, tzinfo=UTC),
+            "через 2 часа позвонить",
+            "⏰ Сегодня, 02:30 — позвонить",
+            datetime(2026, 10, 25, 1, 30, tzinfo=UTC),
+        ),
+        # 02:40 CEST, the first pass of the repeated hour: half an hour on is 02:10 CET.
+        (
+            datetime(2026, 10, 25, 0, 40, tzinfo=UTC),
+            "через 30 минут выключить духовку",
+            "⏰ Сегодня, 02:10 — выключить духовку",
+            datetime(2026, 10, 25, 1, 10, tzinfo=UTC),
+        ),
+        # 01:30 CET on 29.03: at 02:00 the clocks go forward to 03:00, so two hours on is 04:30.
+        (
+            datetime(2026, 3, 29, 0, 30, tzinfo=UTC),
+            "через 2 часа позвонить",
+            "⏰ Сегодня, 04:30 — позвонить",
+            datetime(2026, 3, 29, 2, 30, tzinfo=UTC),
+        ),
+    ],
+    ids=["back", "inside-the-repeated-hour", "forward"],
+)
+async def test_a_span_through_the_night_the_clocks_change(
+    feed, fake, session, make_user, monkeypatch, now, phrase, card, due_at
+) -> None:
+    await make_user(tz="Europe/Berlin")
+    monkeypatch.setattr(reminders_router, "clock", lambda: now)
+    await feed(message_update(phrase))
+    assert fake.sent_texts()[-1] == card
+    await feed(callback_update(button_data(fake, "✅ Создать")))
+    (stored,) = await all_reminders(session)
+    assert stored.due_at == due_at
+
+
 async def test_a_repeat_card_pressed_later_starts_from_the_press(
     feed, fake, session, monkeypatch
 ) -> None:

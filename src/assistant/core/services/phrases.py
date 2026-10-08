@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, replace
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from assistant.core.models import Repeat
@@ -352,12 +352,21 @@ class Parsed:
         return replace(self, time=hhmm, delta=None)
 
     def when(self, now: datetime) -> datetime | None:
-        """The local wall time of a one-off reminder (naive), or None if it is not one."""
+        """The local wall time of a one-off reminder (naive), or None if it is not one.
+
+        From an aware `now`, «через …» is the real moment: inside the hour that repeats when the
+        clocks go back, fold=1 marks its second pass. From a naive `now` it is wall arithmetic.
+        """
         if self.repeat is not Repeat.NONE:
             return None
         wall = now.replace(tzinfo=None)
         if self.delta is not None:
-            return (wall + self.delta).replace(second=0, microsecond=0)
+            # Real time: a change of clocks inside the span moves the wall time, not the span.
+            if now.tzinfo is None:
+                moment = now + self.delta
+            else:
+                moment = (now.astimezone(UTC) + self.delta).astimezone(now.tzinfo)
+            return moment.replace(tzinfo=None, second=0, microsecond=0)
         if self.time is None:
             return None
         clock = _clock(self.time)

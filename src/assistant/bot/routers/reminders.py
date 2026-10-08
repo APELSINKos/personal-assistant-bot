@@ -185,7 +185,9 @@ async def _offer(send: Send, ctx: Ctx, parsed: Parsed, local_now: datetime) -> N
         await _ask_time(send, ctx, parsed, local_now)
         return
     when = parsed.when(local_now)
-    if when is not None and when <= local_now.replace(tzinfo=None):
+    # «через …» is always ahead (✅ checks the real clock), and naive wall times compare
+    # wrongly inside the hour that repeats when the clocks go back.
+    if when is not None and parsed.delta is None and when <= local_now.replace(tzinfo=None):
         await send(ctx.t("reminder-past"), None)
         await _ask_time(send, ctx, parsed, local_now)
         return
@@ -360,8 +362,9 @@ async def on_create(query: CallbackQuery, callback_data: ReminderCb, ctx: Ctx, b
             reminder = await reminders.create_from(ctx.session, ctx.user, parsed, clock())
         else:
             # The card's own "now" for the wall time: «через 20 минут» means what the card
-            # showed. The past check itself still runs against the real clock.
-            when = parsed.when(card_now)
+            # showed. The draft keeps only its offset: back in the zone, a change of clocks
+            # inside the span counts. The past check itself still runs against the real clock.
+            when = parsed.when(to_local(card_now, ctx.user.timezone))
             if when is None:
                 raise InvalidInput(field="when", reason="needs_time")
             reminder = await reminders.create(ctx.session, ctx.user, parsed.text, when, clock())

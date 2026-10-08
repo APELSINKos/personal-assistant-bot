@@ -8,8 +8,9 @@ from sqlalchemy import select
 
 from assistant.core.errors import InvalidInput, LimitReached
 from assistant.core.models import Reminder, ReminderStatus, Repeat
-from assistant.core.services import reminders
+from assistant.core.services import phrases, reminders
 from assistant.core.services.recurrence import Rule
+from assistant.core.timeutil import to_local
 
 NOW = datetime(2026, 9, 28, 12, 0, tzinfo=UTC)  # the same moment in UTC
 
@@ -22,6 +23,22 @@ async def test_create_stores_utc(session, make_user) -> None:
     assert reminder.text == "встреча"
     assert reminder.due_at == datetime(2026, 9, 28, 23, 0, tzinfo=UTC)
     assert reminder.next_attempt_at == reminder.due_at and reminder.status == ReminderStatus.PENDING
+
+
+@pytest.mark.parametrize(
+    "now",
+    [
+        datetime(2026, 10, 24, 23, 30, tzinfo=UTC),  # 01:30 CEST, the night the clocks go back
+        datetime(2026, 3, 29, 0, 30, tzinfo=UTC),  # 01:30 CET, the night they go forward
+    ],
+    ids=["back", "forward"],
+)
+async def test_a_span_from_a_phrase_counts_real_time(session, make_user, now) -> None:
+    user = await make_user(tz="Europe/Berlin")
+    parsed = phrases.parse("через 2 часа позвонить", to_local(now, user.timezone))
+    assert parsed is not None
+    reminder = await reminders.create_from(session, user, parsed, now)
+    assert reminder.due_at == now + timedelta(hours=2)
 
 
 async def test_create_rejects_past_and_limits(session, make_user) -> None:
