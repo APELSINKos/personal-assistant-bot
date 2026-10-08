@@ -8,8 +8,33 @@ User=assistant
 Group=assistant
 ExecStart=/usr/local/sbin/assistant-backup
 UMask=0027
+# The database with its -wal and -shm, and the folder of the copies.
+ReadWritePaths=/var/lib/assistant /var/backups/assistant
+
+# Sandbox: the bot's, and no network at all (an upload of the copies needs a unit of its own)
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/assistant /var/backups/assistant
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+RemoveIPC=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateNetwork=true
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Online copy of the SQLite database (safe while the bot runs); keeps the 14 newest copies.
 set -euo pipefail
+# The copies are the service's alone (0640), also when the script is run by hand.
+umask 0027
 
 db=/var/lib/assistant/assistant.db
 dir=/var/backups/assistant

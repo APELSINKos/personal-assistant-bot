@@ -24,6 +24,32 @@ needs_bash = pytest.mark.skipif(
     sys.platform == "win32" or shutil.which("bash") is None,
     reason="the deploy scripts run on Linux",
 )
+# The sandbox every unit shares; the network rules are each unit's own.
+SANDBOX = (
+    "NoNewPrivileges=true",
+    "PrivateTmp=true",
+    "PrivateDevices=true",
+    "ProtectSystem=strict",
+    "ProtectHome=true",
+    "ProtectHostname=true",
+    "ProtectClock=true",
+    "ProtectKernelTunables=true",
+    "ProtectKernelModules=true",
+    "ProtectKernelLogs=true",
+    "ProtectControlGroups=true",
+    "ProtectProc=invisible",
+    "ProcSubset=pid",
+    "RestrictSUIDSGID=true",
+    "RestrictNamespaces=true",
+    "RestrictRealtime=true",
+    "LockPersonality=true",
+    "RemoveIPC=true",
+    "CapabilityBoundingSet=",
+    "AmbientCapabilities=",
+    "SystemCallArchitectures=native",
+    "SystemCallFilter=@system-service",
+    "SystemCallFilter=~@privileged @resources",
+)
 
 
 @pytest.mark.parametrize(
@@ -38,14 +64,30 @@ def test_units_are_sandboxed(unit: str, module: str) -> None:
         f"ExecStart=/opt/assistant/app/.venv/bin/python -m {module}",
         "Restart=always",
         "StateDirectory=assistant",
-        "ProtectSystem=strict",
-        "NoNewPrivileges=true",
-        "CapabilityBoundingSet=",
+        *SANDBOX,
+        "RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX",
         "IPAddressDeny=169.254.0.0/16 fe80::/10 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 "
         "100.64.0.0/10 fc00::/7",
     ):
-        assert expected in lines
+        assert expected in lines, expected
     assert not [line for line in lines if line.startswith("IPAddressAllow")]
+
+
+def test_the_backup_is_sandboxed_with_no_network() -> None:
+    lines = (DEPLOY / "assistant-backup.service").read_text(encoding="utf-8").splitlines()
+    for expected in (
+        "User=assistant",
+        "ExecStart=/usr/local/sbin/assistant-backup",
+        # The database with its -wal and -shm, and the folder of the copies.
+        "ReadWritePaths=/var/lib/assistant /var/backups/assistant",
+        *SANDBOX,
+        # It copies a local file into a local folder.
+        "PrivateNetwork=true",
+        "RestrictAddressFamilies=AF_UNIX",
+        "IPAddressDeny=any",
+    ):
+        assert expected in lines, expected
+    assert not [line for line in lines if line.startswith("EnvironmentFile=")]
 
 
 @pytest.mark.parametrize(
@@ -94,6 +136,15 @@ def test_caddy_serves_the_app_with_the_spec_headers() -> None:
     # One CSP for the whole site: the API docs, which wanted a CDN script, are not served.
     assert text.count("Content-Security-Policy") == 1
     assert "/api/docs" not in text
+
+
+def test_caddy_offers_no_http3() -> None:
+    text = (DEPLOY / "Caddyfile").read_text(encoding="utf-8")
+    # HTTP/3 runs over UDP, and the firewall lets only TCP through to port 443. Global options
+    # are the first block of the file.
+    options = re.match(r"(?:#[^\n]*\n|\n)*\{\n(.*?)\n\}\n", text, re.DOTALL)
+    assert options is not None
+    assert options.group(1).splitlines() == ["\tservers {", "\t\tprotocols h1 h2", "\t}"]
 
 
 def test_caddy_lets_a_calendar_file_through() -> None:
@@ -164,6 +215,23 @@ def test_deploy_says_which_commit_a_failed_rollback_left() -> None:
     assert "ROLLBACK FAILED: the services are down" not in text
     setup = (DEPLOY / "server-setup.md").read_text(encoding="utf-8")
     assert "| `4` | the rollback did not come up healthy — manual attention needed |" in setup
+
+
+def test_copies_of_the_database_are_for_the_service_only() -> None:
+    deploy = (DEPLOY / "assistant-deploy").read_text(encoding="utf-8")
+    # The deploy's umask lets Caddy read the web build; a copy of the database gets 0640.
+    assert "\numask 0022\n" in deploy
+    for copy in (
+        """( umask 0027; as_app sqlite3 "$DB" ".backup '$snapshot'" )""",
+        '( umask 0027; as_app cp "$snapshot" "$DB.restore" )',
+    ):
+        assert copy in deploy, copy
+    # The nightly copy, also when the script is run by hand.
+    backup = (DEPLOY / "assistant-backup").read_text(encoding="utf-8")
+    assert "\numask 0027\n" in backup
+    assert backup.index("\numask 0027\n") < backup.index(".backup")
+    unit = (DEPLOY / "assistant-backup.service").read_text(encoding="utf-8").splitlines()
+    assert "UMask=0027" in unit
 
 
 def test_runbook_checks_what_it_installs_before_it_goes_live() -> None:

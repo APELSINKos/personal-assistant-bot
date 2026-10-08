@@ -2,6 +2,13 @@
 # Installed by hand to /etc/caddy/Caddyfile (deploy/server-setup.md, section 4). The host name
 # comes from SITE_HOST in /etc/caddy/assistant.env, loaded by caddy-assistant.conf.
 
+# No HTTP/3: it runs over UDP, and the firewall lets only TCP through to port 443.
+{
+	servers {
+		protocols h1 h2
+	}
+}
+
 {$SITE_HOST} {
 	encode zstd gzip
 	root * /opt/assistant/app/webapp/dist
