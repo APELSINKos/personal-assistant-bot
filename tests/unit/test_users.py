@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import func, select
 
 from assistant.core.clients.openmeteo import City
 from assistant.core.errors import InvalidInput
-from assistant.core.models import Reminder, ReminderStatus, User
-from assistant.core.services import cities, users
+from assistant.core.models import Reminder, ReminderStatus, Repeat, User
+from assistant.core.services import cities, reminders, users
+from assistant.core.services.recurrence import Rule
 
 NOW = datetime(2026, 9, 28, 12, 0, tzinfo=UTC)
 TULA = City(
@@ -74,6 +75,29 @@ async def test_ensure_unblocks_and_expires_old_reminders(session, make_user) -> 
         "old": (ReminderStatus.FAILED, "expired"),
         "fresh": (ReminderStatus.PENDING, None),
     }
+
+
+async def test_an_unblock_expires_and_moves_only_the_users_own_reminders(
+    session, make_user
+) -> None:
+    await make_user(id=5, bot_blocked=True)
+    neighbour = await make_user(id=6, bot_blocked=True)  # away as well, and staying away
+    long_ago = NOW - timedelta(days=3)
+    await reminders.create(session, neighbour, "старое", datetime(2026, 9, 25, 18), long_ago)
+    daily = Rule(repeat=Repeat.DAILY, time_local="10:00", anchor_date=date(2026, 9, 25))
+    await reminders.create_repeating(session, neighbour, "таблетки", daily, long_ago)
+    await session.commit()
+
+    async def theirs() -> dict[str, tuple[ReminderStatus, datetime]]:
+        rows = (await session.scalars(select(Reminder))).all()
+        return {row.text: (row.status, row.due_at) for row in rows}
+
+    kept = await theirs()
+    await users.ensure(session, 5, "Test", "ru", now=NOW)  # user 5 writes to the bot again
+    await session.commit()
+    session.expire_all()
+    assert await theirs() == kept
+    assert {status for status, _ in kept.values()} == {ReminderStatus.PENDING}
 
 
 async def test_set_morning_validates_time(session, make_user) -> None:

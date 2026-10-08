@@ -150,6 +150,21 @@ async def test_blocked_user(scheduler, session, make_user, fake) -> None:
     assert len(fake.calls) == 1
 
 
+async def test_one_user_blocking_the_bot_leaves_the_others_reachable(
+    scheduler, session, make_user, fake
+) -> None:
+    first = await make_user(id=1, morning_enabled=False)
+    second = await make_user(id=2, morning_enabled=False)
+    await add_reminder(session, 1, ago=timedelta(minutes=2))  # the first of the batch
+    await add_reminder(session, 2, ago=timedelta(minutes=1))
+    fake.errors.append(
+        TelegramForbiddenError(method=METHOD, message="Forbidden: bot was blocked by the user")
+    )
+    assert await scheduler.deliver_reminders(NOW) == 1
+    assert (await reload(session, first)).bot_blocked
+    assert not (await reload(session, second)).bot_blocked
+
+
 async def test_bad_request_fails_without_blocking(scheduler, session, make_user, fake) -> None:
     user = await make_user(morning_enabled=False)
     reminder = await add_reminder(session)

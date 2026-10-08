@@ -334,3 +334,23 @@ async def test_no_warning_for_an_income_a_past_month_or_without_a_budget(
         session, user, amount=999900, category_id=cafe.id, day=date(2026, 9, 30), now=NOW
     )
     assert await money_month.alerts_after(session, user, past, NOW) == []
+
+
+async def test_a_neighbours_money_stays_out_of_my_warnings_and_days(
+    session: AsyncSession, make_user: MakeUser
+) -> None:
+    user, neighbour = await make_user(1), await make_user(2)
+
+    async def add(who: User, amount: int) -> list[int]:
+        cafe = await preset(session, who, "cafe")
+        entry = await money.add_entry(session, who, amount=amount, category_id=cafe.id, now=NOW)
+        found = await money_month.alerts_after(session, who, entry, NOW)
+        return [alert.threshold for alert in found]
+
+    await spend(session, neighbour, "cafe", 90000, date(2026, 10, 2))
+    await money.set_budget(session, neighbour, 100000)
+    assert await add(neighbour, 100) == [80]  # the neighbour is warned at 90 %
+    await money.set_budget(session, user, 100000)  # my new budget: only mine warn afresh
+    assert await add(user, 1000) == []  # 1 % of mine, whatever the neighbour spent
+    assert await add(neighbour, 100) == []  # their 80 % has been said
+    assert await money_month.spent_on(session, user, date(2026, 10, 2)) == 0  # my yesterday

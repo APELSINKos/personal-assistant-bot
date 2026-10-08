@@ -368,3 +368,42 @@ async def test_cleanup_forgets_old_alerts(
     assert await scheduler.cleanup(LESSON + timedelta(days=1)) == 0
     assert await scheduler.cleanup(LESSON + timedelta(days=2, seconds=1)) == 1
     assert await alerts(session) == 0
+
+
+async def test_a_classmates_alert_does_not_stand_for_mine(
+    bot, sessionmaker, session, meteo, cbr, calendars, make_user, fake
+) -> None:
+    await connected(session, make_user, calendars, minutes=15, id=1)
+    await connected(session, make_user, calendars, minutes=30, id=2)
+    for minutes in (30, 15):
+        moment = LESSON - timedelta(minutes=minutes)
+        scheduler = at(moment, bot, sessionmaker, meteo, cbr, calendars)
+        assert await scheduler.send_lesson_alerts(moment) == 1, minutes
+    assert [(call.chat_id, call.text) for call in fake.of(SendMessage)] == [
+        (2, ALERT.replace("15 мин", "30 мин")),
+        (1, ALERT),
+    ]
+
+
+async def test_a_failing_source_is_put_off_alone(
+    bot, sessionmaker, session, meteo, cbr, calendars, make_user, monkeypatch
+) -> None:
+    await connected(session, make_user, calendars, id=1)
+    later = CONNECTED + timedelta(hours=3)
+    neighbour = await make_user(id=2, morning_enabled=False)
+    await schedule.connect_mirea(session, neighbour, 4805, calendars, later)
+    await session.commit()
+    original = schedule.refresh
+
+    async def broken(session, user, calendars, now=None):
+        if user.id == 1:
+            raise OSError("the parser did not start")
+        return await original(session, user, calendars, now)
+
+    monkeypatch.setattr(schedule, "refresh", broken)
+    due = CONNECTED + timedelta(hours=7)  # the first source is due, the neighbour's is not
+    assert await at(due, bot, sessionmaker, meteo, cbr, calendars).refresh_schedules(due) == 0
+    session.expire_all()
+    first, second = await schedule.get_source(session, 1), await schedule.get_source(session, 2)
+    assert first is not None and first.next_refresh_at == schedule.next_refresh(1, due)
+    assert second is not None and second.next_refresh_at == schedule.next_refresh(2, later)
