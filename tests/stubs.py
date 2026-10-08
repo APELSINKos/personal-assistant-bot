@@ -101,14 +101,19 @@ class StubMeteo:
         self.cities: list[City] = []
         self.fail = False
         self.searches: list[tuple[str, str]] = []
+        self.user_ids: list[int | None] = []  # whose budget each forecast and search spent
 
-    async def forecast(self, lat: float, lon: float) -> dict[str, Any]:
+    async def forecast(
+        self, lat: float, lon: float, *, user_id: int | None = None
+    ) -> dict[str, Any]:
+        self.user_ids.append(user_id)
         if self.fail:
             raise UpstreamUnavailable(service="open-meteo")
         return self.forecast_data
 
-    async def search(self, name: str, lang: str) -> list[City]:
+    async def search(self, name: str, lang: str, *, user_id: int | None = None) -> list[City]:
         self.searches.append((name, lang))
+        self.user_ids.append(user_id)
         if self.fail:
             raise UpstreamUnavailable(service="open-meteo")
         return self.cities

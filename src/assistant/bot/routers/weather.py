@@ -70,9 +70,9 @@ async def weather_view(
     user's list of extra cities. UpstreamUnavailable without the forecast."""
     user = ctx.user
     if city is None:
-        forecast = await weather.forecast(ctx.meteo, user.city, user.lat, user.lon)
+        forecast = await weather.forecast(ctx.meteo, user.city, user.lat, user.lon, user_id=user.id)
     else:
-        forecast = await weather.forecast(ctx.meteo, city.name, city.lat, city.lon)
+        forecast = await weather.forecast(ctx.meteo, city.name, city.lat, city.lon, user_id=user.id)
     text = view_text(view, forecast, clock(), user, ctx.t)
     shown = city.id if city is not None else 0
     return text, weather_markup(ctx.t, view, shown, user.city, kept)

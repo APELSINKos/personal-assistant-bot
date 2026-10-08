@@ -32,9 +32,9 @@ def record_places(meteo, monkeypatch) -> list[tuple[float, float]]:
     places: list[tuple[float, float]] = []
     forecast = meteo.forecast
 
-    async def recorded(lat: float, lon: float) -> dict[str, Any]:
+    async def recorded(lat: float, lon: float, **options: Any) -> dict[str, Any]:
         places.append((lat, lon))
-        return await forecast(lat, lon)
+        return await forecast(lat, lon, **options)
 
     monkeypatch.setattr(meteo, "forecast", recorded)
     return places
@@ -47,6 +47,7 @@ async def test_the_forecast_of_the_home_city(client, auth, meteo, monkeypatch) -
     assert response.status_code == 200
     body = response.json()
     assert places == [(55.75204, 37.61781)]  # the home city of a new user
+    assert meteo.user_ids == [1]  # whose budget it spent
     assert body["city"] == {"id": 0, "name": "Москва", "home": True}
     assert body["now"] == {
         "temperature": 9.6,

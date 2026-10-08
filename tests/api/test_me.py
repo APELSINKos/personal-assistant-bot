@@ -106,6 +106,7 @@ async def test_city_search_uses_user_language(client, auth, meteo) -> None:
         },
     ]
     assert meteo.searches == [("Казань", "en")]
+    assert meteo.user_ids == [1]  # the search spends the budget of the user who searched
 
 
 async def test_city_search_validation_and_outage(client, auth, meteo) -> None:

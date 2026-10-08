@@ -93,5 +93,5 @@ async def search_cities(
     user: CurrentUser,
     state: State,
 ) -> list[FoundCityOut]:
-    found = await state.meteo.search(q.strip(), user_language(user))
+    found = await state.meteo.search(q.strip(), user_language(user), user_id=user.id)
     return [found_city_out(city) for city in found]

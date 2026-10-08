@@ -365,8 +365,8 @@ async def test_a_hanging_bank_costs_a_digest_pass_one_timeout(
 class OneForecast(StubMeteo):
     """One forecast, then failures: the kept forecast went stale and Open-Meteo is down."""
 
-    async def forecast(self, lat: float, lon: float) -> dict[str, Any]:
-        data = await super().forecast(lat, lon)
+    async def forecast(self, lat: float, lon: float, **options: Any) -> dict[str, Any]:
+        data = await super().forecast(lat, lon, **options)
         self.fail = True
         return data
 

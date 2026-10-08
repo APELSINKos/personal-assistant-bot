@@ -57,9 +57,9 @@ class Places(StubMeteo):
         self.places: dict[tuple[float, float], dict[str, Any]] = {}
         self.asked: list[tuple[float, float]] = []
 
-    async def forecast(self, lat: float, lon: float) -> dict[str, Any]:
+    async def forecast(self, lat: float, lon: float, **options: Any) -> dict[str, Any]:
         self.asked.append((lat, lon))
-        anywhere = await super().forecast(lat, lon)  # fails as the stub does
+        anywhere = await super().forecast(lat, lon, **options)  # fails as the stub does
         return self.places.get((lat, lon), anywhere)
 
 
@@ -96,10 +96,11 @@ async def keep(session, make_user, *places: City) -> User:
     return user
 
 
-async def test_the_weather_now_with_its_buttons(feed, fake) -> None:
+async def test_the_weather_now_with_its_buttons(feed, fake, meteo) -> None:
     await feed(message_update("🌤 Погода"))
     [sent] = fake.of(SendMessage)
     assert sent.text == NOW_TEXT
+    assert meteo.user_ids == [1]  # the forecast spent the budget of the user who asked
     assert sent.link_preview_options.is_disabled  # open-meteo.com without a preview card
     assert buttons(sent) == [["🕐 По часам", "📅 Неделя"], ["🏙 Города"]]
     assert packed(sent) == [
@@ -174,7 +175,7 @@ async def test_a_city_button_shows_the_same_view_of_that_city(
     assert packed(hours)[1][2] == WeatherCb(view="hours", city=omsk.id).pack()  # keeps the view
     await feed(callback_update(packed(hours)[1][2]))
     view = fake.of(EditMessageText)[-1]
-    assert meteo.asked[-1] == (54.99, 73.37)
+    assert meteo.asked[-1] == (54.99, 73.37) and meteo.user_ids[-1] == 1
     assert view.text.split("\n")[:3] == ["🕐 Омск — по часам (местное время)", "", "14:00 🌤 +13°C"]
     assert packed(view)[0] == [
         WeatherCb(view="now", city=omsk.id).pack(),

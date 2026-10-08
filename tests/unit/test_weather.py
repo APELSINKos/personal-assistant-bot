@@ -427,7 +427,7 @@ async def test_current_with_malformed_time_still_reports_the_weather() -> None:
     data["current"]["time"] = "yesterday"
 
     class Meteo:
-        async def forecast(self, lat: float, lon: float) -> dict[str, Any]:
+        async def forecast(self, lat: float, lon: float, **_: Any) -> dict[str, Any]:
             return data
 
     now = await current(Meteo(), "Москва", 55.75, 37.62)
@@ -468,7 +468,7 @@ async def test_forecast_and_current_read_one_answer_each() -> None:
     asked: list[tuple[float, float]] = []
 
     class Meteo:
-        async def forecast(self, lat: float, lon: float) -> dict[str, Any]:
+        async def forecast(self, lat: float, lon: float, **_: Any) -> dict[str, Any]:
             asked.append((lat, lon))
             return forecast_payload()
 

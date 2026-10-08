@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import math
 from collections.abc import Callable
 from datetime import date
@@ -10,6 +11,7 @@ from typing import Any
 import httpx
 import pytest
 
+from assistant.core.clients import openmeteo
 from assistant.core.clients.cbr import CbrClient, Point
 from assistant.core.clients.openmeteo import City, OpenMeteoClient, check_forecast
 from assistant.core.errors import UpstreamUnavailable
@@ -821,6 +823,60 @@ async def test_openmeteo_failed_search_opens_no_pause() -> None:
         await om.search("Paris", "en")
     await om.forecast(55.75, 37.62)
     assert len(asked) == 2
+
+
+async def test_openmeteo_a_users_budget_stops_their_requests_only(monkeypatch) -> None:
+    monkeypatch.setattr(openmeteo, "USER_BUDGET", 3)
+    monkeypatch.setattr(openmeteo, "PROCESS_BUDGET", 4)
+    om, asked = open_meteo(forecast_ok)
+    for lat in (10.0, 20.0, 30.0):
+        await om.forecast(lat, 0.0, user_id=1)
+    await om.forecast(10.0, 0.0, user_id=1)  # a kept place costs nothing
+    with pytest.raises(UpstreamUnavailable):
+        await om.forecast(40.0, 0.0, user_id=1)
+    with pytest.raises(UpstreamUnavailable):
+        await om.search("Paris", "en", user_id=1)
+    assert len(asked) == 3
+    # No pause, and the refusals cost the process's budget nothing: its last request is user 2's.
+    await om.forecast(40.0, 0.0, user_id=2)
+    assert len(asked) == 4
+
+
+async def test_openmeteo_every_spelling_tried_spends_the_budget(monkeypatch) -> None:
+    monkeypatch.setattr(openmeteo, "USER_BUDGET", 5)
+    om, asked = open_meteo(lambda request: httpx.Response(200, json={}))
+    assert await om.search("Нигде Нет, Никак", "ru", user_id=1) == []
+    assert len(asked) == 4
+    assert await om.search("Нигде Нет, Никак", "ru", user_id=1) == []  # kept: costs nothing
+    with pytest.raises(UpstreamUnavailable):
+        await om.search("Тоже Нет, Никак", "ru", user_id=1)
+    assert len(asked) == 5  # the first spelling went out, the second was refused
+    # Not kept as nothing found: another user's search asks again.
+    assert await om.search("Тоже Нет, Никак", "ru", user_id=2) == []
+    assert len(asked) == 9
+
+
+async def test_openmeteo_the_process_budget_stops_everyone_for_a_day(monkeypatch, caplog) -> None:
+    monkeypatch.setattr(openmeteo, "PROCESS_BUDGET", 3)
+    caplog.set_level(logging.WARNING)
+    now = [0.0]
+    om, asked = open_meteo(forecast_ok, clock=lambda: now[0])
+    await om.forecast(10.0, 0.0, user_id=1)
+    await om.forecast(20.0, 0.0, user_id=2)
+    await om.forecast(30.0, 0.0)  # with no user, the process's budget alone
+    for user_id in (4, 5):
+        with pytest.raises(UpstreamUnavailable):
+            await om.forecast(40.0, 0.0, user_id=user_id)
+    assert len(asked) == 3
+    [warning] = [record for record in caplog.records if record.levelno == logging.WARNING]
+    assert warning.getMessage() == "Open-Meteo: this process spent its 3 requests a day"
+    now[0] = openmeteo.BUDGET_WARN_EVERY  # still spent, and the log says so once an hour
+    with pytest.raises(UpstreamUnavailable):
+        await om.forecast(40.0, 0.0, user_id=5)
+    assert [record.levelno for record in caplog.records].count(logging.WARNING) == 2
+    now[0] = openmeteo.BUDGET_WINDOW
+    await om.forecast(40.0, 0.0, user_id=4)
+    assert len(asked) == 4
 
 
 def test_a_city_chosen_in_a_dialog_before_geo_id_still_loads() -> None:
