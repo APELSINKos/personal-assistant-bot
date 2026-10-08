@@ -196,6 +196,90 @@ async def test_unexpected_error_for_one_reminder_does_not_stop_the_batch(
     assert first.next_attempt_at == NOW + timedelta(seconds=reminders.BACKOFF[0])
 
 
+TOMORROW_1500 = datetime(2026, 9, 29, 12, 0, tzinfo=UTC)  # 15:00 in Moscow
+
+
+def change_while_sending(monkeypatch, scheduler, sessionmaker, change) -> None:
+    """The first message on its way waits for `change`, committed from a session of its own:
+    the app, or a button under a message Telegram has already delivered."""
+    send = scheduler._send
+
+    async def sending(*args, **kwargs):
+        monkeypatch.setattr(scheduler, "_send", send)
+        async with sessionmaker() as app:
+            await change(app)
+            await app.commit()
+        return await send(*args, **kwargs)
+
+    monkeypatch.setattr(scheduler, "_send", sending)
+
+
+def moved_to_tomorrow(user, reminder):
+    async def change(app) -> None:
+        when = datetime(2026, 9, 29, 15, 0)
+        await reminders.update_reminder(app, user, reminder.id, when_local=when, now=NOW)
+
+    return change
+
+
+async def test_a_reminder_moved_while_it_is_sent_fires_at_its_new_time(
+    scheduler, session, sessionmaker, make_user, fake, monkeypatch
+) -> None:
+    user = await make_user(morning_enabled=False)
+    reminder = await add_reminder(session)
+    change_while_sending(monkeypatch, scheduler, sessionmaker, moved_to_tomorrow(user, reminder))
+    assert await scheduler.deliver_reminders(NOW) == 1
+    reminder = await reload(session, reminder)
+    assert (reminder.status, reminder.due_at) == (ReminderStatus.PENDING, TOMORROW_1500)
+    assert await scheduler.deliver_reminders(TOMORROW_1500) == 1
+    assert (await reload(session, reminder)).status == ReminderStatus.SENT
+
+
+async def test_a_move_during_a_failed_send_keeps_the_new_time(
+    scheduler, session, sessionmaker, make_user, fake, monkeypatch
+) -> None:
+    user = await make_user(morning_enabled=False)
+    reminder = await add_reminder(session)
+    change_while_sending(monkeypatch, scheduler, sessionmaker, moved_to_tomorrow(user, reminder))
+    fake.errors.append(TelegramNetworkError(method=METHOD, message="timeout"))
+    assert await scheduler.deliver_reminders(NOW) == 0
+    reminder = await reload(session, reminder)
+    # Not a retry in 30 seconds: the failed send was of the old time.
+    assert (reminder.status, reminder.attempts) == (ReminderStatus.PENDING, 0)
+    assert reminder.next_attempt_at == TOMORROW_1500
+
+
+async def test_a_move_while_the_bot_gets_blocked_keeps_the_new_time(
+    scheduler, session, sessionmaker, make_user, fake, monkeypatch
+) -> None:
+    user = await make_user(morning_enabled=False)
+    reminder = await add_reminder(session)
+    change_while_sending(monkeypatch, scheduler, sessionmaker, moved_to_tomorrow(user, reminder))
+    fake.errors.append(
+        TelegramForbiddenError(method=METHOD, message="Forbidden: bot was blocked by the user")
+    )
+    assert await scheduler.deliver_reminders(NOW) == 0
+    reminder = await reload(session, reminder)
+    assert (reminder.status, reminder.due_at) == (ReminderStatus.PENDING, TOMORROW_1500)
+    assert (await reload(session, user)).bot_blocked
+
+
+async def test_a_snooze_pressed_while_it_is_sent_is_kept(
+    scheduler, session, sessionmaker, make_user, fake, monkeypatch
+) -> None:
+    user = await make_user(morning_enabled=False)
+    reminder = await add_reminder(session)
+    until = NOW + timedelta(minutes=10)
+
+    async def snoozed(app) -> None:
+        await reminders.snooze(app, user, reminder.id, until, NOW)
+
+    change_while_sending(monkeypatch, scheduler, sessionmaker, snoozed)
+    assert await scheduler.deliver_reminders(NOW) == 1
+    reminder = await reload(session, reminder)
+    assert (reminder.status, reminder.due_at) == (ReminderStatus.PENDING, until)
+
+
 async def test_send_passes_the_link_preview_options(scheduler, fake) -> None:
     assert (await scheduler._send(1, "open-meteo.com", link_preview_options=NO_PREVIEW)).ok
     assert (await scheduler._send(1, "⏰ Напоминание: полить цветы")).ok

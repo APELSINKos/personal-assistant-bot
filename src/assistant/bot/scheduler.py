@@ -34,7 +34,7 @@ from assistant.core.clients.cbr import CbrClient
 from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.errors import NotFound
 from assistant.core.i18n import Translator, resolve_language, translator
-from assistant.core.models import FsmState, Lesson, Reminder, User
+from assistant.core.models import FsmState, Lesson, Reminder, ReminderStatus, User
 from assistant.core.services import digest, reminders, schedule, sharing, users
 from assistant.core.timeutil import digest_window_date, now_local, to_local, utcnow
 
@@ -62,6 +62,16 @@ class Delivery:
 
 def _translator(user: User) -> Translator:
     return translator(resolve_language(user.language, user.tg_language))
+
+
+def _same_firing(current: Reminder, sent: Reminder) -> bool:
+    """Whether the reminder is still the firing that was sent: nothing moved, snoozed, finished
+    or cancelled it while the message was on its way."""
+    return (
+        current.status is ReminderStatus.PENDING
+        and current.occurrence_at == sent.occurrence_at
+        and current.due_at == sent.due_at
+    )
 
 
 def reminder_text(
@@ -184,25 +194,26 @@ class Scheduler:
             return Delivery(False, error=f"{type(error).__name__}: {error.message}")
         return Delivery(True)
 
-    async def _update_reminder(self, reminder_id: int, mutate: Callable[[Reminder], None]) -> None:
+    async def _update_reminder(self, sent: Reminder, mutate: Callable[[Reminder], None]) -> None:
         """Re-fetch one reminder in its own session and commit a single mutation.
 
         Never holds a write transaction open across a network await: each call opens,
-        writes and commits before returning. A reminder gone by the time we get here
-        (e.g. the user was deleted meanwhile) is silently skipped.
+        writes and commits before returning. The mutation lands only on the firing that was
+        sent: a reminder moved, snoozed, done or cancelled while the message was on its way
+        keeps that change, and one gone meanwhile (e.g. the user was deleted) is skipped.
         """
         async with self._sessionmaker() as session:
-            reminder = await session.get(Reminder, reminder_id)
-            if reminder is not None:
+            reminder = await session.get(Reminder, sent.id)
+            if reminder is not None and _same_firing(reminder, sent):
                 mutate(reminder)
                 await session.commit()
 
     async def _fail_and_block(
-        self, reminder_id: int, user_id: int, error: str, now: datetime, tz: str
+        self, sent: Reminder, user_id: int, error: str, now: datetime, tz: str
     ) -> None:
         async with self._sessionmaker() as session:
-            reminder = await session.get(Reminder, reminder_id)
-            if reminder is not None:
+            reminder = await session.get(Reminder, sent.id)
+            if reminder is not None and _same_firing(reminder, sent):
                 reminders.give_up(reminder, error, now, tz)
             await users.mark_blocked(session, user_id)
             await session.commit()
@@ -229,7 +240,7 @@ class Scheduler:
                 )
                 if delivery.retry_after is not None:
                     await self._update_reminder(
-                        reminder.id,
+                        reminder,
                         partial(
                             reminders.schedule_retry,
                             now=now,
@@ -241,24 +252,24 @@ class Scheduler:
                     break
                 if delivery.ok:
                     await self._update_reminder(
-                        reminder.id, partial(reminders.mark_delivered, now=now, tz=user.timezone)
+                        reminder, partial(reminders.mark_delivered, now=now, tz=user.timezone)
                     )
                     sent += 1
                 elif delivery.blocked:
                     await self._fail_and_block(
-                        reminder.id, user.id, delivery.error, now, user.timezone
+                        reminder, user.id, delivery.error, now, user.timezone
                     )
                     blocked.add(user.id)
                     log.info("reminder %s: gave up this firing: %s", reminder.id, delivery.error)
                 elif delivery.permanent:
                     await self._update_reminder(
-                        reminder.id,
+                        reminder,
                         partial(reminders.give_up, error=delivery.error, now=now, tz=user.timezone),
                     )
                     log.info("reminder %s: gave up this firing: %s", reminder.id, delivery.error)
                 else:
                     await self._update_reminder(
-                        reminder.id,
+                        reminder,
                         partial(
                             reminders.schedule_retry,
                             now=now,
@@ -278,7 +289,7 @@ class Scheduler:
                 # move on. No reminder text in the log — only ids and error types.
                 log.exception("reminder %s failed", reminder.id)
                 await self._update_reminder(
-                    reminder.id,
+                    reminder,
                     partial(
                         reminders.schedule_retry,
                         now=now,
