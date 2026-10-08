@@ -56,6 +56,20 @@ describe("SwipeRow", () => {
     expect(app.showConfirm).not.toHaveBeenCalled();
   });
 
+  it("with a mouse, a row without a question deletes at once and leaves the asking to its caller", () => {
+    stubPointer("mouse");
+    const app = installTelegram();
+    const onDelete = vi.fn();
+    render(
+      <SwipeRow onDelete={onDelete} deleteLabel="Удалить заметку «Покупки»">
+        <a href="/notes/3">Покупки</a>
+      </SwipeRow>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Удалить заметку «Покупки»" }));
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    expect(app.showConfirm).not.toHaveBeenCalled();
+  });
+
   it("marks itself closed at rest, so the delete button stays hidden behind the row", () => {
     const { container } = render(
       <SwipeRow onDelete={vi.fn()} deleteLabel="Удалить">
