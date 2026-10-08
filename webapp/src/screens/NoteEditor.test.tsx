@@ -222,18 +222,25 @@ describe("A new note", () => {
     expect(calls).toContainEqual({ method: "POST", path: "/notes", body: { text: "Покупки", items: ["молоко", "хлеб"] } });
   });
 
-  it("leaves out a typed item longer than 100 characters, as the add button would", async () => {
+  it("does not save over a typed item longer than 100 characters", async () => {
     const app = installTelegram();
     const { calls } = mockApi({ "GET /notes": [], "POST /notes": { status: 201, body: checklist } });
     const { history } = renderEditor("/notes/new");
     fireEvent.change(screen.getByLabelText("Текст заметки"), { target: { value: "Покупки" } });
-    fireEvent.change(screen.getByRole("textbox", { name: "Новый пункт" }), { target: { value: "я".repeat(101) } });
+    const field = screen.getByRole("textbox", { name: "Новый пункт" });
+    fireEvent.change(field, { target: { value: "я".repeat(101) } });
+    expect(screen.getByText("101/100")).toBeInTheDocument();
+    expect(canSave(app)).toBe(false);
     pressMainButton(app);
-    await waitFor(() => expect(history.at(-1)).toBe("/notes"));
-    expect(calls).toContainEqual({ method: "POST", path: "/notes", body: { text: "Покупки" } });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0))); // time enough for a request to go out
+    expect(calls.filter((call) => call.method === "POST")).toEqual([]);
+    expect(history.at(-1)).toBe("/notes/new");
+
+    fireEvent.change(field, { target: { value: "я".repeat(100) } });
+    expect(canSave(app)).toBe(true);
   });
 
-  it("leaves out a typed item past the 20th", async () => {
+  it("does not save over a typed 21st item", async () => {
     const app = installTelegram();
     const { calls } = mockApi({ "GET /notes": [], "POST /notes": { status: 201, body: checklist } });
     const { history } = renderEditor("/notes/new");
@@ -246,6 +253,11 @@ describe("A new note", () => {
       fireEvent.click(add);
     }
     fireEvent.change(field, { target: { value: "ещё один" } });
+    expect(screen.getByText("Не больше 20 пунктов")).toBeInTheDocument();
+    expect(canSave(app)).toBe(false);
+
+    fireEvent.change(field, { target: { value: "" } });
+    expect(canSave(app)).toBe(true);
     pressMainButton(app);
     await waitFor(() => expect(history.at(-1)).toBe("/notes"));
     expect(calls).toContainEqual({ method: "POST", path: "/notes", body: { text: "Поездка", items: twenty } });

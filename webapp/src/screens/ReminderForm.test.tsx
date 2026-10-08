@@ -492,7 +492,36 @@ describe("ReminderForm", () => {
     const { client } = renderWithApp(<ReminderForm />, { path: "/calendar/new" });
     await ready(client);
     expect(screen.getByLabelText("Дата")).toHaveValue("2026-09-30");
-    expect(screen.getByLabelText("Время")).toHaveValue("00:00");
+    expect(screen.getByLabelText("Время")).toHaveValue("01:00");
+  });
+
+  it("rolls past midnight when the calendar's «+» names today, too", async () => {
+    at("2026-09-29T20:50:00Z"); // 23:50 in Moscow
+    installTelegram();
+    mockApi({ "GET /me": me });
+    const { client } = renderWithApp(<ReminderForm />, { path: "/calendar/new/2026-09-29" });
+    await ready(client);
+    expect(screen.getByLabelText("Дата")).toHaveValue("2026-09-30");
+    expect(screen.getByLabelText("Время")).toHaveValue("01:00");
+  });
+
+  it("proposes an hour at least 15 minutes away", async () => {
+    at("2026-09-29T11:59:30Z"); // 14:59:30 in Moscow: 15:00 would be half a minute away
+    installTelegram();
+    mockApi({ "GET /me": me });
+    const { client } = renderWithApp(<ReminderForm />, { path: "/calendar/new/2026-09-29" });
+    await ready(client);
+    expect(screen.getByLabelText("Дата")).toHaveValue("2026-09-29");
+    expect(screen.getByLabelText("Время")).toHaveValue("16:00");
+  });
+
+  it("keeps another day the calendar's «+» names", async () => {
+    at("2026-09-29T20:50:00Z"); // 23:50 in Moscow
+    installTelegram();
+    mockApi({ "GET /me": me });
+    const { client } = renderWithApp(<ReminderForm />, { path: "/calendar/new/2026-10-02" });
+    await ready(client);
+    expect(screen.getByLabelText("Дата")).toHaveValue("2026-10-02");
   });
 
   it("shows its own message for a phrase that is too long", async () => {

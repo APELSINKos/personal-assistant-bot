@@ -43,12 +43,13 @@ function dayBit(iso: string): number {
 }
 
 /**
- * With no explicit date, both the date and the time default together from "now + 1 hour" — so a
- * default made close to midnight rolls onto the next day instead of showing a past time today.
+ * The default is the first full hour more than 15 minutes ahead. For today (the calendar's «+»
+ * names the day it shows) or no date, the date comes from that moment too — so a default made
+ * close to midnight rolls onto the next day instead of showing a past time today.
  */
 function blank(date: string | undefined, zone: string): Draft {
-  const later = new Date(Date.now() + 60 * 60 * 1000);
-  const day = date ?? localTodayIso(zone, later);
+  const later = new Date(Date.now() + 75 * 60 * 1000);
+  const day = date === undefined || date === localTodayIso(zone) ? localTodayIso(zone, later) : date;
   return {
     text: "",
     choice: "none",
