@@ -179,6 +179,27 @@ describe("Calendar", () => {
     await waitFor(() => expect(calls).toContainEqual({ method: "DELETE", path: "/reminders/2", body: undefined }));
   });
 
+  it("asks about a repeat with a very long text too, quoting its start", async () => {
+    at("2026-09-29T09:00:00Z");
+    // As telegram-web-app.js: a popup's message over 256 UTF-16 units is refused.
+    const showConfirm = vi.fn((message: string, callback: (ok: boolean) => void) => {
+      if (message.trim().length > 256) throw new Error("WebAppPopupParamInvalid");
+      callback(true);
+    });
+    installTelegram({ showConfirm });
+    const { calls } = mockApi({
+      "GET /me": me,
+      "GET /agenda?from=2026-09-28&to=2026-10-04": week("2026-09-28", {
+        "2026-09-29": [{ ...PILLS, text: "а".repeat(300) }],
+      }),
+      "DELETE /reminders/2": () => ({ status: 204 }),
+    });
+    renderWithApp(<CalendarScreen />, { path: "/calendar" });
+    fireEvent.click(await screen.findByRole("button", { name: "Удалить напоминание" }));
+    expect(showConfirm).toHaveBeenCalledWith(`Удалить повтор «${"а".repeat(59)}…» целиком?`, expect.any(Function));
+    await waitFor(() => expect(calls).toContainEqual({ method: "DELETE", path: "/reminders/2", body: undefined }));
+  });
+
   it("deletes a one-off reminder after a plain confirmation", async () => {
     at("2026-09-29T09:00:00Z");
     const app = installTelegram();

@@ -14,6 +14,7 @@ import { SwipeRow } from "../components/SwipeRow";
 import { useTextLimit } from "../components/TextLimit";
 import { toast } from "../components/toastStore";
 import { useLang, useT } from "../i18n";
+import { clip } from "../lib/format";
 import { CURRENCY_CODES, currencyName, currencySign } from "../lib/money";
 import { useDebounced } from "../lib/useDebounced";
 import { openLink } from "../telegram";
@@ -169,7 +170,7 @@ function CitiesCard({ home, list, index }: { home: string; list: UseQueryResult<
                 <SwipeRow
                   onDelete={() => remove.mutate(city.id)}
                   deleteLabel={t.more.deleteCity(city.name)}
-                  question={t.more.confirmDeleteCity(city.name)}
+                  question={t.more.confirmDeleteCity(clip(city.name))}
                 >
                   <span className="city-list__name">{city.name}</span>
                   {area && <span className="muted city-list__area">{area}</span>}

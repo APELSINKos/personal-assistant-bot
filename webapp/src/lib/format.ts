@@ -87,6 +87,16 @@ export function codePoints(text: string): number {
   return [...text].length;
 }
 
+/**
+ * A user's text as a question quotes it: at most `max` code points, the last of them «…» when the
+ * text is longer. Telegram's popup refuses a message over 256 UTF-16 units, which a reminder's
+ * text alone can pass.
+ */
+export function clip(text: string, max = 60): string {
+  const points = [...text];
+  return points.length <= max ? text : `${points.slice(0, max - 1).join("").trimEnd()}…`;
+}
+
 export function daysBetween(fromIso: string, toIso: string): number {
   return Math.round((parseIsoDate(toIso).getTime() - parseIsoDate(fromIso).getTime()) / 86_400_000);
 }

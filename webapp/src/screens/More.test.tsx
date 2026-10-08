@@ -238,6 +238,15 @@ describe("More → Cities", () => {
     expect(screen.getByText("Тула")).toBeInTheDocument();
   });
 
+  it("with a mouse, quotes the start of a long city name in its question", async () => {
+    stubPointer("mouse");
+    const { app } = showMore(extraCities([{ ...SOCHI, name: "Л".repeat(100) }]), {
+      showConfirm: vi.fn((_message: string, callback: (ok: boolean) => void) => callback(false)),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: `Удалить город «${"Л".repeat(100)}»` }));
+    expect(app.showConfirm).toHaveBeenCalledWith(`Удалить город «${"Л".repeat(59)}…»?`, expect.any(Function));
+  });
+
   it("turns «Добавить город» off at four extra cities and says why under it", async () => {
     const four = [1, 2, 3, 4].map((id) => ({ ...tula, id, name: `Город ${id}`, geo_id: id }));
     showMore({ "GET /me/cities": four });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  addDaysIso, bigDate, codePoints, dayHeading, dayMonth, daysBetween, formatNumber, formatRange, formatTemp,
+  addDaysIso, bigDate, clip, codePoints, dayHeading, dayMonth, daysBetween, formatNumber, formatRange, formatTemp,
   lessonMeta, localTimeHm, localTodayIso, monthGrid, monthTitle, rangeLabel, shortMoment, shownChance, weekOf,
   weekdayShort,
 } from "./format";
@@ -60,6 +60,15 @@ describe("format", () => {
     expect(codePoints(String.fromCodePoint(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467))).toBe(5);
     expect(codePoints("🇷🇺")).toBe(2);
     expect(codePoints(String.fromCharCode(0x438, 0x306))).toBe(2);
+  });
+
+  it("clips a text to quote at 60 code points, the last of them «…»", () => {
+    expect(clip("Таблетки")).toBe("Таблетки");
+    expect(clip("а".repeat(60))).toBe("а".repeat(60));
+    expect(clip("а".repeat(61))).toBe(`${"а".repeat(59)}…`);
+    expect(clip("💊".repeat(300))).toBe(`${"💊".repeat(59)}…`); // an emoji is one, never half of one
+    expect(clip(`${"а".repeat(58)} ${"б".repeat(10)}`)).toBe(`${"а".repeat(58)}…`); // no space before «…»
+    expect(clip("Купить молоко", 8)).toBe("Купить…");
   });
 });
 

@@ -10,6 +10,7 @@ import { useLang, useT } from "../i18n";
 import { getCalendarDay, setCalendarDay } from "../lib/calendarDay";
 import {
   addDaysIso,
+  clip,
   dayHeading,
   dayNumber,
   lessonMeta,
@@ -149,7 +150,7 @@ export function CalendarScreen() {
       .join(" ");
   const onDelete = async (item: ReminderItem) => {
     const question =
-      item.repeat === "none" ? t.calendar.confirmDelete : t.calendar.confirmDeleteSeries(item.text);
+      item.repeat === "none" ? t.calendar.confirmDelete : t.calendar.confirmDeleteSeries(clip(item.text));
     if (await confirmAction(question)) remove.mutate(item.id);
   };
   const renderItem = (item: AgendaItem, index: number) =>

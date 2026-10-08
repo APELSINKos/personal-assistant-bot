@@ -149,7 +149,14 @@ export function haptic(kind: "tap" | "select" | "success" | "warning" | "error")
 export function confirmAction(message: string): Promise<boolean> {
   const app = webApp();
   if (app?.showConfirm && supports("6.2")) {
-    return new Promise((resolve) => app.showConfirm?.(message, resolve));
+    return new Promise((resolve) => {
+      try {
+        app.showConfirm?.(message, resolve);
+      } catch {
+        // Telegram refuses a popup while another one is open, or a message too long: not a yes.
+        resolve(false);
+      }
+    });
   }
   return Promise.resolve(window.confirm(message));
 }
