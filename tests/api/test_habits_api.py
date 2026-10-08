@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 
 async def test_habit_lifecycle_and_marks(client, auth) -> None:
     created = await client.post("/api/habits", json={"name": "Спорт"}, headers=auth())
@@ -19,6 +21,21 @@ async def test_habit_lifecycle_and_marks(client, auth) -> None:
     listed = await client.get("/api/habits", headers=auth())
     assert [h["name"] for h in listed.json()] == ["Спорт"]
     assert (await client.delete(f"/api/habits/{habit['id']}", headers=auth())).status_code == 204
+
+
+async def test_a_habit_names_the_day_its_statistics_are_for(client, auth, clock) -> None:
+    # The user's day on the server, not the device's: the app marks this day, so a list drawn
+    # before midnight marks the day it shows.
+    created = await client.post("/api/habits", json={"name": "Спорт"}, headers=auth())
+    assert created.json()["day"] == "2026-09-28"
+    clock[0] = datetime(2026, 9, 28, 21, 30, tzinfo=UTC)  # 00:30 on the 29th in Moscow
+    headers = auth(signed_at=clock[0])
+    [listed] = (await client.get("/api/habits", headers=headers)).json()
+    assert (listed["day"], listed["done_today"]) == ("2026-09-29", None)
+    detail = (await client.get(f"/api/habits/{listed['id']}", headers=headers)).json()
+    assert detail["day"] == "2026-09-29"
+    today = (await client.get("/api/today", headers=headers)).json()
+    assert today["habits"]["items"][0]["day"] == today["date"] == "2026-09-29"
 
 
 async def test_habit_rules(client, auth) -> None:

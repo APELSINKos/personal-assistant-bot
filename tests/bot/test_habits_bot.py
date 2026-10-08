@@ -34,6 +34,7 @@ def frozen_clock(monkeypatch) -> None:
 def _stats(**changes: object) -> HabitStats:
     values: dict[str, object] = {
         "habit": Habit(id=7, name="Спорт", weekly_goal=7, emoji="🎯"),
+        "today": date(2026, 9, 28),
         "done_today": None,
         "streak": 5,
         "done_days": 12,

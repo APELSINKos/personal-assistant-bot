@@ -34,9 +34,7 @@ export function WeekDots({ week }: { week: string }) {
   );
 }
 
-export function HabitToggle(
-  { habit, onToggle, disabled = false }: { habit: Habit; onToggle: () => void; disabled?: boolean },
-) {
+export function HabitToggle({ habit, onToggle }: { habit: Habit; onToggle: () => void }) {
   const t = useT();
   const state = habit.done_today === true ? "done" : habit.done_today === false ? "skipped" : "none";
   const Icon = state === "done" ? Check : state === "skipped" ? X : Circle;
@@ -44,7 +42,6 @@ export function HabitToggle(
     <button
       type="button"
       className={`toggle toggle--${state}`}
-      disabled={disabled}
       onClick={onToggle}
       aria-label={t.habits.toggle(habit.name, t.habits.state[state])}
     >

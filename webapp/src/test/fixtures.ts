@@ -21,6 +21,7 @@ export const habit: Habit = {
   color: "mint",
   weekly_goal: 7,
   created_on: "2026-09-12",
+  day: "2026-09-28",
   done_today: null,
   streak: 5,
   streak_unit: "days",

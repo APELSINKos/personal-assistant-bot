@@ -80,6 +80,18 @@ describe("Habit screen", () => {
     );
   });
 
+  it("marks the day a tap is on, even when the tap comes after midnight", async () => {
+    vi.setSystemTime(new Date("2026-10-02T20:59:30Z")); // 23:59:30 on 2 October in Moscow
+    show();
+    const { calls } = mockApi({ "GET /me": me, "GET /habits/7": DETAIL, "PUT /habits/7/marks/2026-10-02": habit });
+    const shown = await screen.findByRole("button", { name: "2 октября: выполнено. Нажми, чтобы изменить" });
+    vi.setSystemTime(new Date("2026-10-02T21:00:30Z")); // 00:00:30 on 3 October
+    fireEvent.click(shown);
+    await waitFor(() =>
+      expect(calls).toContainEqual({ method: "PUT", path: "/habits/7/marks/2026-10-02", body: { done: false } }),
+    );
+  });
+
   it("moves between months within the habit's life", async () => {
     show();
     const previous = await screen.findByRole("button", { name: "Предыдущий месяц" });

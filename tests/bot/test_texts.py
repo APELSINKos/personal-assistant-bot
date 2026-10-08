@@ -50,6 +50,7 @@ def habit_today(mark: bool | None) -> HabitStats:
     """A daily habit with today's mark: done (True), skipped (False) or none yet (None)."""
     return HabitStats(
         habit=Habit(name="Спорт", weekly_goal=7, emoji="🎯"),
+        today=date(2026, 9, 28),
         done_today=mark,
         streak=5,
         done_days=5,
@@ -895,6 +896,7 @@ def test_every_list_fits_telegram_at_its_maxima(t) -> None:
     stats = [
         HabitStats(
             habit=Habit(id=n, name="🎉" * 50, weekly_goal=7, emoji="🎯"),
+            today=date(2026, 9, 28),
             done_today=None,
             streak=3650,
             done_days=3650,

@@ -172,6 +172,7 @@ async def test_update_changes_name_look_and_goal(session, make_user) -> None:
 def test_pick_best_weighs_weeks_as_seven_days() -> None:
     daily = habits.HabitStats(
         habit=Habit(name="Вода", weekly_goal=7),
+        today=TODAY,
         done_today=True,
         streak=13,
         done_days=13,

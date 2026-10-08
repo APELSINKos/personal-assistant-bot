@@ -182,6 +182,9 @@ class HabitOut(BaseModel):
     color: str
     weekly_goal: int
     created_on: date
+    # The user's today on the server when the statistics were counted: the day of done_today,
+    # the one a tap on the list marks — a list drawn before midnight marks the day it shows.
+    day: date
     done_today: bool | None
     streak: int
     streak_unit: StreakUnitName

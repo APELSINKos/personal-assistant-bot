@@ -210,6 +210,7 @@ def _habit_fields(stats: HabitStats) -> dict[str, object]:
         "color": habit.color,
         "weekly_goal": habit.weekly_goal,
         "created_on": habit.created_on,
+        "day": stats.today,
         "done_today": stats.done_today,
         "streak": stats.streak,
         "streak_unit": stats.unit,

@@ -49,6 +49,7 @@ def last_answer(fake) -> AnswerCallbackQuery:
 def stats(habit: Habit, **values: object) -> HabitStats:
     base: dict[str, object] = {
         "habit": habit,
+        "today": TODAY,
         "done_today": True,
         "streak": 42,
         "done_days": 200,

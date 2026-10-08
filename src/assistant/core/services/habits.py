@@ -34,6 +34,7 @@ DONE, MISSED, UNMARKED, OUTSIDE = "1", "0", "-", "."
 @dataclass(frozen=True)
 class HabitStats:
     habit: Habit
+    today: date  # the user's day the statistics are counted for
     done_today: bool | None
     streak: int
     done_days: int
@@ -195,6 +196,7 @@ def _stats(habit: Habit, marks: Mapping[date, bool], today: date) -> HabitStats:
         record = _weekly_record(marks, goal, habit.created_on, today)
     return HabitStats(
         habit=habit,
+        today=today,
         done_today=marks.get(today),
         streak=streak,
         done_days=sum(1 for done in marks.values() if done),

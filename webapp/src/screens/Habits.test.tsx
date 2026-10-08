@@ -18,73 +18,54 @@ function canSave(app: TgWebApp): boolean | undefined {
 }
 
 describe("Habits", () => {
-  it("shows statistics and marks today in the city's day", async () => {
+  it("shows statistics and marks the day the list is for, even when the tap comes after midnight", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-09-28T22:30:00Z")); // 01:30 on the 29th in Moscow
+    vi.setSystemTime(new Date("2026-09-28T20:59:30Z")); // 23:59:30 on the 28th in Moscow
     installTelegram();
     const { calls } = mockApi({
       "GET /me": me,
-      "GET /habits": [habit],
-      "PUT /habits/7/marks/2026-09-29": { ...habit, done_today: true },
+      "GET /habits": [habit], // counted for the 28th
+      "PUT /habits/7/marks/2026-09-28": { ...habit, done_today: true },
     });
-    const { container, client } = renderWithApp(<HabitsScreen />);
+    const { container } = renderWithApp(<HabitsScreen />);
     expect(await screen.findByText("Спорт")).toBeInTheDocument();
     expect(screen.getByText(/12 из 17 дней/)).toBeInTheDocument();
     expect(screen.getByText(/🔥 5 дней/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Спорт/ })).toHaveAttribute("href", "/habits/7");
     expect(container.querySelectorAll(".dot")).toHaveLength(7); // this week, Monday to Sunday
-    await waitFor(() => expect(client.getQueryData(["me"])).toBeDefined()); // the city's zone
+    vi.setSystemTime(new Date("2026-09-28T21:00:30Z")); // 00:00:30 on the 29th
     fireEvent.click(screen.getByRole("button", { name: /Спорт: без отметки/ }));
     await waitFor(() =>
-      expect(calls).toContainEqual({ method: "PUT", path: "/habits/7/marks/2026-09-29", body: { done: true } }),
+      expect(calls).toContainEqual({ method: "PUT", path: "/habits/7/marks/2026-09-28", body: { done: true } }),
     );
   });
 
-  it("offers a retry, not toggles that never come on, when the user cannot be read", async () => {
+  it("marks without waiting for the user's city: the day comes with the list", async () => {
     installTelegram();
-    let refused = true;
     const { calls } = mockApi({
-      "GET /me": () => (refused ? RATE_LIMITED : { body: me }),
+      "GET /me": () => new Promise(() => undefined), // never answers
       "GET /habits": [habit],
+      "PUT /habits/7/marks/2026-09-28": { ...habit, done_today: true },
     });
     renderWithApp(<HabitsScreen />);
-    const retry = await screen.findByRole("button", { name: "Повторить" });
-    expect(screen.queryByRole("button", { name: /Спорт: без отметки/ })).not.toBeInTheDocument();
-    refused = false;
-    fireEvent.click(retry);
-    expect(await screen.findByRole("button", { name: /Спорт: без отметки/ })).toBeEnabled();
-    expect(calls.filter((call) => call.path === "/me")).toHaveLength(2);
+    fireEvent.click(await screen.findByRole("button", { name: /Спорт: без отметки/ }));
+    await waitFor(() =>
+      expect(calls).toContainEqual({ method: "PUT", path: "/habits/7/marks/2026-09-28", body: { done: true } }),
+    );
   });
 
   it("keeps the list and its toggles when only a refresh fails", async () => {
     installTelegram();
-    mockApi({ "GET /me": me, "GET /habits": [habit] });
+    mockApi({ "GET /habits": [habit] });
     const { client } = renderWithApp(<HabitsScreen />);
-    const toggle = await screen.findByRole("button", { name: /Спорт: без отметки/ });
-    await waitFor(() => expect(toggle).toBeEnabled());
-    mockApi({ "GET /me": RATE_LIMITED, "GET /habits": RATE_LIMITED });
+    await screen.findByRole("button", { name: /Спорт: без отметки/ });
+    mockApi({ "GET /habits": RATE_LIMITED });
     await act(async () => {
-      await Promise.all([client.refetchQueries({ queryKey: ["me"] }), client.refetchQueries({ queryKey: ["habits"] })]);
+      await client.refetchQueries({ queryKey: ["habits"] });
       await new Promise((resolve) => setTimeout(resolve, 0)); // observers hear of it a tick later
     });
     expect(screen.getByRole("button", { name: /Спорт: без отметки/ })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Повторить" })).not.toBeInTheDocument();
-  });
-
-  it("waits for the city's zone before a habit can be marked", async () => {
-    installTelegram();
-    let answerMe!: (reply: unknown) => void;
-    const { calls } = mockApi({
-      "GET /me": () => new Promise((resolve) => (answerMe = resolve)),
-      "GET /habits": [habit],
-    });
-    renderWithApp(<HabitsScreen />);
-    const toggle = await screen.findByRole("button", { name: /Спорт: без отметки/ });
-    expect(toggle).toBeDisabled(); // "today" on the device may be another day than in the city
-    fireEvent.click(toggle);
-    act(() => answerMe({ body: me }));
-    await waitFor(() => expect(toggle).toBeEnabled());
-    expect(calls.filter((call) => call.method === "PUT")).toEqual([]);
   });
 
   it("shows a weekly habit's week and a streak of weeks", async () => {
