@@ -238,6 +238,17 @@ def test_with_time_completes_a_phrase() -> None:
     assert not done.needs_time and done.when(NOW) == datetime(2026, 9, 29, 18, 0)
 
 
+def test_a_chosen_time_replaces_a_relative_moment() -> None:
+    parsed = parse("через 20 минут чай", NOW)
+    assert parsed is not None
+    assert parsed.with_time("18:00").when(NOW) == datetime(2026, 9, 28, 18, 0)
+    assert parsed.with_time("09:00").when(NOW) == datetime(2026, 9, 29, 9, 0)
+    # «через 3 дня» names a day, not a moment: a chosen time keeps that day.
+    days = parse("через 3 дня позвонить бабушке", NOW)
+    assert days is not None
+    assert days.with_time("18:00").when(NOW) == datetime(2026, 10, 1, 18, 0)
+
+
 @pytest.mark.parametrize(
     ("first", "answer", "expected"),
     [

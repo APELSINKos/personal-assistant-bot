@@ -167,6 +167,26 @@ async def test_a_card_pressed_after_its_time_asks_again(feed, fake, session, mon
     assert await all_reminders(session) == []
 
 
+async def test_a_time_button_replaces_a_relative_moment(feed, fake, session) -> None:
+    await feed(message_update("через 20 минут чай"))
+    await feed(callback_update(button_data(fake, "🕘 Другое время")))
+    await feed(callback_update(button_data(fake, "18:00")))
+    assert fake.sent_texts()[-1] == "⏰ Сегодня, 18:00 — чай"
+    await feed(callback_update(button_data(fake, "✅ Создать")))
+    (stored,) = await all_reminders(session)
+    assert stored.due_at == datetime(2026, 9, 28, 15, 0, tzinfo=UTC)
+
+
+async def test_a_time_button_after_a_late_press_sets_that_time(feed, fake, monkeypatch) -> None:
+    await feed(message_update("через 20 минут чай"))
+    ok = button_data(fake, "✅ Создать")
+    monkeypatch.setattr(reminders_router, "clock", lambda: NOW + timedelta(minutes=30))
+    await feed(callback_update(ok))
+    assert fake.sent_texts()[-1] == ASK_TIME
+    await feed(callback_update(button_data(fake, "18:00")))
+    assert fake.sent_texts()[-1] == "⏰ Сегодня, 18:00 — чай"
+
+
 async def test_a_repeat_card_pressed_later_starts_from_the_press(
     feed, fake, session, monkeypatch
 ) -> None:

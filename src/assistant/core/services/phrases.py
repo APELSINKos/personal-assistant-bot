@@ -347,7 +347,9 @@ class Parsed:
         return self.time is None and (self.delta is None or self.repeat is not Repeat.NONE)
 
     def with_time(self, hhmm: str) -> Parsed:
-        return replace(self, time=hhmm)
+        """The phrase at the time chosen for it: a chosen time replaces «через 20 минут», as a
+        typed answer does in merge()."""
+        return replace(self, time=hhmm, delta=None)
 
     def when(self, now: datetime) -> datetime | None:
         """The local wall time of a one-off reminder (naive), or None if it is not one."""
