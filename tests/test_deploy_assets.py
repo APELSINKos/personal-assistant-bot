@@ -91,6 +91,9 @@ def test_caddy_serves_the_app_with_the_spec_headers() -> None:
     ):
         assert expected in text, expected
     assert "X-Frame-Options" not in text
+    # One CSP for the whole site: the API docs, which wanted a CDN script, are not served.
+    assert text.count("Content-Security-Policy") == 1
+    assert "/api/docs" not in text
 
 
 def test_caddy_lets_a_calendar_file_through() -> None:

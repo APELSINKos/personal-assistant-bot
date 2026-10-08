@@ -15,9 +15,10 @@ from assistant.api.app import create_app
 from assistant.api.routers.health import read_commit
 from assistant.core.clients.cbr import CbrClient
 from assistant.core.clients.openmeteo import OpenMeteoClient
+from assistant.core.config import Settings
 from assistant.core.models import User
 from assistant.core.ratelimit import RateLimiter
-from tests.api.conftest import NOW
+from tests.api.conftest import NOW, TOKEN
 from tests.stubs import StubCalendars
 
 PROBLEM = "application/problem+json"
@@ -29,8 +30,29 @@ async def test_health_needs_no_auth(client) -> None:
     assert response.json() == {"status": "ok", "version": assistant.__version__, "commit": "0" * 40}
 
 
-async def test_openapi_schema_is_served(client) -> None:
-    assert (await client.get("/api/openapi.json")).status_code == 200
+@pytest.mark.parametrize("path", ["/api/docs", "/api/openapi.json"])
+async def test_the_api_docs_are_off_by_default(client, path) -> None:
+    # Swagger UI loads an unpinned script from a CDN: the server does not serve the docs.
+    response = await client.get(path)
+    assert response.status_code == 404 and response.json()["code"] == "not_found"
+
+
+async def test_api_docs_turns_the_docs_on(monkeypatch, sessionmaker, meteo, cbr) -> None:
+    monkeypatch.setenv("API_DOCS", "true")  # .env.example has it, for development
+    settings = Settings(_env_file=None, bot_token=TOKEN)
+    app = create_app(
+        settings=settings,
+        sessionmaker=sessionmaker,
+        meteo=meteo,
+        cbr=cbr,
+        calendars=StubCalendars(),
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
+        docs = await http.get("/api/docs")
+        schema = await http.get("/api/openapi.json")
+    assert docs.status_code == 200 and "swagger-ui" in docs.text
+    assert schema.status_code == 200 and schema.json()["info"]["title"] == "Personal Assistant API"
 
 
 @pytest.mark.parametrize("header", [None, "Bearer x", "tma ", "tma garbage"])

@@ -14,7 +14,7 @@
 		Content-Security-Policy "default-src 'self'; script-src 'self' https://telegram.org; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'self' https://web.telegram.org; base-uri 'none'; form-action 'self'"
 	}
 	# A deletion defers its whole header block to the moment the response is written; kept
-	# apart so the block above stays immediate and /api/docs below can replace the CSP.
+	# apart so the block above stays immediate.
 	header -Server
 
 	# That deferred deletion is skipped when a handler fails (a missing file, the API down):
@@ -22,12 +22,6 @@
 	handle_errors {
 		header -Server
 		respond "{err.status_code} {err.status_text}"
-	}
-
-	# Swagger UI loads its script and styles from a CDN and starts with an inline script.
-	handle /api/docs* {
-		header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https://fastapi.tiangolo.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
-		reverse_proxy 127.0.0.1:8000
 	}
 
 	# A calendar file may be up to 2 MB: the API itself refuses a bigger one with a clear error.
