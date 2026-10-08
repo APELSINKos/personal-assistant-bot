@@ -15,7 +15,7 @@ from assistant.core.i18n import translator
 from assistant.core.models import Habit, HabitMark
 from assistant.core.services import habits
 from assistant.core.services.habits import HabitStats
-from tests.bot.fakes import callback_update, message_update
+from tests.bot.fakes import SERVICE_MESSAGES, callback_update, message_update
 
 RU, EN = translator("ru"), translator("en")
 # 00:30 on 2 October in Moscow, still 1 October in UTC: the day is the user's.
@@ -123,6 +123,18 @@ async def test_add_habit_dialog(feed, fake, session) -> None:
     await feed(callback_update(HabitCb(action="add").pack()))
     await feed(message_update("СПОРТ"))
     assert fake.sent_texts()[-1] == "Такая привычка уже есть. Придумай другое название:"
+
+
+@pytest.mark.parametrize("service", list(SERVICE_MESSAGES))
+async def test_a_service_message_in_the_name_dialog_gets_no_answer(feed, fake, service) -> None:
+    # The user pins a message while the bot waits for the name, say: no «Нужен текст», and the
+    # dialog still takes the name.
+    await feed(callback_update(HabitCb(action="add").pack()))
+    asked = len(fake.calls)
+    await feed(message_update(service=service))
+    assert len(fake.calls) == asked
+    await feed(message_update("Спорт"))
+    assert fake.sent_texts()[-2] == "✅ Привычка «Спорт» добавлена."
 
 
 async def test_toggle_cycle_and_foreign_habit(feed, fake, session, make_user) -> None:

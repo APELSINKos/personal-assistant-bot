@@ -39,6 +39,18 @@ def scheduler(bot, sessionmaker, meteo, cbr) -> Scheduler:
     return Scheduler(bot, sessionmaker, meteo, cbr, clock=lambda: NOW)
 
 
+@pytest.fixture
+def make_user(make_user):
+    """The shared factory, for users who came through the bot: the digest goes only to those
+    the bot may write to (test_no_digest_before_the_user_lets_the_bot_write)."""
+
+    async def factory(*args: Any, **fields: Any):
+        fields.setdefault("can_write", True)
+        return await make_user(*args, **fields)
+
+    return factory
+
+
 async def add_reminder(
     session, user_id: int = 1, *, ago: timedelta = timedelta(minutes=1), text: str = "полить цветы"
 ) -> Reminder:
@@ -474,6 +486,22 @@ async def test_digest_skips_disabled_blocked_and_out_of_window(
     await make_user(id=3, morning_time="08:00")
     assert await scheduler.send_digests(AT_2345) == 0
     assert fake.calls == []
+
+
+async def test_no_digest_before_the_user_lets_the_bot_write(
+    scheduler, session, make_user, fake
+) -> None:
+    # Someone who has only opened the app: Telegram refuses a first message to them, and the
+    # refusal would mark them as having blocked the bot.
+    user = await make_user(morning_time="23:30", can_write=False)
+    fake.errors.append(
+        TelegramForbiddenError(
+            method=METHOD, message="Forbidden: bot can't initiate conversation with a user"
+        )
+    )
+    assert await scheduler.send_digests(AT_2345) == 0
+    assert fake.calls == []
+    assert not (await reload(session, user)).bot_blocked
 
 
 async def test_digest_403_blocks_user(scheduler, session, make_user, fake) -> None:

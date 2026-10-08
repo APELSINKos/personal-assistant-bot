@@ -303,7 +303,13 @@ class Scheduler:
         async with self._sessionmaker() as session:
             candidates = (
                 await session.scalars(
-                    select(User).where(User.morning_enabled.is_(True), User.bot_blocked.is_(False))
+                    select(User).where(
+                        User.morning_enabled.is_(True),
+                        User.bot_blocked.is_(False),
+                        # Telegram refuses a first message to someone who never wrote to the bot
+                        # nor allowed it in the app, and that refusal would mark them blocked.
+                        User.can_write.is_(True),
+                    )
                 )
             ).all()
         # The session is closed; the loaded attributes stay readable on the detached objects.
