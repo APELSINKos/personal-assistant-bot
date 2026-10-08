@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from assistant.core.models import User
+from assistant.core.services import money
+from assistant.core.services.money_phrases import Quick
+
 
 async def categories(client, auth, user_id: int = 1) -> dict[str, int]:
     """The ids of the categories by name (the presets in Russian)."""
@@ -100,6 +104,32 @@ async def test_an_entry_changes_and_goes(client, auth) -> None:
     assert (
         await client.get(f"/api/money/entries/{entry['id']}", headers=auth())
     ).status_code == 404
+
+
+async def test_a_category_changed_in_the_app_teaches_quick_input(
+    client, auth, sessionmaker
+) -> None:
+    ids = await categories(client, auth)
+
+    async def guessed(note: str = "кофе") -> int:
+        async with sessionmaker() as session:  # read afresh, as the bot's next update would
+            user = await session.get(User, 1)
+            return (await money.guess_category(session, user, Quick(30000, note, None))).id
+
+    coffee = await add(client, auth, amount="250", category_id=ids["Кафе"], note="Кофе")
+    url = f"/api/money/entries/{coffee['entry']['id']}"
+    changed = await client.patch(url, json={"amount": "300"}, headers=auth())
+    assert changed.status_code == 200 and await guessed() == ids["Кафе"]
+    moved = await client.patch(url, json={"category_id": ids["Продукты"]}, headers=auth())
+    assert moved.status_code == 200 and await guessed() == ids["Продукты"]
+    # Only another category teaches, and the note it teaches is the one after the change.
+    other = await add(client, auth, amount="90", category_id=ids["Транспорт"], note="кофе")
+    url = f"/api/money/entries/{other['entry']['id']}"
+    assert (await client.patch(url, json={"amount": "95"}, headers=auth())).status_code == 200
+    assert await guessed() == ids["Продукты"]
+    both = {"category_id": ids["Кафе"], "note": "сюрприз"}
+    assert (await client.patch(url, json=both, headers=auth())).status_code == 200
+    assert (await guessed("сюрприз"), await guessed()) == (ids["Кафе"], ids["Продукты"])
 
 
 async def test_a_budget_warning_comes_once(client, auth) -> None:
