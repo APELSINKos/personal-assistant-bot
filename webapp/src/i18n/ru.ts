@@ -327,8 +327,9 @@ export const ru = {
     deleteCity: (name: string) => `Удалить город «${name}»`,
     confirmDeleteCity: (name: string) => `Удалить город «${name}»?`,
     data: "Данные",
-    // The licence's name does not break across lines.
-    credits: "Погода — open-meteo.com, названия городов — geonames.org; лицензия CC\u00a0BY\u00a04.0 (creativecommons.org/licenses/by/4.0), приложение округляет данные и добавляет советы.",
+    // The licence's name does not break across lines, and no line starts with a dash: each dash
+    // keeps the word before it.
+    credits: "Погода\u00a0— open-meteo.com, названия городов\u00a0— geonames.org; лицензия CC\u00a0BY\u00a04.0 (creativecommons.org/licenses/by/4.0), приложение округляет данные и добавляет советы.",
   },
   errors: {
     generic: "Что-то пошло не так. Попробуй ещё раз.",

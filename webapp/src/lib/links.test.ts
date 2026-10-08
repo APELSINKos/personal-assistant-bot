@@ -99,4 +99,11 @@ describe("credit lines", () => {
     ]);
     expect(parts.map((part) => part.text).join("")).toBe(text);
   });
+
+  it.each(["ru", "en"] as const)("starts no line with a dash in more.credits (%s)", (lang) => {
+    const text = dict(lang).more.credits;
+    // A no-break space before each dash: a line may break only after one.
+    expect(text.match(/—/g)).toHaveLength(2);
+    expect(text).not.toMatch(/[^\u00a0]—/);
+  });
 });

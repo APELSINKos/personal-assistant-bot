@@ -509,8 +509,9 @@ describe("More", () => {
     mockApi({ "GET /me": me, "GET /health": HEALTH });
     renderWithApp(<MoreScreen />, { path: "/more" });
     const card = (await screen.findByRole("heading", { name: "Данные" })).closest("section") as HTMLElement;
-    expect(card).toHaveTextContent(
-      "Погода — open-meteo.com, названия городов — geonames.org; лицензия CC BY 4.0 " +
+    // No line starts with a dash: each keeps the word before it with a no-break space.
+    expect(card.textContent).toContain(
+      "Погода\u00a0— open-meteo.com, названия городов\u00a0— geonames.org; лицензия CC\u00a0BY\u00a04.0 " +
         "(creativecommons.org/licenses/by/4.0), приложение округляет данные и добавляет советы.",
     );
     fireEvent.click(within(card).getByRole("button", { name: "open-meteo.com" }));
@@ -526,6 +527,7 @@ describe("More", () => {
     mockApi({ "GET /me": { ...me, language: "en" }, "GET /health": HEALTH, "GET /me/cities": [tula] });
     renderWithApp(<MoreScreen />, { path: "/more", lang: "en" });
     const card = (await screen.findByRole("heading", { name: "Data" })).closest("section") as HTMLElement;
+    expect(card.textContent).toContain("Weather\u00a0— open-meteo.com, city names\u00a0— geonames.org;");
     expect(card).toHaveTextContent("the app rounds the data and adds tips.");
     expect(screen.getByText("reminders and the morning digest follow its time")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Change home city" })).toBeInTheDocument();
