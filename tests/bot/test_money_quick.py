@@ -238,6 +238,27 @@ async def test_a_budget_warning_follows_the_entry(feed, fake, session, make_user
     )
 
 
+async def test_an_undone_entry_lets_the_budget_warn_again(feed, fake, session, make_user) -> None:
+    # A number in a note went in as money and set off both warnings; undone, it gives them back.
+    user = await make_user()
+    await money.set_budget(session, user, 3000000)
+    await session.commit()
+    await feed(message_update("пароль 87654321"))
+    assert fake.sent_texts()[-1] == (
+        f"🚨 Бюджет на сентябрь закончился: {rub('87 654 321')} из {rub('30 000')}"
+    )
+    [typo] = await entries(session)
+    await feed(press("undo", typo.id))
+    await feed(message_update("продукты 26000"))
+    assert fake.sent_texts()[-1] == (
+        f"⚠️ Потрачено 87 % бюджета на сентябрь: {rub('26 000')} из {rub('30 000')}"
+    )
+    await feed(message_update("такси 5000"))
+    assert fake.sent_texts()[-1] == (
+        f"🚨 Бюджет на сентябрь закончился: {rub('31 000')} из {rub('30 000')}"
+    )
+
+
 async def test_the_month_limit(feed, fake, session, make_user, monkeypatch) -> None:
     await make_user()
     monkeypatch.setattr(money, "LIMITS", replace(LIMITS, money_entries_month=1))

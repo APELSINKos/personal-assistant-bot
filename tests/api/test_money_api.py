@@ -131,6 +131,35 @@ async def test_a_budget_warning_comes_once(client, auth) -> None:
         assert refused.status_code == 422 and refused.json()["field"] == "amount", amount
 
 
+async def test_a_corrected_or_deleted_entry_lets_the_budget_warn_again(client, auth) -> None:
+    ids = await categories(client, auth)
+    await client.put("/api/money/budget", json={"amount": "30000"}, headers=auth())
+
+    async def change(saved: dict, **body: object) -> list[int]:
+        changed = await client.patch(
+            f"/api/money/entries/{saved['entry']['id']}", json=body, headers=auth()
+        )
+        assert changed.status_code == 200, changed.json()
+        return [alert["threshold"] for alert in changed.json()["alerts"]]
+
+    typo = await add(client, auth, amount="26000", category_id=ids["Продукты"])
+    assert [alert["threshold"] for alert in typo["alerts"]] == [80]
+    assert await change(typo, amount="2600") == []
+    real = await add(client, auth, amount="22000", category_id=ids["Продукты"])
+    assert real["alerts"] == [
+        {
+            "category_id": None, "emoji": None, "name": None, "threshold": 80, "spent": 2460000,
+            "budget": 3000000,
+        }
+    ]  # fmt: skip
+    gone = await client.delete(f"/api/money/entries/{real['entry']['id']}", headers=auth())
+    assert gone.status_code == 204
+    again = await add(client, auth, amount="22000", category_id=ids["Продукты"])
+    assert [alert["threshold"] for alert in again["alerts"]] == [80]
+    # 24 100 of 30 000 after the change is still over 80 %: the warning is not shown twice.
+    assert await change(again, amount="21500", note="рынок") == []
+
+
 async def test_categories_are_made_renamed_hidden_and_budgeted(client, auth) -> None:
     ids = await categories(client, auth)
     made = await client.post(

@@ -3,9 +3,10 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from datetime import UTC, date, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from assistant.core.models import MoneyCategory, User
+from assistant.core.models import MoneyAlert, MoneyCategory, MoneyEntry, User
 from assistant.core.services import money, money_month
 
 NOW = datetime(2026, 10, 3, 9, 0, tzinfo=UTC)  # 3 October, noon in Moscow
@@ -21,6 +22,14 @@ async def spend(
 ) -> None:
     category = await preset(session, user, key)
     await money.add_entry(session, user, amount=amount, category_id=category.id, day=day, now=now)
+
+
+async def shown(session: AsyncSession) -> list[tuple[int, str, int, int]]:
+    """The warnings already shown: user, month, budget (0: all expenses) and threshold."""
+    rows = await session.execute(
+        select(MoneyAlert.user_id, MoneyAlert.month, MoneyAlert.category_id, MoneyAlert.threshold)
+    )
+    return sorted((row[0], row[1], row[2], row[3]) for row in rows)
 
 
 async def test_an_empty_month(session: AsyncSession, make_user: MakeUser) -> None:
@@ -235,6 +244,80 @@ async def test_a_changed_budget_warns_afresh(session: AsyncSession, make_user: M
     await money.set_budget(session, user, 200000)  # raised: their thresholds count again
     await money.update_category(session, user, cafe.id, budget=200000)
     assert await add(60000) == [("cafe", 80), (None, 80)]
+
+
+async def test_a_corrected_or_deleted_entry_warns_again(
+    session: AsyncSession, make_user: MakeUser
+) -> None:
+    user = await make_user()
+    cafe = await preset(session, user, "cafe")
+    await money.set_budget(session, user, 100000)
+
+    async def warned(entry: MoneyEntry) -> list[int]:
+        found = await money_month.alerts_after(session, user, entry, NOW)
+        return [alert.threshold for alert in found]
+
+    async def add(amount: int) -> MoneyEntry:
+        return await money.add_entry(session, user, amount=amount, category_id=cafe.id, now=NOW)
+
+    typo = await add(8765432100)  # a number in a note
+    assert await warned(typo) == [100]
+    typo = await money.update_entry(session, user, typo.id, amount=15000, now=NOW)
+    assert await warned(typo) == []  # 150 of 1 000
+    real = await add(70000)
+    assert await warned(real) == [80]  # 850: the 80 % warning comes again
+    assert await money.delete_entry(session, user, real.id)
+    assert await warned(await add(100000)) == [100]  # 1 150: both again, the higher one shown
+
+
+async def test_a_warning_that_still_holds_is_not_shown_again(
+    session: AsyncSession, make_user: MakeUser
+) -> None:
+    user = await make_user()
+    cafe, groceries = await preset(session, user, "cafe"), await preset(session, user, "groceries")
+    await money.set_budget(session, user, 100000)
+    await money.update_category(session, user, cafe.id, budget=10000)
+
+    async def warned(entry: MoneyEntry) -> list[tuple[str | None, int]]:
+        found = await money_month.alerts_after(session, user, entry, NOW)
+        return [(a.category.preset if a.category else None, a.threshold) for a in found]
+
+    coffee = await money.add_entry(session, user, amount=9000, category_id=cafe.id, now=NOW)
+    assert await warned(coffee) == [("cafe", 80)]
+    food = await money.add_entry(session, user, amount=71000, category_id=groceries.id, now=NOW)
+    assert await warned(food) == [(None, 80)]  # 800 of 1 000
+    coffee = await money.update_entry(session, user, coffee.id, note="латте", now=NOW)
+    assert await warned(coffee) == []
+    # Exactly 80 % of the café's budget still holds; all expenses, 790 of 1 000, no longer do.
+    coffee = await money.update_entry(session, user, coffee.id, amount=8000, now=NOW)
+    assert await warned(coffee) == []
+    more = await money.add_entry(session, user, amount=1000, category_id=groceries.id, now=NOW)
+    assert await warned(more) == [(None, 80)]
+
+
+async def test_only_the_users_warnings_of_the_entrys_months_come_again(
+    session: AsyncSession, make_user: MakeUser
+) -> None:
+    user, stranger = await make_user(1), await make_user(2)
+    cafe = await preset(session, user, "cafe")
+    await money.set_budget(session, user, 100000)
+    entry = await money.add_entry(session, user, amount=50000, category_id=cafe.id, now=NOW)
+    # Warnings whose spending is gone (as 2.6.0 left them), and one of a budget no longer set.
+    for owner, month, category_id in (
+        (user, "2026-08", 0), (user, "2026-09", 0), (user, "2026-10", cafe.id),
+        (stranger, "2026-10", 0),
+    ):  # fmt: skip
+        session.add(
+            MoneyAlert(user_id=owner.id, month=month, category_id=category_id, threshold=80)
+        )
+    await session.flush()
+    await money.update_entry(session, user, entry.id, note="кофе", now=NOW)
+    assert await shown(session) == [
+        (1, "2026-08", 0, 80), (1, "2026-09", 0, 80), (2, "2026-10", 0, 80),
+    ]  # fmt: skip
+    # Moved to September: that month's warnings are looked at too.
+    await money.update_entry(session, user, entry.id, day=date(2026, 9, 30), now=NOW)
+    assert await shown(session) == [(1, "2026-08", 0, 80), (2, "2026-10", 0, 80)]
 
 
 async def test_no_warning_for_an_income_a_past_month_or_without_a_budget(

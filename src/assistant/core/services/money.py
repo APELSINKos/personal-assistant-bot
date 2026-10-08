@@ -287,6 +287,53 @@ async def entry(session: AsyncSession, user: User, entry_id: int) -> MoneyEntry:
     return found
 
 
+async def spent_in(
+    session: AsyncSession, user: User, first: date, category_id: int | None = None
+) -> int:
+    """The expenses of the month that begins on `first`: all of them, or one category's. The
+    one sum the budget warnings go by, here and in money_month (which imports this module)."""
+    query = (
+        select(func.coalesce(func.sum(MoneyEntry.amount), 0))
+        .join(MoneyCategory, MoneyEntry.category_id == MoneyCategory.id)
+        .where(
+            MoneyEntry.user_id == user.id,
+            MoneyCategory.kind == EXPENSE,
+            MoneyEntry.day >= first,
+            MoneyEntry.day < _next_month(first),
+        )
+    )
+    if category_id is not None:
+        query = query.where(MoneyEntry.category_id == category_id)
+    return int(await session.scalar(query) or 0)
+
+
+async def rearm(session: AsyncSession, user: User, day: date) -> None:
+    """Forget the warnings of this day's month that no longer hold: an entry undone, deleted or
+    corrected took its budget's spending back under the threshold, or the budget is gone. The
+    threshold warns again when the spending really reaches it; one that still holds stays."""
+    first = day.replace(day=1)
+    shown = list(
+        await session.scalars(
+            select(MoneyAlert).where(
+                MoneyAlert.user_id == user.id, MoneyAlert.month == first.strftime("%Y-%m")
+            )
+        )
+    )
+    if not shown:
+        return
+    budgets = {item.id: item.budget for item in await _categories(session, user.id)}
+    budgets[0] = user.money_budget
+    spent: dict[int, int] = {}
+    for alert in shown:
+        scope = alert.category_id  # 0: all expenses
+        if scope not in spent:
+            spent[scope] = await spent_in(session, user, first, scope or None)
+        budget = budgets.get(scope)
+        if budget is None or spent[scope] * 100 < budget * alert.threshold:
+            await session.delete(alert)
+    await session.flush()
+
+
 async def update_entry(
     session: AsyncSession,
     user: User,
@@ -301,8 +348,10 @@ async def update_entry(
     """Change any field; another category may be of the other kind (an expense becomes an
     income). Every field is checked before any changes. A new day keeps to the window (an
     unchanged one is not checked again); a move to another month needs room in that month,
-    not under the total, since the entry is not a new one."""
+    not under the total, since the entry is not a new one. The warnings the change no longer
+    holds up come again (see rearm), in the entry's month and in the one it moved to."""
     found = await entry(session, user, entry_id)
+    old = found.day
     if amount is not None:
         _check_amount(amount)
     if category_id is not None:
@@ -321,14 +370,24 @@ async def update_entry(
     if day is not None:
         found.day = day
     await session.flush()
+    await rearm(session, user, old)
+    if (found.day.year, found.day.month) != (old.year, old.month):
+        await rearm(session, user, found.day)
     return found
 
 
 async def delete_entry(session: AsyncSession, user: User, entry_id: int) -> bool:
-    result = await session.execute(
-        sql_delete(MoneyEntry).where(MoneyEntry.id == entry_id, MoneyEntry.user_id == user.id)
+    """False when the user has no such entry. The warnings of its month that no longer hold
+    come again (see rearm)."""
+    day = await session.scalar(
+        sql_delete(MoneyEntry)
+        .where(MoneyEntry.id == entry_id, MoneyEntry.user_id == user.id)
+        .returning(MoneyEntry.day)
     )
-    return bool(result.rowcount)  # type: ignore[attr-defined]
+    if day is None:
+        return False
+    await rearm(session, user, day)
+    return True
 
 
 async def remember(session: AsyncSession, user: User, note: str, category_id: int) -> None:

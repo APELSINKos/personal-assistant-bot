@@ -154,28 +154,13 @@ async def month(
     )
 
 
-async def _spent(session: AsyncSession, user: User, first: date, category_id: int | None) -> int:
-    query = (
-        select(func.coalesce(func.sum(MoneyEntry.amount), 0))
-        .join(MoneyCategory, MoneyEntry.category_id == MoneyCategory.id)
-        .where(
-            MoneyEntry.user_id == user.id,
-            MoneyCategory.kind == EXPENSE,
-            MoneyEntry.day >= first,
-            MoneyEntry.day < next_month(first),
-        )
-    )
-    if category_id is not None:
-        query = query.where(MoneyEntry.category_id == category_id)
-    return int(await session.scalar(query) or 0)
-
-
 async def alerts_after(
     session: AsyncSession, user: User, entry: MoneyEntry, now: datetime | None = None
 ) -> list[Alert]:
     """The warnings an expense of this month sets off: for its category's budget and for the
-    budget of all expenses, a threshold reached for the first time this month. Both
-    thresholds may be reached at once; then only the higher one is shown (both are kept)."""
+    budget of all expenses, a threshold reached and not shown yet this month (or shown, then
+    taken back by an undone or corrected entry: see money.rearm). Both thresholds may be
+    reached at once; then only the higher one is shown (both are kept)."""
     first = month_start(local_today(user.timezone, now))
     category = await money.category(session, user, entry.category_id)
     if category.kind != EXPENSE or month_start(entry.day) != first:
@@ -185,7 +170,7 @@ async def alerts_after(
     for scope, budget in ((category, category.budget), (None, user.money_budget)):
         if budget is None:
             continue
-        spent = await _spent(session, user, first, None if scope is None else scope.id)
+        spent = await money.spent_in(session, user, first, None if scope is None else scope.id)
         fresh = []
         for threshold in THRESHOLDS:
             if spent * 100 < budget * threshold:
