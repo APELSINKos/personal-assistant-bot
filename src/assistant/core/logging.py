@@ -1,11 +1,14 @@
-"""Logging to stdout (journald on the server) with secrets removed from every record."""
+"""Logging to stdout (journald on the server, every line with its priority) with secrets removed
+from every record."""
 
 from __future__ import annotations
 
 import logging
+import os
 import re
 import sys
 from collections.abc import Iterable
+from typing import TextIO
 
 _TOKEN_IN_URL = re.compile(r"bot\d{6,}:[A-Za-z0-9_-]+")
 
@@ -33,9 +36,43 @@ class TokenRedactor(logging.Filter):
         return True
 
 
+class JournalFormatter(logging.Formatter):
+    """Starts every line of a record with its syslog priority. journald reads one at the start
+    of each line it gets (SyslogLevelPrefix=), so the lines of a traceback need it too."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        prefix = f"<{_priority(record.levelno)}>"
+        return "\n".join(prefix + line for line in super().format(record).split("\n"))
+
+
+def _priority(level: int) -> int:
+    if level >= logging.ERROR:
+        return 3  # err
+    if level >= logging.WARNING:
+        return 4  # warning
+    if level >= logging.INFO:
+        return 6  # info
+    return 7  # debug
+
+
+def _to_journal(stream: TextIO) -> bool:
+    """Whether the stream is the service's connection to journald. systemd gives its device and
+    inode in JOURNAL_STREAM; a process that inherited the variable but writes elsewhere does not
+    match them."""
+    journal = os.environ.get("JOURNAL_STREAM")
+    if not journal:
+        return False
+    try:
+        stat = os.fstat(stream.fileno())
+    except (OSError, ValueError):  # not backed by a file descriptor, or closed
+        return False
+    return journal == f"{stat.st_dev}:{stat.st_ino}"
+
+
 def setup_logging(level: str, secrets: Iterable[str] = ()) -> None:
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+    formatter = JournalFormatter if _to_journal(sys.stdout) else logging.Formatter
+    handler.setFormatter(formatter("%(levelname)s %(name)s: %(message)s"))
     handler.addFilter(TokenRedactor(secrets))
     root = logging.getLogger()
     root.handlers[:] = [handler]
