@@ -40,9 +40,7 @@ NOW_TEXT = (
     "Ощущается как +7°C, ветер 3 м/с\n"
     "Сегодня: +6…+13°C\n"
     "\n"
-    "🚲 Сегодня хороший день для велосипеда\n"
-    "\n"
-    "Данные о погоде: open-meteo.com"
+    "🚲 Сегодня хороший день для велосипеда"
 )
 UNAVAILABLE = "⚠️ Не удалось получить погоду. Попробуй чуть позже."
 GONE = "Этого города уже нет в списке"
@@ -101,7 +99,7 @@ async def test_the_weather_now_with_its_buttons(feed, fake, meteo) -> None:
     [sent] = fake.of(SendMessage)
     assert sent.text == NOW_TEXT
     assert meteo.user_ids == [1]  # the forecast spent the budget of the user who asked
-    assert sent.link_preview_options.is_disabled  # open-meteo.com without a preview card
+    assert sent.link_preview_options.is_disabled
     assert buttons(sent) == [["🕐 По часам", "📅 Неделя"], ["🏙 Города"]]
     assert packed(sent) == [
         [WeatherCb(view="hours").pack(), WeatherCb(view="week").pack()],
@@ -114,7 +112,7 @@ async def test_the_views_change_the_message_itself(feed, fake) -> None:
     hours = fake.of(EditMessageText)[-1]
     lines = hours.text.split("\n")
     assert lines[:3] == ["🕐 Москва — по часам", "", "11:00 🌤 +11°C"]  # from the next hour
-    assert lines[-3:] == ["22:00 🌙 +8°C", "", "Данные о погоде: open-meteo.com"]
+    assert lines[-1] == "22:00 🌙 +8°C"
     assert hours.link_preview_options.is_disabled
     assert buttons(hours) == [["🌤 Сейчас", "📅 Неделя"], ["🏙 Города"]]
     assert packed(hours)[0] == [WeatherCb(view="now").pack(), WeatherCb(view="week").pack()]
@@ -140,7 +138,7 @@ async def test_the_hours_start_after_the_clock_of_the_bot(feed, fake, now) -> No
 async def test_the_views_in_english(feed, fake) -> None:
     await feed(message_update("🌤 Weather", lang="en"))
     sent = fake.of(SendMessage)[-1]
-    assert sent.text.endswith("\n\nWeather data: open-meteo.com")
+    assert sent.text.endswith("\n\n🚲 A great day for a bike ride")
     assert buttons(sent) == [["🕐 Hourly", "📅 Week"], ["🏙 Cities"]]
     await feed(callback_update(WeatherCb(view="week").pack(), lang="en"))
     week = fake.of(EditMessageText)[-1]

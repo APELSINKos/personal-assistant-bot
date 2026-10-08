@@ -345,7 +345,7 @@ async def test_the_digest_brings_the_forecast_buttons_without_a_preview(
     assert digest.text.split("\n")[3:6] == [
         "🌤 Москва: +10°C, малооблачно · днём до +13°C",
         "🚲 Сегодня хороший день для велосипеда",
-        "Данные о погоде: open-meteo.com",
+        "",
     ]
     assert digest.link_preview_options.is_disabled
     assert buttons(digest) == [["🕐 По часам", "📅 Неделя"]]
@@ -367,11 +367,11 @@ async def test_the_digest_waits_ten_minutes_for_the_weather(
         assert await scheduler.send_digests(moment) == 0
     assert fake.calls == [] and (await reload(session, user)).last_morning_date is None
     assert "not delivered" not in caplog.text  # waiting is no failure
-    # Then the digest goes without the weather: neither its source nor its buttons.
+    # Then the digest goes without the weather and without its buttons.
     assert await scheduler.send_digests(AT_0800 + timedelta(minutes=10)) == 1
     [digest] = fake.of(SendMessage)
     assert digest.text.split("\n")[3:5] == [UNAVAILABLE, ""]
-    assert "open-meteo.com" not in digest.text and digest.reply_markup is None
+    assert digest.reply_markup is None
     assert digest.link_preview_options.is_disabled
     assert (await reload(session, user)).last_morning_date == date(2026, 9, 28)
 

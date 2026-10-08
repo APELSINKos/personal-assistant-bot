@@ -95,11 +95,9 @@ def test_weather_text() -> None:
         "Ощущается как +7°C, ветер 3 м/с\n"
         "Сегодня: +6…+13°C\n"
         "\n"
-        "🚲 Сегодня хороший день для велосипеда\n"
-        "\n"
-        "Данные о погоде: open-meteo.com"
+        "🚲 Сегодня хороший день для велосипеда"
     )
-    assert texts.weather_text(WEATHER, EN).endswith("\n\nWeather data: open-meteo.com")
+    assert texts.weather_text(WEATHER, EN).endswith("\n\n🚲 A great day for a bike ride")
 
 
 def test_weather_at_night_shows_the_moon_for_a_clear_sky() -> None:
@@ -129,9 +127,7 @@ def test_hours_text() -> None:
         "19:00 🌙 +11°C\n"
         "20:00 🌙 +10°C\n"
         "21:00 🌙 +9°C\n"
-        "22:00 🌙 +8°C\n"
-        "\n"
-        "Данные о погоде: open-meteo.com"
+        "22:00 🌙 +8°C"
     )
 
 
@@ -145,27 +141,21 @@ def test_hours_across_midnight() -> None:
         "Завтра, 29 сентября",
         "00:00 🌙 +7°C",
     ]
-    assert lines[-3:] == ["08:00 🌤 +8°C", "", "Данные о погоде: open-meteo.com"]
+    assert lines[-1] == "08:00 🌤 +8°C"
     # The date line comes first when every hour shown is tomorrow's.
     late = datetime(2026, 9, 28, 23, 30, tzinfo=MSK)
     lines = texts.hours_text(FORECAST, late, "Europe/Moscow", EN).split("\n")
     assert lines[:4] == ["🕐 Москва — hourly", "", "Tomorrow, September 29", "00:00 🌙 +7°C"]
-    assert len(lines) == 4 + 11 + 2  # twelve hours
+    assert len(lines) == 4 + 11  # twelve hours
 
 
 def test_hours_at_the_end_of_the_forecast() -> None:
     last = datetime(2026, 10, 4, 20, 30, tzinfo=MSK)  # three hours of the week are left
     lines = texts.hours_text(FORECAST, last, "Europe/Moscow", RU).split("\n")
-    assert lines[2:] == [
-        "21:00 🌙 +9°C",
-        "22:00 🌙 +8°C",
-        "23:00 🌙 +8°C",
-        "",
-        "Данные о погоде: open-meteo.com",
-    ]
+    assert lines[2:] == ["21:00 🌙 +9°C", "22:00 🌙 +8°C", "23:00 🌙 +8°C"]
     gone = datetime(2026, 10, 4, 23, 30, tzinfo=MSK)
     lines = texts.hours_text(FORECAST, gone, "Europe/Moscow", RU).split("\n")
-    assert lines[2:] == ["Почасового прогноза сейчас нет.", "", "Данные о погоде: open-meteo.com"]
+    assert lines[2:] == ["Почасового прогноза сейчас нет."]
     english = texts.hours_text(FORECAST, gone, "Europe/Moscow", EN)
     assert english.split("\n")[2] == "No hourly forecast right now."
 
@@ -241,9 +231,7 @@ def test_week_text() -> None:
         "чт, 1 окт. 🌤 +6…+13°C\n"
         "пт, 2 окт. 🌤 +6…+13°C\n"
         "сб, 3 окт. 🌤 +6…+13°C\n"
-        "вс, 4 окт. 🌤 +6…+13°C\n"
-        "\n"
-        "Данные о погоде: open-meteo.com"
+        "вс, 4 окт. 🌤 +6…+13°C"
     )
     assert texts.week_text(FORECAST, FORECAST_NOW, EN).split("\n")[:5] == [
         "📅 Москва — 7 days",
@@ -259,7 +247,7 @@ def test_the_week_just_after_midnight_has_six_days() -> None:
     asked = datetime(2026, 9, 27, 23, 50, tzinfo=MSK)
     forecast = parse_forecast(forecast_payload(asked), "Москва")
     text = texts.week_text(forecast, datetime(2026, 9, 28, 0, 5, tzinfo=MSK), RU)
-    assert text.split("\n")[2:-2] == [
+    assert text.split("\n")[2:] == [
         "Сегодня 🌤 +6…+13°C",
         "Завтра 🌤 +6…+13°C",
         "ср, 30 сент. 🌤 +6…+13°C",
@@ -278,8 +266,6 @@ def test_a_week_without_days_says_so() -> None:
         "📅 Москва — 7 дней",
         "",
         "Прогноза на неделю сейчас нет.",
-        "",
-        "Данные о погоде: open-meteo.com",
     ]
     english = texts.week_text(forecast, FORECAST_NOW, EN)
     assert english.split("\n")[2] == "No forecast for the week right now."
@@ -292,7 +278,6 @@ def test_today_text_full() -> None:
         "\n"
         "🌤 Москва: +10°C, малооблачно\n"
         "🚲 Сегодня хороший день для велосипеда\n"
-        "Данные о погоде: open-meteo.com\n"
         "\n"
         "📌 На сегодня 1 напоминание:\n"
         "• 12:30 — встреча\n"
@@ -353,7 +338,6 @@ def test_morning_text() -> None:
         "\n"
         "🌤 Москва: +10°C, малооблачно · днём до +13°C\n"
         "🚲 Сегодня хороший день для велосипеда\n"
-        "Данные о погоде: open-meteo.com\n"
         "\n"
         "📌 Сегодня:\n"
         "• 12:30 — встреча\n"
@@ -594,7 +578,6 @@ def test_my_day_in_the_evening_with_all_of_its_weather() -> None:
         "🚲 Сегодня хороший день для велосипеда\n"
         "🎓 На пары (18:00): +12°C · после пар (19:30): +11°C, 💧 60 %\n"
         "Завтра: 🌧 +6…+13°C, 💧 80 %\n"
-        "Данные о погоде: open-meteo.com\n"
         "\n"
         "📌 На сегодня 1 напоминание:\n"
         "• 12:30 — встреча\n"
@@ -611,7 +594,7 @@ def test_my_day_in_the_evening_with_all_of_its_weather() -> None:
     assert english[5:8] == [
         "🎓 To classes (18:00): +12°C · after (19:30): +11°C, 💧 60%",
         "Tomorrow: 🌧 +6…+13°C, 💧 80%",
-        "Weather data: open-meteo.com",
+        "",
     ]
 
 
@@ -623,7 +606,6 @@ def test_the_digest_with_the_way_to_the_classes() -> None:
         "🌤 Москва: +10°C, малооблачно · днём до +13°C\n"
         "🚲 Сегодня хороший день для велосипеда\n"
         "🎓 На пары (09:00): +9°C · после пар (16:20): +13°C, 💧 70 %\n"
-        "Данные о погоде: open-meteo.com\n"
         "\n"
         "📌 Сегодня:\n"
         "• 12:30 — встреча\n"
@@ -635,6 +617,26 @@ def test_the_digest_with_the_way_to_the_classes() -> None:
         "🔥 Лучшая серия: «Спорт» — 5 дней\n"
         "💵 84,20 ₽ · 💶 96,67 ₽"
     )
+
+
+@pytest.mark.parametrize("t", [RU, EN], ids=["ru", "en"])
+def test_no_weather_names_its_source(t: Translator) -> None:
+    # Open-Meteo, GeoNames and the licence are named in /start and /help instead.
+    evening = day_data(
+        local_now=at("17:30"),
+        part_of_day="evening",
+        forecast=RAIN_HOME,
+        has_schedule=True,
+        lessons=[lesson_at("18:00", "19:30")],
+    )
+    for text in (
+        texts.weather_text(WEATHER, t),
+        texts.hours_text(FORECAST, FORECAST_NOW, "Europe/Moscow", t),
+        texts.week_text(FORECAST, FORECAST_NOW, t),
+        texts.today_text(evening, "Alex", t),  # with the way to the classes and tomorrow
+        texts.morning_text(classes_day("08:00"), "Alex", t),
+    ):
+        assert "open-meteo.com" not in text
 
 
 def test_reminder_list_is_capped_within_the_telegram_message_limit() -> None:
@@ -842,7 +844,6 @@ def test_my_day_and_the_digest_fit_telegram_however_full_the_day(t, render) -> N
         *texts.tip_lines(TIPS[:1] if my_day else TIPS, t),
         FULLEST_WAY[t.lang],
         *([FULLEST_TOMORROW[t.lang]] if my_day else []),
-        t("weather-credit"),
     ]
     if my_day:
         notes = lines.index(t("today-notes", count=50))

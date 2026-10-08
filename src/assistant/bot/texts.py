@@ -88,24 +88,17 @@ def _now_line(now: WeatherNow, t: Translator) -> str:
     return t("weather-now", **_now_values(now, t))
 
 
-def _with_credit(lines: list[str], t: Translator) -> str:
-    """A view of the weather: its lines, then where the data come from. Open-Meteo's licence
-    (CC BY 4.0) asks for the source next to the data."""
-    return "\n".join([*lines, "", t("weather-credit")])
-
-
 def weather_text(now: WeatherNow, t: Translator) -> str:
     """«🌤 Погода»: now, how it feels and the wind, today's range, every tip."""
     wind = NO_VALUE if now.wind is None else str(round(now.wind))
-    return _with_credit(
+    return "\n".join(
         [
             _now_line(now, t),
             t("weather-feels", feels=temp(now.feels_like), wind=wind),
             t("weather-range", range=temp_range(now.tmin, now.tmax)),
             "",
             *tip_lines(now.tips, t),
-        ],
-        t,
+        ]
     )
 
 
@@ -156,7 +149,7 @@ def hours_text(forecast: Forecast, now: datetime, user_tz: str, t: Translator) -
         lines.append(_hour_line(hour, t))
     if not hours:
         lines.append(t("weather-hours-none"))
-    return _with_credit(lines, t)
+    return "\n".join(lines)
 
 
 def _week_label(day: date, today: date, t: Translator) -> str:
@@ -193,7 +186,7 @@ def week_text(forecast: Forecast, now: datetime, t: Translator) -> str:
     lines += [_day_line(day, today, t) for day in days]
     if not days:
         lines.append(t("weather-days-none"))
-    return _with_credit(lines, t)
+    return "\n".join(lines)
 
 
 def _reminder_lines(data: TodayData, t: Translator, shown: int) -> list[str]:
@@ -354,9 +347,9 @@ def _pinned_line(note: NoteView, t: Translator) -> str:
 
 
 def today_text(data: TodayData, name: str, t: Translator) -> str:
-    """«Мой день»: the weather now with the first tip, the way to the classes, tomorrow in the
-    evening and the data's source; the day's reminders, classes, habits and money; the notes with
-    the pinned ones; the rates."""
+    """«Мой день»: the weather now with the first tip, the way to the classes and tomorrow in the
+    evening; the day's reminders, classes, habits and money; the notes with the pinned ones; the
+    rates."""
     return _within_limit(data, lambda shown, lessons: _today(data, name, t, shown, lessons))
 
 
@@ -372,8 +365,6 @@ def _today(data: TodayData, name: str, t: Translator, shown: int, lessons: int) 
         lines += tip_lines(data.weather.tips[:1], t)
         lines += _classes_lines(data, t)
         lines += _tomorrow_lines(data, t)
-        # Right under the weather: Open-Meteo's licence asks for the source next to the data.
-        lines.append(t("weather-credit"))
     else:
         lines.append(t("today-weather-unavailable"))
     lines += ["", t("today-reminders", count=len(data.reminders))]
@@ -402,9 +393,9 @@ def _morning_weather_line(now: WeatherNow, t: Translator) -> str:
 
 
 def morning_text(data: TodayData, name: str, t: Translator) -> str:
-    """The morning digest: the weather now with the day's highest, every tip, the way to the
-    classes and the data's source; the day's reminders and classes; the habits still to mark,
-    money and rates. Never tomorrow: the day has only begun."""
+    """The morning digest: the weather now with the day's highest, every tip and the way to the
+    classes; the day's reminders and classes; the habits still to mark, money and rates. Never
+    tomorrow: the day has only begun."""
     return _within_limit(data, lambda shown, lessons: _morning(data, name, t, shown, lessons))
 
 
@@ -419,7 +410,6 @@ def _morning(data: TodayData, name: str, t: Translator, shown: int, lessons: int
         lines.append(_morning_weather_line(data.weather, t))
         lines += tip_lines(data.weather.tips, t)
         lines += _classes_lines(data, t)
-        lines.append(t("weather-credit"))
     else:
         lines.append(t("today-weather-unavailable"))
     lines += ["", t("morning-reminders", count=len(data.reminders))]
