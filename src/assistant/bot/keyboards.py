@@ -87,6 +87,10 @@ class FireCb(CallbackData, prefix="f"):
 
 
 class HabitCb(CallbackData, prefix="h"):
+    # A new button gets a new action, never a new field: a field would make every button already
+    # in the chats stale. A mark's button — "put" in the view of a day, "dput" in «📅 Прошлые
+    # дни» — carries the day it shows and the mark it sets, «2026-10-07~1»; "toggle" and "day",
+    # the buttons before 2.6.1, switch the mark the day has.
     action: str
     id: Id = 0
     value: str = ""
