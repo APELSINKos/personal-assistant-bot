@@ -266,7 +266,8 @@ export function TodayScreen() {
         )}
       </Card>
 
-      <Card title={t.today.habits(done, habits.length)} index={2 + shift}>
+      {/* No habits, nothing to count: «Привычки», not «Привычки · 0 из 0». */}
+      <Card title={habits.length === 0 ? t.tabs.habits : t.today.habits(done, habits.length)} index={2 + shift}>
         {habits.length === 0 ? (
           <p className="muted">{t.today.noHabits}</p>
         ) : (

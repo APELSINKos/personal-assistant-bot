@@ -24,6 +24,7 @@ export const en: Dict = {
     save: "Save",
     retry: "Retry",
     loading: "Loading…",
+    searching: "Searching…",
     add: "Add",
     saved: "Saved",
     sections: "Sections",

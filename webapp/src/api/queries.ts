@@ -67,13 +67,21 @@ export function isGone(error: unknown): boolean {
 /** The meta of a request that answers its own 404, so the usual toast stays away. */
 const OWN_NOT_FOUND = { ownNotFound: true };
 
+/**
+ * Asks again after a failure, up to `times` times: a network failure or a server error may pass,
+ * while a refusal (a 4xx) would only come again.
+ */
+function retryUpTo(times: number) {
+  return (failures: number, error: Error) =>
+    failures < times && !(error instanceof ApiError && error.status > 0 && error.status < 500);
+}
+
 export function createQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
       queries: {
         staleTime: 30_000,
-        retry: (failures, error) =>
-          failures < 2 && !(error instanceof ApiError && error.status > 0 && error.status < 500),
+        retry: retryUpTo(2),
       },
       mutations: { retry: false },
     },
@@ -108,6 +116,10 @@ export function searchable(query: string, max: number): boolean {
   return length >= SEARCH_FROM && length <= max;
 }
 
+// Someone waits under the field, told «Ищу…»: a failed search is tried once more, not twice, so a
+// service that hangs is told sooner.
+const SEARCH_RETRY = retryUpTo(1);
+
 export function useCities(query: string) {
   const trimmed = query.trim();
   return useQuery({
@@ -115,6 +127,7 @@ export function useCities(query: string) {
     queryFn: ({ signal }) => api<City[]>(`/cities?q=${encodeURIComponent(trimmed)}`, { signal }),
     enabled: searchable(trimmed, CITY_QUERY_MAX),
     staleTime: 5 * 60_000,
+    retry: SEARCH_RETRY,
   });
 }
 
@@ -891,6 +904,7 @@ export function useGroups(query: string) {
       api<GroupSearch>(`/schedule/groups?q=${encodeURIComponent(trimmed)}`, { signal }),
     enabled: searchable(trimmed, GROUP_QUERY_MAX),
     staleTime: 5 * 60_000,
+    retry: SEARCH_RETRY,
   });
 }
 

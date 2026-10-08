@@ -8,7 +8,7 @@ import {
 import type { City, WeatherCity } from "../api/types";
 import { Card } from "../components/Card";
 import { Credit } from "../components/Credit";
-import { SearchStatus } from "../components/SearchStatus";
+import { SearchProgress, SearchStatus } from "../components/SearchStatus";
 import { ErrorState, Loader } from "../components/States";
 import { SwipeRow } from "../components/SwipeRow";
 import { useTextLimit } from "../components/TextLimit";
@@ -91,7 +91,7 @@ function CitySearch({
         </div>
       )}
       <SearchStatus count={found > 0 ? t.more.citiesFound(found) : null}>
-        {searching && results.isError && !results.data && <p className="muted">{t.errors.upstream_unavailable}</p>}
+        {searching && <SearchProgress search={results} />}
         {searching && results.data?.length === 0 && <p className="muted">{t.more.noCities}</p>}
       </SearchStatus>
     </div>

@@ -58,6 +58,7 @@ export const ru = {
     save: "Сохранить",
     retry: "Повторить",
     loading: "Загрузка…",
+    searching: "Ищу…",
     add: "Добавить",
     saved: "Сохранено",
     sections: "Разделы",

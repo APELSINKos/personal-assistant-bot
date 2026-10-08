@@ -9,6 +9,7 @@ import { installTelegram } from "../test/fakeTelegram";
 import { me, scheduleSource, tula } from "../test/fixtures";
 import { mockApi, type ApiCall } from "../test/mockApi";
 import { stubPointer } from "../test/pointer";
+import { RATE_LIMITED } from "../test/refresh";
 import { renderWithApp } from "../test/render";
 import { MoreScreen, REPO_URL } from "./More";
 
@@ -314,11 +315,33 @@ describe("More → Cities", () => {
     expect(within(card).queryByRole("button", { name: "Повторить" })).not.toBeInTheDocument();
   });
 
-  it("says so when the city search is unavailable", async () => {
-    const { client } = showMore({ [SEARCH_KAZAN]: UNAVAILABLE });
-    client.setQueryDefaults(["cities"], { retry: false }); // the app retries a 503 twice first
+  it("says it is searching while the first answer is on the way, where the results are read out", async () => {
+    let answer: (reply: { body: unknown }) => void = () => undefined;
+    showMore({ [SEARCH_KAZAN]: () => new Promise((resolve) => (answer = resolve)) });
+    await search("Добавить город", "Каз");
+    const searching = await screen.findByText("Ищу…");
+    expect(searching.closest('[role="status"]')).toHaveAttribute("aria-live", "polite");
+    act(() => answer({ body: [KAZAN] }));
+    expect(await screen.findByRole("button", { name: KAZAN_FOUND })).toBeInTheDocument();
+    expect(screen.queryByText("Ищу…")).not.toBeInTheDocument();
+  });
+
+  it("tries an unavailable city search once more, then says so", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { calls } = showMore({ [SEARCH_KAZAN]: UNAVAILABLE });
     await search("Сменить домашний", "Каз");
-    expect(await screen.findByText("Сервис временно недоступен")).toBeInTheDocument();
+    expect(await screen.findByText("Ищу…")).toBeInTheDocument();
+    await act(() => vi.advanceTimersByTimeAsync(5_000));
+    expect(screen.getByText("Сервис временно недоступен")).toBeInTheDocument();
+    expect(screen.queryByText("Ищу…")).not.toBeInTheDocument();
+    expect(calls.filter((call) => call.path.startsWith("/cities"))).toHaveLength(2);
+  });
+
+  it("says why a city search was refused in the refusal's own words, without asking again", async () => {
+    const { calls } = showMore({ [SEARCH_KAZAN]: RATE_LIMITED });
+    await search("Сменить домашний", "Каз");
+    expect(await screen.findByText("Слишком много запросов — подожди минуту")).toBeInTheDocument();
+    expect(calls.filter((call) => call.path.startsWith("/cities"))).toHaveLength(1);
   });
 
   it("reads out what each city search found, in a region that was there before it", async () => {

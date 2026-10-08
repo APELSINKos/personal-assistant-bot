@@ -41,6 +41,19 @@ describe("Today", () => {
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
+  it("titles the habits card plainly when there are no habits", async () => {
+    installTelegram();
+    const none = { ...today, habits: { done: 0, total: 0, items: [] }, best_streak: null };
+    mockApi({ "GET /today": none });
+    const { unmount } = renderWithApp(<TodayScreen />);
+    expect(await screen.findByRole("heading", { level: 2, name: "Привычки" })).toBeInTheDocument();
+    expect(screen.getByText("Привычек пока нет — добавь первую во вкладке «Привычки»")).toBeInTheDocument();
+    expect(screen.queryByText(/0 из 0/)).not.toBeInTheDocument();
+    unmount();
+    renderWithApp(<TodayScreen />, { lang: "en" });
+    expect(await screen.findByRole("heading", { level: 2, name: "Habits" })).toBeInTheDocument();
+  });
+
   it("names the best streak in English, and only when there is one", async () => {
     installTelegram();
     mockApi({ "GET /today": { ...today, best_streak: { name: "Sport", count: 1, unit: "days" } } });

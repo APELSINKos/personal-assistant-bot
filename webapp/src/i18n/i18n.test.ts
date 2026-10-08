@@ -107,6 +107,11 @@ describe("i18n", () => {
     expect(en.more.confirmDeleteCity("Tula")).toBe("Remove the city “Tula”?");
   });
 
+  it("says a search is on its way", () => {
+    expect(ru.common.searching).toBe("Ищу…");
+    expect(en.common.searching).toBe("Searching…");
+  });
+
   it("knows which error codes have texts of their own", () => {
     expect(["limit_pinned_note", "limit_note_item", "limit_city", "duplicate_city"].every(hasErrorText)).toBe(true);
     expect(hasErrorText("limit_note")).toBe(false); // 50 notes: the app says so before asking
