@@ -125,6 +125,37 @@ describe("Money", () => {
     expect(screen.getByText("такси")).toBeInTheDocument();
   });
 
+  it("with a mouse, asks once on a double click and deletes only that entry on «OK»", async () => {
+    stubPointer("mouse");
+    // As telegram-web-app.js: while its popup is open, another one is refused.
+    let open = false;
+    let answer!: (ok: boolean) => void;
+    const showConfirm = vi.fn((_message: string, callback: (ok: boolean) => void) => {
+      if (open) throw new Error("WebAppPopupOpened");
+      open = true;
+      answer = callback;
+    });
+    installTelegram({ showConfirm });
+    let month = moneyMonth;
+    const { calls } = show({
+      "GET /money?month=2026-09": () => ({ body: month }),
+      "DELETE /money/entries/23": () => {
+        month = { ...moneyMonth, entries: moneyMonth.entries.filter((entry) => entry.id !== 23) };
+        return { status: 204 };
+      },
+    });
+    const button = await screen.findByRole("button", { name: /^Удалить запись «такси», 300\s₽$/ });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(showConfirm).toHaveBeenCalledTimes(2); // the second popup refused, and taken for a no
+    act(() => answer(true));
+    await waitFor(() => expect(screen.queryByText("такси")).not.toBeInTheDocument());
+    expect(calls.filter((call) => call.method === "DELETE")).toEqual([
+      { method: "DELETE", path: "/money/entries/23", body: undefined },
+    ]);
+    expect(screen.getByText("кофе")).toBeInTheDocument();
+  });
+
   it("names an entry without a note by its category, and an income with its plus, as the row shows them", async () => {
     show();
     expect(await screen.findByRole("button", { name: /^Удалить запись «Продукты», 1\s250\s₽$/ })).toBeInTheDocument();
