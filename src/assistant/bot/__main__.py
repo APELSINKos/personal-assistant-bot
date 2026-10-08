@@ -57,9 +57,10 @@ async def main() -> None:
         calendar_client() as calendar_http,
     ):
         bot = create_bot(settings)
-        # A forecast call gets the HTTP timeout in all, the wait for a slot included.
+        # A forecast call gets the HTTP timeout in all, the wait for a slot included, and so
+        # does an exchange with the bank.
         meteo = OpenMeteoClient(http, deadline=settings.http_timeout)
-        cbr = CbrClient(http)
+        cbr = CbrClient(http, deadline=settings.http_timeout)
         calendars = CalendarFetcher(calendar_http)
         dp = build_dispatcher(
             sessionmaker,

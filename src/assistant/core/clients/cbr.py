@@ -1,8 +1,14 @@
 """Official Central Bank of Russia rates: the day's rates of every currency (cbr-xml-daily.ru
-mirror, JSON) and a currency's rates over a period (cbr.ru XML_dynamic)."""
+mirror, JSON) and a currency's rates over a period (cbr.ru XML_dynamic).
+
+An exchange takes `deadline` seconds in all. One that fails in the network (no answer in time, a
+connection refused or dropped) pauses that host for a minute: a mirror that hangs would otherwise
+make every caller wait it out in turn, the morning digests of a window among them. An answer that
+came, an error status or a body that cannot be read, pauses nothing: it came at once."""
 
 from __future__ import annotations
 
+import asyncio
 import math
 import time
 import xml.etree.ElementTree as ET
@@ -18,6 +24,7 @@ RATES_URL = "https://www.cbr-xml-daily.ru/daily_json.js"
 HISTORY_URL = "https://www.cbr.ru/scripts/XML_dynamic.asp"
 HISTORY_LIMIT = 256 * 1024  # bytes; a year of one currency is about 30 KB
 HISTORY_TTL = 6 * 3600.0  # the rates change once a day
+PAUSE = 60.0  # seconds without requests to a host after a failure in the network
 
 
 @dataclass(frozen=True)
@@ -75,18 +82,27 @@ class CbrClient:
         http: httpx.AsyncClient,
         ttl: float = 1800.0,
         clock: Callable[[], float] = time.monotonic,
+        *,
+        deadline: float = 10.0,
     ) -> None:
         self._http = http
         self._ttl = ttl
         self._clock = clock
+        self._deadline = deadline
         self._cached: tuple[float, Rates] | None = None
         self._history: dict[tuple[str, date, int], tuple[float, list[Point]]] = {}
+        # The mirror and cbr.ru are paused until these moments of `clock`.
+        self._daily_resume_at = -math.inf
+        self._history_resume_at = -math.inf
 
     async def daily(self) -> Rates:
         if self._cached and self._clock() - self._cached[0] < self._ttl:
             return self._cached[1]
+        if self._clock() < self._daily_resume_at:
+            raise UpstreamUnavailable(service="cbr")
         try:
-            response = await self._http.get(RATES_URL)
+            async with asyncio.timeout(self._deadline):
+                response = await self._http.get(RATES_URL)
             response.raise_for_status()
             data = response.json()
             currencies: dict[str, Rate] = {}
@@ -105,6 +121,9 @@ class CbrClient:
                 currencies=currencies,
                 ids=ids,
             )
+        except (TimeoutError, httpx.TransportError) as error:
+            self._daily_resume_at = self._clock() + PAUSE
+            raise UpstreamUnavailable(service="cbr") from error
         except (httpx.HTTPError, ValueError, KeyError, TypeError, AttributeError) as error:
             raise UpstreamUnavailable(service="cbr") from error
         self._cached = (self._clock(), rates)
@@ -120,15 +139,21 @@ class CbrClient:
         cached = self._history.get(key)
         if cached and self._clock() - cached[0] < HISTORY_TTL:
             return cached[1]
+        if self._clock() < self._history_resume_at:
+            raise UpstreamUnavailable(service="cbr")
         params = {
             "date_req1": (rates.day - timedelta(days=days)).strftime("%d/%m/%Y"),
             "date_req2": rates.day.strftime("%d/%m/%Y"),
             "VAL_NM_RQ": rates.ids[code],
         }
         try:
-            response = await self._http.get(HISTORY_URL, params=params)
+            async with asyncio.timeout(self._deadline):
+                response = await self._http.get(HISTORY_URL, params=params)
             response.raise_for_status()
             points = _points(response.content)
+        except (TimeoutError, httpx.TransportError) as error:
+            self._history_resume_at = self._clock() + PAUSE
+            raise UpstreamUnavailable(service="cbr") from error
         except (httpx.HTTPError, ValueError, ET.ParseError, UnicodeDecodeError) as error:
             raise UpstreamUnavailable(service="cbr") from error
         # Only the latest day's histories are worth keeping.

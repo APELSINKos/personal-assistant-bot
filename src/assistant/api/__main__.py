@@ -23,8 +23,9 @@ from assistant.core.logging import setup_logging
 REPO_ROOT = Path(__file__).resolve().parents[3]
 # Open-Meteo and the Bank of Russia get a shorter budget here than in the bot: a screen of
 # the app waits for them, and a quick 503 beats a skeleton that hangs for ten seconds. For a
-# forecast it is the whole call, the wait for one of its two slots included. Calendars have
-# a client of their own (calendar_client), with the full ten seconds.
+# forecast it is the whole call, the wait for one of its two slots included; for the bank,
+# the whole exchange. Calendars have a client of their own (calendar_client), with the full
+# ten seconds.
 UPSTREAM_TIMEOUT = 4.0
 # Telegram gets 15 seconds here, not aiogram's 60: «Поделиться» in the app waits for it.
 BOT_TIMEOUT = 15.0
@@ -50,7 +51,7 @@ async def main() -> None:
                 settings=settings,
                 sessionmaker=make_sessionmaker(engine),
                 meteo=OpenMeteoClient(http, deadline=UPSTREAM_TIMEOUT),
-                cbr=CbrClient(http),
+                cbr=CbrClient(http, deadline=UPSTREAM_TIMEOUT),
                 calendars=CalendarFetcher(calendar_http),
                 commit=read_commit(REPO_ROOT),
                 bot=bot,

@@ -5,6 +5,7 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+import httpx
 import pytest
 from aiogram.exceptions import (
     ClientDecodeError,
@@ -22,7 +23,7 @@ from assistant.bot.keyboards import FireCb, WeatherCb
 from assistant.bot.replies import NO_PREVIEW
 from assistant.bot.routers import weather as weather_router
 from assistant.bot.scheduler import Scheduler
-from assistant.core.clients.cbr import Rates
+from assistant.core.clients.cbr import CbrClient, Rates
 from assistant.core.models import FsmState, Habit, Reminder, ReminderStatus, Repeat, ShareCard
 from assistant.core.services import reminders
 from assistant.core.services.recurrence import Rule
@@ -340,6 +341,25 @@ async def test_a_waiting_digest_asks_for_nothing_but_the_weather(
     meteo.fail = False
     assert await scheduler.send_digests(AT_0800 + timedelta(seconds=40)) == 2
     assert cbr.requests == 2
+
+
+async def test_a_hanging_bank_costs_a_digest_pass_one_timeout(
+    bot, sessionmaker, make_user, fake, meteo
+) -> None:
+    # The first digest waits out the mirror; the others go at once without the rates, so the
+    # reminders and lesson alerts of the next tick wait one timeout, not one per digest.
+    asked: list[str] = []
+
+    def hang(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.path)
+        raise httpx.ReadTimeout("no answer", request=request)
+
+    cbr = CbrClient(httpx.AsyncClient(transport=httpx.MockTransport(hang)))
+    scheduler = Scheduler(bot, sessionmaker, meteo, cbr, clock=lambda: NOW)
+    for user_id in (1, 2, 3):
+        await make_user(id=user_id)
+    assert await scheduler.send_digests(AT_0800) == 3
+    assert asked == ["/daily_json.js"]
 
 
 class OneForecast(StubMeteo):

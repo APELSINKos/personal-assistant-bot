@@ -4,6 +4,7 @@ import asyncio
 import logging
 from typing import Any
 
+import httpx
 import pytest
 from aiogram import Bot
 from aiogram.exceptions import ClientDecodeError, TelegramNetworkError
@@ -28,6 +29,8 @@ from aiogram.types import (
 from assistant import __version__
 from assistant.bot import __main__ as entry
 from assistant.bot.setup import COMMANDS, REQUEST_TIMEOUT, configure
+from assistant.core.clients.cbr import CbrClient
+from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.config import Settings
 from assistant.core.i18n import translator
 
@@ -235,3 +238,32 @@ async def test_the_profile_ends_before_its_session_is_closed(
         assert profile_running == [False]  # closed once, by main(), after the profile ended
     finally:
         main.cancel()
+
+
+async def test_the_bot_gives_upstream_services_its_http_timeout_in_all(
+    polling, monkeypatch
+) -> None:
+    deadlines: list[float] = []
+    real_meteo, real_cbr = entry.OpenMeteoClient, entry.CbrClient
+
+    def recording_meteo(http: httpx.AsyncClient, *, deadline: float) -> OpenMeteoClient:
+        deadlines.append(deadline)
+        return real_meteo(http, deadline=deadline)
+
+    def recording_cbr(http: httpx.AsyncClient, *, deadline: float) -> CbrClient:
+        deadlines.append(deadline)
+        return real_cbr(http, deadline=deadline)
+
+    async def nothing(bot: Bot, settings: Settings) -> None:
+        pass
+
+    configured = entry.get_settings().model_copy(update={"http_timeout": 7.0})
+    monkeypatch.setattr(entry, "get_settings", lambda: configured)
+    monkeypatch.setattr(entry, "OpenMeteoClient", recording_meteo)
+    monkeypatch.setattr(entry, "CbrClient", recording_cbr)
+    monkeypatch.setattr(entry, "configure", nothing)
+    polling.stopped.set()  # the bot stops as soon as it has started
+    await asyncio.wait_for(entry.main(), 5)
+    # A forecast call and an exchange with the bank take the HTTP timeout in all: httpx's is
+    # per phase, and an answer that trickles in outlasts it.
+    assert deadlines == [7.0, 7.0]
