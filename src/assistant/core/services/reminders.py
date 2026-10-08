@@ -6,7 +6,7 @@ import logging
 from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from assistant.core.config import LIMITS
@@ -28,6 +28,8 @@ _SNOOZE_DELAYS = {"10m": timedelta(minutes=10), "1h": timedelta(hours=1)}
 # Two presses of the same button a few seconds apart (a double tap, a retried callback)
 # target slightly different `until` moments; treat anything this close as the same snooze.
 _SAME_SNOOZE = timedelta(seconds=60)
+# The buttons under a delivered reminder work this long; a finished reminder is kept as long.
+FIRED_TTL = timedelta(days=7)
 
 
 def clean_text(text: str) -> str:
@@ -447,6 +449,19 @@ async def expire_stale(
             _schedule(reminder, recurrence.next_after(rule, now, tz))
     await session.flush()
     return int(result.rowcount) + len(stale)  # type: ignore[attr-defined]
+
+
+async def forget_finished(session: AsyncSession, now: datetime) -> int:
+    """Delete the sent, done, failed or cancelled reminders nothing can reach any more: never
+    delivered, or delivered longer ago than the buttons under the message work. A snoozed copy
+    outlives its series (its parent_id becomes NULL)."""
+    result = await session.execute(
+        delete(Reminder).where(
+            Reminder.status != ReminderStatus.PENDING,
+            or_(Reminder.sent_at.is_(None), Reminder.sent_at < now - FIRED_TTL),
+        )
+    )
+    return int(result.rowcount)  # type: ignore[attr-defined]
 
 
 async def reschedule_repeating(

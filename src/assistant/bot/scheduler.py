@@ -439,5 +439,6 @@ class Scheduler:
             )
             alerts = await schedule.forget_alerts(session, now - ALERTS_KEPT)
             cards = await sharing.prune(session, now)
+            finished = await reminders.forget_finished(session, now)
             await session.commit()
-        return int(result.rowcount) + alerts + cards  # type: ignore[attr-defined]
+        return int(result.rowcount) + alerts + cards + finished  # type: ignore[attr-defined]

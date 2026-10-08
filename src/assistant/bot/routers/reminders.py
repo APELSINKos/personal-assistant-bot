@@ -428,9 +428,6 @@ async def on_card_cancel(
     await replies.send(bot, query, ctx.t("cancelled"), main_menu(ctx.t))
 
 
-FIRED_TTL = timedelta(days=7)
-
-
 def _moment_label(moment: datetime, ctx: Ctx, now: datetime) -> str:
     tz = ctx.user.timezone
     if to_local(moment, tz).date() == to_local(now, tz).date():
@@ -448,7 +445,7 @@ async def on_fired(query: CallbackQuery, callback_data: FireCb, ctx: Ctx, bot: B
         await replies.answer_quietly(query, ctx.t("already-deleted"))
         await replies.drop_buttons(bot, query)
 
-    if now - fired_at > FIRED_TTL:
+    if now - fired_at > reminders.FIRED_TTL:
         await gone()
         return
     if callback_data.action == "done":

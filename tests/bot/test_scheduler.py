@@ -581,6 +581,56 @@ async def test_cleanup_drops_expired_share_cards(scheduler, session, make_user) 
     assert [card.token for card in (await session.scalars(select(ShareCard))).all()] == ["b" * 43]
 
 
+async def test_cleanup_forgets_finished_reminders_nothing_can_reach(
+    scheduler, session, make_user
+) -> None:
+    await make_user(morning_enabled=False)
+    month_ago = NOW - timedelta(days=30)
+
+    def row(text: str, status: ReminderStatus, sent_at: datetime | None = None) -> Reminder:
+        return Reminder(
+            user_id=1,
+            text=text,
+            status=status,
+            due_at=month_ago,
+            next_attempt_at=month_ago,
+            sent_at=sent_at,
+        )
+
+    session.add_all(
+        [
+            row("cancelled", ReminderStatus.CANCELLED),
+            row("done", ReminderStatus.DONE),
+            row("failed", ReminderStatus.FAILED),
+            row("sent", ReminderStatus.SENT, NOW - timedelta(days=7, minutes=1)),
+            row("sent this week", ReminderStatus.SENT, NOW - timedelta(days=6)),
+            row("done this week", ReminderStatus.DONE, NOW - timedelta(days=1)),
+            # Pending stays however long ago it last fired: a monthly series, say.
+            row("pending", ReminderStatus.PENDING, month_ago),
+        ]
+    )
+    await session.commit()
+    assert await scheduler.cleanup(NOW) == 4
+    left = (await session.scalars(select(Reminder.text).order_by(Reminder.id))).all()
+    assert left == ["sent this week", "done this week", "pending"]
+
+
+async def test_a_snoozed_copy_outlives_its_forgotten_series(scheduler, session, make_user) -> None:
+    await make_user(morning_enabled=False)
+    series = await add_daily(session, time_local="14:59", occurrence=NOW - timedelta(days=8))
+    series.status, series.sent_at = ReminderStatus.CANCELLED, NOW - timedelta(days=8)
+    later = NOW + timedelta(minutes=10)
+    copy = Reminder(
+        user_id=1, text="таблетки", due_at=later, next_attempt_at=later, parent_id=series.id
+    )
+    session.add(copy)
+    await session.commit()
+    assert await scheduler.cleanup(NOW) == 1
+    assert (await session.scalars(select(Reminder.id))).all() == [copy.id]
+    copy = await reload(session, copy)
+    assert (copy.status, copy.parent_id) == (ReminderStatus.PENDING, None)
+
+
 async def test_english_reminder(scheduler, session, make_user, fake) -> None:
     await make_user(morning_enabled=False, language="en")
     await add_reminder(session, ago=timedelta(minutes=30), text="call mom")
