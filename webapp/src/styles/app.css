@@ -481,6 +481,13 @@ select.input {
   opacity: 1;
 }
 
+/* A field that is off looks off, as a button that is off does: the time of the morning digest is
+   off along with the digest, and `color: inherit` above leaves no grey of the browser's own. */
+.input:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .input:focus-visible,
 .button:focus-visible,
 .toggle:focus-visible,
@@ -645,7 +652,7 @@ a.button {
   border-radius: var(--radius-pill);
   background: var(--line);
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .switch::after {
@@ -657,7 +664,7 @@ a.button {
   height: 26px;
   border-radius: 50%;
   background: #fff;
-  transition: transform 0.2s ease;
+  transition: transform 0.2s ease, background 0.2s ease;
 }
 
 .switch:checked {
@@ -666,6 +673,19 @@ a.button {
 
 .switch:checked::after {
   transform: translateX(20px);
+}
+
+/* A switch that is off, in the light theme: --line is a faint grey there, and the track measured
+   1.16:1 on the card and the white knob 1.20:1 on the track (rendered pixels), under 3:1 for a
+   control's state. An edge and a knob in --hint measure at least 4.8:1 and 4.0:1, over the
+   brightest glow too. On keeps the accent with the white knob; in the dark theme the white knob is
+   over 11:1 on its track already. */
+[data-theme="light"] .switch:not(:checked) {
+  box-shadow: inset 0 0 0 2px var(--hint);
+}
+
+[data-theme="light"] .switch:not(:checked)::after {
+  background: var(--hint);
 }
 
 .results {
