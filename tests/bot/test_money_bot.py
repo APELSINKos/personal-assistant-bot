@@ -137,7 +137,9 @@ async def test_the_month_report_and_the_one_before(feed, fake, session, make_use
 
 async def test_a_forged_or_future_month_is_a_stale_button(feed, fake, make_user) -> None:
     await make_user()
-    for value in ("2026-99", "nope", "2026-10"):  # October is still ahead
+    fake.results[GetMe] = BOT  # a month taken by mistake is drawn, not stopped by the fake
+    # October is still ahead; the year 1 has no month before it to draw.
+    for value in ("2026-99", "nope", "2026-10", "0001-01"):
         await feed(press("report", value))
         assert fake.of(AnswerCallbackQuery)[-1].text == STALE
     assert fake.of(SendPhoto) == []

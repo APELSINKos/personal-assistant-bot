@@ -28,7 +28,7 @@ from assistant.core.money_style import EXPENSE
 from assistant.core.services import money as money_service
 from assistant.core.services import money_cards, money_month
 from assistant.core.services.money_phrases import to_hundredths
-from assistant.core.timeutil import local_today, utcnow
+from assistant.core.timeutil import SUPPORTED_YEARS, local_today, utcnow
 
 # Replaced in tests to freeze time.
 clock: Callable[[], datetime] = utcnow
@@ -243,7 +243,7 @@ def _month(value: str, today: date) -> date | None:
         first = datetime.strptime(value, "%Y-%m").date()
     except ValueError:
         return None
-    return first if first <= today else None
+    return first if first.year in SUPPORTED_YEARS and first <= today else None
 
 
 async def on_report(query: CallbackQuery, callback_data: MoneyCb, ctx: Ctx, bot: Bot) -> None:
