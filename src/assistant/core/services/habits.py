@@ -223,9 +223,14 @@ async def _habits(session: AsyncSession, user_id: int) -> list[Habit]:
 async def _marks(session: AsyncSession, habit_ids: Sequence[int]) -> dict[int, dict[date, bool]]:
     marks: dict[int, dict[date, bool]] = {habit_id: {} for habit_id in habit_ids}
     if habit_ids:
-        result = await session.scalars(select(HabitMark).where(HabitMark.habit_id.in_(habit_ids)))
-        for mark in result.all():
-            marks[mark.habit_id][mark.day] = mark.done
+        # Plain columns, not HabitMark objects: years of marks load several times faster.
+        rows = await session.execute(
+            select(HabitMark.habit_id, HabitMark.day, HabitMark.done).where(
+                HabitMark.habit_id.in_(habit_ids)
+            )
+        )
+        for habit_id, day, done in rows:
+            marks[habit_id][day] = done
     return marks
 
 
