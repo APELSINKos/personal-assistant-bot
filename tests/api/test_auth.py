@@ -36,6 +36,9 @@ def test_signature_field_takes_part_in_the_check() -> None:
         lambda s: "",
         lambda s: "%%%",
         lambda s: s.split("&hash=")[0] + "&hash=%D1%8F",
+        # A key sent twice, the signed one last: the check would pass on the last one alone.
+        lambda s: "user=%7B%22id%22%3A2%7D&" + s,
+        lambda s: "hash=00&" + s,
     ],
 )
 def test_tampered_or_malformed(mutate: Callable[[str], str]) -> None:

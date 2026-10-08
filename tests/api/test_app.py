@@ -18,7 +18,7 @@ from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.config import Settings
 from assistant.core.models import User
 from assistant.core.ratelimit import RateLimiter
-from tests.api.conftest import NOW, TOKEN
+from tests.api.conftest import NOW, TOKEN, make_init_data
 from tests.stubs import StubCalendars
 
 PROBLEM = "application/problem+json"
@@ -63,6 +63,11 @@ async def test_missing_or_bad_auth_is_a_401_problem(client, header) -> None:
     assert response.headers["content-type"].startswith(PROBLEM)
     body = response.json()
     assert body["code"] == "invalid_init_data" and body["status"] == 401
+
+
+async def test_a_valid_init_data_under_another_scheme_is_401(client) -> None:
+    response = await client.get("/api/me", headers={"Authorization": f"Bearer {make_init_data()}"})
+    assert response.status_code == 401 and response.json()["code"] == "invalid_init_data"
 
 
 async def test_expired_init_data_is_401(client, auth) -> None:
