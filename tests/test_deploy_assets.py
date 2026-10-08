@@ -311,3 +311,15 @@ def test_workflow_deploys_only_green_pushes_to_main() -> None:
     assert "github.event.workflow_run.conclusion == 'success'" in text
     assert "github.event.workflow_run.event == 'push'" in text
     assert "cancel-in-progress: false" in text
+
+
+def test_ci_runs_the_servers_sqlite_and_checks_the_lock() -> None:
+    text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    # The 3.12 leg runs the runner's own Python, as the server does, and checks it has the
+    # server's SQLite: a migration 3.45 cannot run fails in CI, not in the deploy.
+    assert "UV_NO_MANAGED_PYTHON: ${{ matrix.python == '3.12' }}" in text
+    assert "sqlite3.sqlite_version_info[:2] == (3, 45)" in text
+    # A uv.lock that pyproject.toml has moved past fails CI; the server installs the lock as it is.
+    assert "uv sync --locked" in text and "uv sync --frozen" not in text
+    # A hung test stops the run after 15 minutes, not GitHub's 6 hours.
+    assert text.count("timeout-minutes: 15") == 2
