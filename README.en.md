@@ -44,7 +44,6 @@
 ☔ Rain expected after 18:00 — an umbrella will come in handy
 🧥 Cold in the morning, warmer in the evening
 🎓 To classes (10:40): +10°C · after (14:10): +13°C
-Weather data: open-meteo.com
 
 📌 Today:
 • 19:00 — workout
@@ -68,8 +67,6 @@ Thu, 1 Oct ☀️ +3…+12°C
 Fri, 2 Oct 🌧 +6…+10°C 💧 70%
 Sat, 3 Oct ☁️ +5…+9°C
 Sun, 4 Oct 🌤 +2…+8°C
-
-Weather data: open-meteo.com
 [🌤 Now] [🕐 Hourly]
 [🏠 Moscow] [Tula] [Sochi]
 [🏙 Cities]
@@ -213,10 +210,10 @@ Aleksandr Kovalev — [@APELSINKos](https://github.com/APELSINKos)
 
 ## Data and licences
 
-- **Weather** — [Open-Meteo](https://open-meteo.com/), licence [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The bot and the app round the data and add tips to it; the line “Weather data: open-meteo.com” stands next to the weather in every message and on every screen that shows it.
+- **Weather** — [Open-Meteo](https://open-meteo.com/), licence [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The bot and the app round the data and add tips to it.
 - **City names** — [GeoNames](https://www.geonames.org/) through Open-Meteo's city search, licence [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
-Both sources and the licence are in the bot itself too — in `/start` and `/help` — and in the app, under More → Data.
+The bot names both sources and the licence in `/start` and `/help`, and the app under More → Data.
 
 ## License
 
