@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { LangProvider } from "../i18n";
 import { PullToRefresh } from "./PullToRefresh";
@@ -17,7 +17,7 @@ function renderPull(onRefresh: () => Promise<unknown>) {
 }
 
 describe("PullToRefresh", () => {
-  it("refreshes when pulled down far enough", () => {
+  it("refreshes when pulled down far enough", async () => {
     const onRefresh = vi.fn(() => Promise.resolve());
     const body = renderPull(onRefresh);
     fireEvent.touchStart(body, at(100, 100));
@@ -26,6 +26,8 @@ describe("PullToRefresh", () => {
     fireEvent.touchMove(body, at(104, 260)); // 160 px down: a pull of 80, past the 64 it takes
     fireEvent.touchEnd(body);
     expect(onRefresh).toHaveBeenCalledOnce();
+    expect(screen.getByText("Обновляю…")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("Обновляю…")).not.toBeInTheDocument());
   });
 
   it("does not refresh on a short pull", () => {

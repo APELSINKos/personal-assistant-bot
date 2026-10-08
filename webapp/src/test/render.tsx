@@ -11,6 +11,9 @@ export function renderWithApp(
   { path = "/", lang = "ru" }: { path?: string; lang?: Lang } = {},
 ) {
   const client = createQueryClient();
+  // The app's own retries, without the 1 s and 2 s it waits before them.
+  const defaults = client.getDefaultOptions();
+  client.setDefaultOptions({ ...defaults, queries: { ...defaults.queries, retryDelay: 0 } });
   const location = memoryLocation({ path, record: true });
   const result = render(
     <QueryClientProvider client={client}>

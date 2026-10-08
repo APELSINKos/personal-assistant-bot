@@ -469,6 +469,8 @@ describe("More", () => {
   });
 
   it("saves the morning time once, with the final value", async () => {
+    // The field's 800 ms wait for more typing passes when the test says, not in real time.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     installTelegram();
     const { calls } = mockApi({
       "GET /me": me,
@@ -485,14 +487,15 @@ describe("More", () => {
       fireEvent.change(field, { target: { value } });
     }
     expect(field).toHaveValue("09:30");
-    await waitFor(() => expect(patches()).toEqual([{ morning_time: "09:30" }]), { timeout: 2000 });
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    await waitFor(() => expect(patches()).toEqual([{ morning_time: "09:30" }]));
     fireEvent.blur(field); // the same time as the saved one: nothing to send
-    await new Promise((resolve) => setTimeout(resolve, 900));
+    await act(() => vi.advanceTimersByTimeAsync(900));
     expect(patches()).toHaveLength(1);
     fireEvent.change(field, { target: { value: "07:15" } });
-    fireEvent.blur(field); // leaving the field saves at once
-    await waitFor(() => expect(patches()).toHaveLength(2), { timeout: 300 });
-    expect(patches()[1]).toEqual({ morning_time: "07:15" });
+    fireEvent.blur(field); // leaving the field saves at once, before the 800 ms are up
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(patches()).toEqual([{ morning_time: "09:30" }, { morning_time: "07:15" }]);
   });
 
   it("changes the currency of the accounts, saying the amounts stay", async () => {

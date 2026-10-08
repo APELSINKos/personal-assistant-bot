@@ -456,12 +456,10 @@ describe("ReminderForm", () => {
     });
     const { client } = renderWithApp(<ReminderForm />, { path: "/calendar/4" });
     await ready(client);
-    // Unlike the calendar's agenda query, `useReminders()` has no `enabled` gate, so it starts
-    // fetching (and, on failure, retrying) on the very first render — before a `setQueryDefaults`
-    // call after `renderWithApp` could reach it. Outlasting the real retry backoff is simpler.
-    expect(await screen.findByRole("alert", {}, { timeout: 4000 })).toBeInTheDocument();
+    // After the app's two retries, which renderWithApp's client makes without waiting.
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.queryByText("Этого уже нет")).not.toBeInTheDocument();
-  }, 8000);
+  });
 
   it('shows "Этого уже нет" only when the id truly doesn\'t exist', async () => {
     at("2026-09-29T09:00:00Z");

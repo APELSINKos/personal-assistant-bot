@@ -175,6 +175,20 @@ describe("optimistic mutation rollback", () => {
     await waitFor(() =>
       expect(client.getQueryData<Habit[]>(keys.habits)?.[0]?.done_today).toBeNull());
   });
+
+  it("puts back a habit whose delete failed", async () => {
+    const client = createQueryClient();
+    client.setQueryData(keys.habits, [habit]);
+    const { pending, resolveAt } = controllableFetch();
+    const { result } = renderHook(() => useDeleteHabit(), { wrapper: wrapperFor(client) });
+
+    act(() => result.current.mutate(habit.id));
+    await waitFor(() => expect(client.getQueryData<Habit[]>(keys.habits)).toEqual([]));
+    expect(pending).toHaveLength(1);
+    act(() => resolveAt(0, 500, { status: 500, code: "generic", title: "Oops" }));
+    await waitFor(() => expect(statuses(client)).toEqual(["error"]));
+    expect(client.getQueryData<Habit[]>(keys.habits)).toEqual([habit]);
+  });
 });
 
 describe("useSetMark race safety", () => {
@@ -355,6 +369,20 @@ describe("useUpdateMe", () => {
     act(() => result.current.mutate({ morning_enabled: false }));
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.today }));
     for (const queryKey of worded) expect(invalidate).not.toHaveBeenCalledWith({ queryKey });
+  });
+
+  it("puts the settings back when a change fails", async () => {
+    const client = createQueryClient();
+    client.setQueryData(keys.me, me);
+    const { pending, resolveAt } = controllableFetch();
+    const { result } = renderHook(() => useUpdateMe(), { wrapper: wrapperFor(client) });
+
+    act(() => result.current.mutate({ morning_time: "07:15" }));
+    await waitFor(() => expect(client.getQueryData<Me>(keys.me)?.morning.time).toBe("07:15"));
+    expect(pending).toHaveLength(1);
+    act(() => resolveAt(0, 500, { status: 500, code: "generic", title: "Oops" }));
+    await waitFor(() => expect(statuses(client)).toEqual(["error"]));
+    expect(client.getQueryData<Me>(keys.me)).toEqual(me);
   });
 });
 
