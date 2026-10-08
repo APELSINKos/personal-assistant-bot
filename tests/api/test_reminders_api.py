@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 
 import pytest
 
+from assistant.core.services import reminders
+
 
 async def test_create_list_cancel(client, auth) -> None:
     created = await client.post(
@@ -68,3 +70,26 @@ async def test_due_local_follows_user_zone_and_dst(client, auth, make_user, cloc
     )  # initData must be fresh for the API's clock
     assert created.json()["due_local"] == "2026-03-08T03:30"
     assert created.json()["due_at"] == "2026-03-08T07:30:00Z"
+
+
+async def test_a_text_only_edit_keeps_the_second_pass_of_the_autumn_hour(
+    client, auth, make_user, session, clock
+) -> None:
+    user = await make_user(id=5, tz="Europe/Berlin")
+    clock[0] = datetime(2026, 10, 24, 23, 40, tzinfo=UTC)  # 01:40 CEST; at 03:00 it is 02:00 again
+    # The bot stores «через …» in the second pass exactly; the list shows only its wall.
+    second_pass = datetime(2026, 10, 25, 2, 30, fold=1)  # 02:30 CET
+    reminder = await reminders.create(session, user, "чай", second_pass, clock[0])
+    await session.commit()
+    assert reminder.due_at == datetime(2026, 10, 25, 1, 30, tzinfo=UTC)
+    headers = auth(5, signed_at=clock[0])
+    [listed] = (await client.get("/api/reminders", headers=headers)).json()
+    assert listed["due_local"] == "2026-10-25T02:30"
+    url = f"/api/reminders/{reminder.id}"
+    body = {"text": "зелёный чай", "due_local": listed["due_local"]}
+    kept = await client.patch(url, json=body, headers=headers)
+    assert kept.status_code == 200
+    assert (kept.json()["text"], kept.json()["due_at"]) == ("зелёный чай", "2026-10-25T01:30:00Z")
+    body["due_local"] = "2026-10-25T03:30"
+    moved = await client.patch(url, json=body, headers=headers)
+    assert moved.json()["due_at"] == "2026-10-25T02:30:00Z"

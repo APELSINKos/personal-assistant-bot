@@ -219,10 +219,12 @@ async def update_reminder(
         _schedule(reminder, first)
     elif when_local is not None:
         due_at = _to_utc(when_local, user.timezone)
-        # The form only speaks minutes: its own moment sent back unchanged (even an overdue
-        # one) is no reschedule and no past check.
-        unchanged = reminder.repeat is Repeat.NONE and due_at == reminder.due_at.replace(
-            second=0, microsecond=0
+        # The form speaks the wall the list shows, in minutes and without the fold that tells
+        # the two passes of an autumn hour apart: its own moment sent back unchanged (even an
+        # overdue one, or one in the second pass) is no reschedule and no past check.
+        shown = to_local(reminder.due_at, user.timezone)
+        unchanged = reminder.repeat is Repeat.NONE and when_local == shown.replace(
+            tzinfo=None, second=0, microsecond=0
         )
         if not unchanged and due_at <= moment:
             raise InvalidInput(field="when", reason="past")
