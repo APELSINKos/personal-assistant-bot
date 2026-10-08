@@ -182,11 +182,19 @@ describe("Schedule", () => {
   it("says it is searching while the first answer is on the way, where the results are read out", async () => {
     installTelegram();
     const groups = held();
-    mockApi({ "GET /me": me, "GET /schedule": { source: null }, "GET /schedule/groups?q=ikbo": groups.handler });
+    const { calls } = mockApi({
+      "GET /me": me,
+      "GET /schedule": { source: null },
+      "GET /schedule/groups?q=ikbo": groups.handler,
+    });
     show();
     fireEvent.change(await screen.findByLabelText("Группа МИРЭА"), { target: { value: "ikbo" } });
     const searching = await screen.findByText("Ищу…");
     expect(searching.closest('[role="status"]')).toHaveAttribute("aria-live", "polite");
+    // «Ищу…» is drawn as the search starts, a moment before its request goes out (an effect sends
+    // it): the answer waits for the request, or it would answer nothing and the search would hang.
+    await waitFor(() => expect(searches(calls)).toHaveLength(1));
+    expect(screen.getByText("Ищу…")).toBeInTheDocument();
     groups.answer({ body: { groups: [{ id: 4805, name: "ИКБО-63-24" }], building: false } });
     expect(await screen.findByRole("button", { name: "ИКБО-63-24" })).toBeInTheDocument();
     expect(screen.queryByText("Ищу…")).not.toBeInTheDocument();

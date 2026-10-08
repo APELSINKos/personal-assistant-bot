@@ -1,5 +1,5 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
-import { act } from "react";
+import { act } from "@testing-library/react";
 
 /** A refusal the app does not try again: a refresh answered with it fails at once. */
 export const RATE_LIMITED = { status: 429, body: { status: 429, code: "rate_limited", title: "Too many requests" } };

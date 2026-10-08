@@ -317,10 +317,14 @@ describe("More → Cities", () => {
 
   it("says it is searching while the first answer is on the way, where the results are read out", async () => {
     let answer: (reply: { body: unknown }) => void = () => undefined;
-    showMore({ [SEARCH_KAZAN]: () => new Promise((resolve) => (answer = resolve)) });
+    const { calls } = showMore({ [SEARCH_KAZAN]: () => new Promise((resolve) => (answer = resolve)) });
     await search("Добавить город", "Каз");
     const searching = await screen.findByText("Ищу…");
     expect(searching.closest('[role="status"]')).toHaveAttribute("aria-live", "polite");
+    // «Ищу…» is drawn as the search starts, a moment before its request goes out (an effect sends
+    // it): the answer waits for the request, or it would answer nothing and the search would hang.
+    await waitFor(() => expect(calls.filter((call) => call.path.startsWith("/cities"))).toHaveLength(1));
+    expect(screen.getByText("Ищу…")).toBeInTheDocument();
     act(() => answer({ body: [KAZAN] }));
     expect(await screen.findByRole("button", { name: KAZAN_FOUND })).toBeInTheDocument();
     expect(screen.queryByText("Ищу…")).not.toBeInTheDocument();
