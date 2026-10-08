@@ -405,6 +405,12 @@ html {
   scroll-padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 16px);
 }
 
+/* On a screen with the floating «+», above the «+» too: it stands over the column of the rows' 🗑
+   (16px over the bar, 56px tall), and a row's 🗑 reached with Tab would stop under it. */
+html:has(.fab) {
+  scroll-padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 80px);
+}
+
 .tabs {
   position: fixed;
   inset: auto 0 0;
