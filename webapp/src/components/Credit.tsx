@@ -1,4 +1,4 @@
-import { Fragment, type CSSProperties } from "react";
+import { Fragment } from "react";
 import { creditParts, type TextPart } from "../lib/links";
 import { openLink } from "../telegram";
 
@@ -16,15 +16,15 @@ function plainPart(parts: TextPart[], place: number) {
 }
 
 /**
- * Where the data on screen come from, each source it names a link: the licence of Open-Meteo and
- * GeoNames (CC BY 4.0) asks for them next to the data. `index` times its entrance with the cards'.
- * A link keeps the punctuation it touches on its own line: a bracket left at the end of a line,
- * or a comma starting the next one, would read as a slip.
+ * Where the app's data come from, each source it names a link: the licence of Open-Meteo and
+ * GeoNames (CC BY 4.0) asks for them to be named («Ещё» → «Данные»). A link keeps the punctuation
+ * it touches on its own line: a bracket left at the end of a line, or a comma starting the next
+ * one, would read as a slip.
  */
-export function Credit({ text, index = 0, className = "" }: { text: string; index?: number; className?: string }) {
+export function Credit({ text, className = "" }: { text: string; className?: string }) {
   const parts = creditParts(text);
   return (
-    <p className={`credit ${className}`.trim()} style={{ "--i": index } as CSSProperties}>
+    <p className={`credit ${className}`.trim()}>
       {parts.map((part, place) => {
         const url = part.url;
         if (url === null) return <Fragment key={place}>{plainPart(parts, place).own}</Fragment>;

@@ -108,7 +108,6 @@ export const ru = {
     sun: (sunrise: string, sunset: string) => `🌅 ${sunrise} · 🌇 ${sunset}`,
     polarNight: "🌑 Полярная ночь",
     polarDay: "☀️ Полярный день",
-    credit: "Данные о погоде: open-meteo.com",
     cityGone: "Этого города уже нет в списке",
     unavailable: "Погода временно недоступна",
   },

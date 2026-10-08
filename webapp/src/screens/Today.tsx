@@ -3,7 +3,6 @@ import { Link } from "wouter";
 import { useSetMark, useToday } from "../api/queries";
 import type { ClassesWeather, ForecastDay, PinnedNote, Rate, TodayLesson, TodayMoney, Weather } from "../api/types";
 import { Card } from "../components/Card";
-import { Credit } from "../components/Credit";
 import { HabitDots, HabitToggle, nextMark } from "../components/HabitBits";
 import { BudgetBar } from "../components/MoneyCharts";
 import { NoteProgress } from "../components/NoteBits";
@@ -32,7 +31,7 @@ function withIcon(text: string, icon: string): ReactNode {
 
 /**
  * The weather now, and from 17:00 tomorrow's; a tap opens the «Погода» screen — also without the
- * weather, as that screen has its own «Повторить». The source's credit goes under the card.
+ * weather, as that screen has its own «Повторить».
  */
 function WeatherCard({ weather, tomorrow }: { weather: Weather | null; tomorrow: ForecastDay | null }) {
   const t = useT();
@@ -51,27 +50,24 @@ function WeatherCard({ weather, tomorrow }: { weather: Weather | null; tomorrow:
     shownChance(tomorrow.precip_chance),
   );
   return (
-    <>
-      <Link href="/weather" className="card weather-today" style={style}>
-        <span className="card__title weather-today__title">
-          <span>{weather.city}</span>
-          <span aria-hidden>›</span>
+    <Link href="/weather" className="card weather-today" style={style}>
+      <span className="card__title weather-today__title">
+        <span>{weather.city}</span>
+        <span aria-hidden>›</span>
+      </span>
+      <span className="row">
+        <span className="temp">{formatTemp(weather.temperature)}</span>
+        <span className="weather__desc">
+          <span><span className="weather-today__icon">{asEmoji(weather.emoji)}</span> {weather.description}</span>
+          {weather.feels_like !== null && (
+            <span className="muted">{t.today.feelsLike(formatTemp(weather.feels_like))}</span>
+          )}
+          <span className="muted">{formatRange(weather.tmin, weather.tmax)}</span>
         </span>
-        <span className="row">
-          <span className="temp">{formatTemp(weather.temperature)}</span>
-          <span className="weather__desc">
-            <span><span className="weather-today__icon">{asEmoji(weather.emoji)}</span> {weather.description}</span>
-            {weather.feels_like !== null && (
-              <span className="muted">{t.today.feelsLike(formatTemp(weather.feels_like))}</span>
-            )}
-            <span className="muted">{formatRange(weather.tmin, weather.tmax)}</span>
-          </span>
-        </span>
-        {weather.tips[0] && <span className="tip">{weather.tips[0]}</span>}
-        {later && <span className="muted weather-today__tomorrow">{withIcon(later, icon)}</span>}
-      </Link>
-      <Credit text={t.weather.credit} className="credit--under" />
-    </>
+      </span>
+      {weather.tips[0] && <span className="tip">{weather.tips[0]}</span>}
+      {later && <span className="muted weather-today__tomorrow">{withIcon(later, icon)}</span>}
+    </Link>
   );
 }
 

@@ -5,7 +5,6 @@ import { ApiError } from "../api/client";
 import { keys, useForecast, useMe, useWeatherCities } from "../api/queries";
 import type { Forecast, ForecastDay, WeatherCity } from "../api/types";
 import { Card } from "../components/Card";
-import { Credit } from "../components/Credit";
 import { PullToRefresh } from "../components/PullToRefresh";
 import { ErrorState, Loader } from "../components/States";
 import { toast } from "../components/toastStore";
@@ -138,14 +137,12 @@ function CityChips({ home, cities, current }: { home: string; cities: WeatherCit
 }
 
 function ForecastView({ forecast }: { forecast: Forecast }) {
-  const t = useT();
   return (
     <>
       <NowCard forecast={forecast} />
       <HoursStrip forecast={forecast} />
       <WeekCard days={forecast.days} />
       <Sun forecast={forecast} />
-      <Credit text={t.weather.credit} index={3} />
     </>
   );
 }

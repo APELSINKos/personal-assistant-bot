@@ -74,7 +74,6 @@ export const en: Dict = {
     sun: (sunrise: string, sunset: string) => `🌅 ${sunrise} · 🌇 ${sunset}`,
     polarNight: "🌑 Polar night",
     polarDay: "☀️ Polar day",
-    credit: "Weather data: open-meteo.com",
     cityGone: "This city is no longer on your list",
     unavailable: "Weather is temporarily unavailable",
   },

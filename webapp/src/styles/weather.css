@@ -1,5 +1,5 @@
-/* The «Погода» screen: the cities, now, the 24-hour strip, the week, the sun and the credit; the
-   weather card of «Сегодня» with the credit under it. */
+/* The «Погода» screen: the cities, now, the 24-hour strip, the week and the sun; the weather card
+   of «Сегодня»; the sources of the data in «Ещё» → «Данные». */
 
 /* The cities in one row that scrolls sideways and never wraps. Its padding keeps the focus ring of
    a chip inside the row, which clips whatever overflows it; the margins take that padding back.
@@ -275,38 +275,26 @@
   background: var(--accent-text);
 }
 
+/* The last line of the screen: it keeps the room of a card's margin above the tab bar. */
 .weather-sun {
-  margin: 4px 4px 0;
+  margin: 4px 4px 10px;
   font-size: 14px;
-}
-
-/* Where the data come from, in fine print; each source a link (components/Credit.tsx). */
-.credit {
-  margin: 0 4px 10px;
-  color: var(--hint);
-  font-size: 12px;
-}
-
-.credit,
-.weather-sun {
   animation: rise 0.35s ease both;
   animation-delay: calc(var(--i, 0) * 40ms);
 }
 
-/* Right under the weather card of «Сегодня»: the line belongs to that card. */
-.credit--under {
-  margin-top: -10px;
+/* Where the data come from; each source a link (components/Credit.tsx). */
+.credit {
+  color: var(--hint);
 }
 
-/* The whole text of «Ещё» → «Данные»: the card's own margins, a size of its hints, and the card's
-   entrance alone. Each line as tall as a link: a line with one is 44 px, and lines of 19 px between
-   them would read as a broken paragraph. Shorter lines would make the links of neighbouring lines
-   overlap. */
+/* The whole text of «Ещё» → «Данные»: the card's own margins and a size of its hints. Each line as
+   tall as a link: a line with one is 44 px, and lines of 19 px between them would read as a broken
+   paragraph. Shorter lines would make the links of neighbouring lines overlap. */
 .credit--card {
   margin: 0;
   font-size: 13px;
   line-height: 44px;
-  animation: none;
 }
 
 /* A link with the punctuation it touches, never broken apart («(creativecommons.org/…),»). */

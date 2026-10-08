@@ -91,13 +91,6 @@ describe("opening an address", () => {
 });
 
 describe("credit lines", () => {
-  it("makes links of the sources the weather credit names", () => {
-    expect(creditParts(dict("ru").weather.credit)).toEqual([
-      { text: "Данные о погоде: ", url: null },
-      { text: "open-meteo.com", url: OPEN_METEO_URL },
-    ]);
-  });
-
   it.each(["ru", "en"] as const)("makes links of all three sources in more.credits (%s)", (lang) => {
     const text = dict(lang).more.credits;
     const parts = creditParts(text);
