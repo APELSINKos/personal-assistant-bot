@@ -267,7 +267,8 @@ async def test_a_corrected_or_deleted_entry_warns_again(
     real = await add(70000)
     assert await warned(real) == [80]  # 850: the 80 % warning comes again
     assert await money.delete_entry(session, user, real.id)
-    assert await warned(await add(100000)) == [100]  # 1 150: both again, the higher one shown
+    # 150 again, then 850: the 80 % warning comes again only if the delete took it back.
+    assert await warned(await add(70000)) == [80]
 
 
 async def test_a_warning_that_still_holds_is_not_shown_again(

@@ -293,6 +293,7 @@ def test_today_text_when_everything_is_missing() -> None:
         part_of_day="night",
         weather=None,
         reminders=[],
+        habits=[],
         habits_done=0,
         habits_total=0,
         notes_count=0,

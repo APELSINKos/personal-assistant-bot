@@ -247,17 +247,20 @@ async def test_a_button_sets_the_mark_it_offers_after_a_mark_made_in_the_app(
 async def test_a_forged_or_stale_mark_button_is_refused(feed, fake, session, make_user) -> None:
     user = await make_user()
     habit = await habits.create(session, user, "Спорт", now=NOW)  # begun today, 2 October
+    # Begun on 21 September: the habit itself would take each of its days below.
+    older = await habits.create(session, user, "Чтение", now=NOW - timedelta(days=11))
     await session.commit()
-    for value in (
-        "2026-10-02",  # no mark to set
-        "2026-10-02~x",
-        "2026-10-02~1~1",
-        "garbage~1",
-        "2026-10-03~1",  # tomorrow
-        "2026-09-25~1",  # a week ago: no view offers that day any more
-        "2026-10-01~1",  # yesterday, before the habit began
+    for habit_id, value in (
+        (habit.id, "2026-10-02"),  # no mark to set
+        (habit.id, "2026-10-02~x"),
+        (habit.id, "2026-10-02~1~1"),
+        (habit.id, "garbage~1"),
+        (habit.id, "2026-10-03~1"),  # tomorrow
+        (habit.id, "2026-10-01~1"),  # yesterday, before the habit began
+        (older.id, "2026-09-25~1"),  # a week ago: no view offers that day any more
+        (older.id, "2026-09-21~1"),
     ):
-        await feed(callback_update(HabitCb(action="put", id=habit.id, value=value).pack()))
+        await feed(callback_update(HabitCb(action="put", id=habit_id, value=value).pack()))
         assert fake.of(AnswerCallbackQuery)[-1].text == STALE, value
     assert (await session.scalars(select(HabitMark))).all() == []
 

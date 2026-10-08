@@ -307,6 +307,21 @@ async def test_a_snooze_pressed_while_it_is_sent_is_kept(
     assert (reminder.status, reminder.due_at) == (ReminderStatus.PENDING, until)
 
 
+async def test_a_reminder_deleted_while_it_is_sent_stays_deleted(
+    scheduler, session, sessionmaker, make_user, fake, monkeypatch
+) -> None:
+    user = await make_user(morning_enabled=False)
+    reminder = await add_reminder(session)
+
+    async def deleted(app) -> None:
+        assert await reminders.cancel(app, user.id, reminder.id)
+
+    change_while_sending(monkeypatch, scheduler, sessionmaker, deleted)
+    assert await scheduler.deliver_reminders(NOW) == 1
+    reminder = await reload(session, reminder)
+    assert (reminder.status, reminder.sent_at) == (ReminderStatus.CANCELLED, None)
+
+
 async def test_send_passes_the_link_preview_options(scheduler, fake) -> None:
     assert (await scheduler._send(1, "open-meteo.com", link_preview_options=NO_PREVIEW)).ok
     assert (await scheduler._send(1, "⏰ Напоминание: полить цветы")).ok

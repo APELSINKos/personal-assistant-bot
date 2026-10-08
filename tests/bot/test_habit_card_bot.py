@@ -202,15 +202,21 @@ async def test_past_days_drawn_before_midnight_mark_the_days_they_show(
 
 async def test_a_forged_or_stale_past_day_button_is_refused(feed, fake, session, make_user) -> None:
     habit = await make_habit(session, make_user, days_old=3)  # begun on 29 September
-    for value in (
-        "2026-10-01",  # no mark to set
-        "2026-10-01~x",
-        "garbage~1",
-        "2026-10-03~1",  # tomorrow
-        "2026-09-25~1",  # a week ago
-        "2026-09-28~1",  # before the habit
+    owner = await session.get(User, habit.user_id)
+    assert owner is not None
+    # Begun on 21 September: the habit itself would take each of its days below.
+    older = await habits.create(session, owner, "Чтение", NOW - timedelta(days=11))
+    await session.commit()
+    for habit_id, value in (
+        (habit.id, "2026-10-01"),  # no mark to set
+        (habit.id, "2026-10-01~x"),
+        (habit.id, "garbage~1"),
+        (habit.id, "2026-10-03~1"),  # tomorrow
+        (habit.id, "2026-09-28~1"),  # before the habit
+        (older.id, "2026-09-25~1"),  # a week ago
+        (older.id, "2026-09-21~1"),
     ):
-        await feed(press("dput", habit.id, value))
+        await feed(press("dput", habit_id, value))
         assert last_answer(fake).text == STALE, value
     assert (await session.scalars(select(HabitMark))).all() == []
 

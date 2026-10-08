@@ -319,6 +319,29 @@ async def test_cbr_a_hanging_history_pauses_histories_not_the_rates() -> None:
     assert asked == ["/daily_json.js", "/scripts/XML_dynamic.asp", "/daily_json.js"]
 
 
+async def test_cbr_serves_kept_histories_during_the_pause() -> None:
+    now = [0.0]
+    histories: list[str] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        if request.url.host != "www.cbr.ru":
+            return httpx.Response(200, json=CBR_ALL)
+        histories.append(request.url.params["VAL_NM_RQ"])
+        if request.url.params["VAL_NM_RQ"] == "R01235":  # USD's hangs
+            raise httpx.ReadTimeout("slow", request=request)
+        return httpx.Response(200, content=HISTORY.replace(b"R01235", b"R01239"))
+
+    cbr, _ = bank(answer, clock=lambda: now[0])
+    kept = await cbr.history("EUR")
+    with pytest.raises(UpstreamUnavailable):
+        await cbr.history("USD")  # histories are paused now
+    now[0] = 10.0
+    assert await cbr.history("EUR") is kept
+    with pytest.raises(UpstreamUnavailable):  # not even asked
+        await cbr.history("USD")
+    assert histories == ["R01239", "R01235"]
+
+
 async def test_openmeteo_forecast_asks_once_per_place_with_rounded_coordinates() -> None:
     om, asked = open_meteo(forecast_ok)
     data = await om.forecast(55.75204, 37.61781)
