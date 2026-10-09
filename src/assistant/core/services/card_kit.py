@@ -30,6 +30,7 @@ ASSETS = Path(__file__).resolve().parents[2] / "assets"
 WIDTH, HEIGHT = 1080, 1350
 PANEL = (48, 48, WIDTH - 48, HEIGHT - 48)
 LEFT, RIGHT = 96, WIDTH - 96  # the content's edges inside the panel
+FOOTER_TOP = HEIGHT - 48 - 80  # where footer() begins
 BACKGROUND = (10, 9, 19)
 GLOWS = ((59, 31, 110), (15, 74, 82))
 TEXT = (244, 242, 255)
@@ -236,14 +237,13 @@ def card_limiter(clock: Callable[[], float] = monotonic) -> RateLimiter:
 
 def footer(draw: ImageDraw.ImageDraw, bot: str, today: date, t: Translator) -> None:
     """The bot, what it is, the day."""
-    top = HEIGHT - 48 - 80
-    draw.text((LEFT, top), f"@{bot}", font=font("Manrope", 30, 700), fill=TEXT)
+    draw.text((LEFT, FOOTER_TOP), f"@{bot}", font=font("Manrope", 30, 700), fill=TEXT)
     small = font("Manrope", 26, 500)
-    draw.text((LEFT, top + 40), t("card-tagline"), font=small, fill=HINT)
+    draw.text((LEFT, FOOTER_TOP + 40), t("card-tagline"), font=small, fill=HINT)
     stamp = format_day(today, t.lang, year=True)
     stamp_font = font("Manrope", 26, 600)
     draw.text(
-        (RIGHT - draw.textlength(stamp, font=stamp_font), top + 40),
+        (RIGHT - draw.textlength(stamp, font=stamp_font), FOOTER_TOP + 40),
         stamp,
         font=stamp_font,
         fill=HINT,

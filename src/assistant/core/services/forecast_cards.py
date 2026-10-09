@@ -17,7 +17,16 @@ from assistant.core.habit_style import COLORS
 from assistant.core.i18n import Translator, format_day, format_day_month, format_weekday
 from assistant.core.services import card_kit as kit
 from assistant.core.services import weather
-from assistant.core.services.card_kit import HEIGHT, HINT, LEFT, PANEL, RIGHT, TEXT, WIDTH
+from assistant.core.services.card_kit import (
+    FOOTER_TOP,
+    HEIGHT,
+    HINT,
+    LEFT,
+    PANEL,
+    RIGHT,
+    TEXT,
+    WIDTH,
+)
 from assistant.core.services.weather import Forecast
 
 SKY = kit.rgb(COLORS["sky"].dark)
@@ -31,7 +40,6 @@ STOPS: tuple[tuple[float, tuple[int, int, int]], ...] = (
     (30.0, kit.rgb(COLORS["coral"].dark)),
 )
 TRACK = (255, 255, 255, 30)  # under a range bar, and between the rows of the days
-FOOTER_TOP = HEIGHT - 48 - 80  # where kit.footer begins
 # A day's row, in x: its name and date end at DAY_RIGHT, then its icon, its lowest ending at
 # LOW_RIGHT, the range bar from BAR_LEFT to BAR_RIGHT and its highest ending at HIGH_RIGHT.
 DAY_RIGHT, ICON_LEFT, LOW_RIGHT, BAR_LEFT, BAR_RIGHT, HIGH_RIGHT = 342, 358, 548, 572, 852, 972
