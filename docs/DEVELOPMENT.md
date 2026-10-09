@@ -21,6 +21,8 @@ uv run python -m assistant.bot   # запустить
 | `DATABASE_URL` | `sqlite+aiosqlite:///./assistant.db` | база |
 | `WEBAPP_URL` | пусто | адрес Mini App (`https://…/`); пока пусто, кнопки приложения скрыты |
 | `LOG_LEVEL` | `INFO` | уровень журнала |
+| `HTTP_TIMEOUT` | `10` | таймаут и общий срок запросов бота к Open-Meteo и ЦБ, с |
+| `SCHEDULER_INTERVAL` | `20` | пауза между проходами планировщика, с |
 | `DEFAULT_CITY`, `DEFAULT_LAT`, `DEFAULT_LON`, `DEFAULT_TIMEZONE` | Москва | город новых пользователей |
 | `DEFAULT_MORNING_TIME` | `08:00` | время сводки новых пользователей |
 | `API_HOST`, `API_PORT` | `127.0.0.1`, `8000` | где слушает API |
@@ -47,6 +49,7 @@ uv run ruff format .
 uv run ruff check .
 uv run mypy
 uv run pytest
+uv run alembic upgrade head && uv run alembic check   # миграции совпадают с моделями
 ```
 
 ```bash
@@ -57,7 +60,7 @@ npm test
 npm run build
 ```
 
-CI запускает Python-проверки на 3.12 и 3.13, проверки приложения на Node.js 24 и сверяет миграции с моделями. На 3.12 CI берёт системный Python Ubuntu 24.04 — тот же, что на сервере, — и проверяет, что у него SQLite 3.45: миграция, которую сервер не выполнит, падает в CI, а не при деплое.
+CI запускает Python-проверки на 3.12 и 3.13, проверки приложения на Node.js 24 и сверяет миграции с моделями. Форматирование CI не правит, а проверяет — `uv run ruff format --check .`: неотформатированный файл делает CI красным. На 3.12 CI берёт системный Python Ubuntu 24.04 — тот же, что на сервере, — и проверяет, что у него SQLite 3.45: миграция, которую сервер не выполнит, падает в CI, а не при деплое.
 
 Зависимости CI ставит командой `uv sync --locked`: если `uv.lock` отстал от `pyproject.toml`, CI красный — после правки зависимостей запустите `uv lock` и закоммитьте оба файла.
 
@@ -90,7 +93,7 @@ uv run python scripts/money_report.py --lang en --out docs/images/money-report.e
 ## Миграции
 
 ```bash
-uv run alembic revision --autogenerate -m "short description"
+uv run alembic revision --autogenerate --rev-id 0007 -m "short description"   # номер — следующий за последним в migrations/versions
 uv run alembic upgrade head
 ```
 

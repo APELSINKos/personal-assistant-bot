@@ -88,8 +88,9 @@ SEARCH_COUNT = 5  # places one geocoding request offers
 # Requests to Open-Meteo, forecasts and searches together, within a sliding day. The free plan
 # allows an IP under 600 calls a minute, 5 000 an hour and 10 000 a day; a forecast is 2.3 calls,
 # and the bot and the API share the server's IP. A process's budget, even spent within one hour,
-# keeps the two under the hourly limit (2 × 1 000 × 2.3 = 4 600) and so under the daily one. A
-# user's budget keeps one account from spending it.
+# keeps the two under the hourly limit (2 × 1 000 × 2.3 = 4 600) and so under the daily one, but
+# only between restarts: the budgets live in the processes' memory. A user's budget keeps one
+# account from spending it.
 BUDGET_WINDOW = 86_400.0
 PROCESS_BUDGET = 1_000
 USER_BUDGET = 200

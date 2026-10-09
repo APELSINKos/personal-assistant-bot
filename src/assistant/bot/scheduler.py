@@ -52,8 +52,10 @@ REFRESH_BATCH = 2  # sources per refresh pass, a download each: stop() waits for
 WEATHER_WAIT_MINUTES = 10
 # A tick that has been running this long is stuck, and so is a scheduler that has not begun one
 # for this long: alive() turns false, the watchdog (core.watchdog) is no longer fed, and systemd
-# restarts the bot. The slowest real tick, every digest at once while Telegram takes its full
-# minute per message, stays well under it.
+# restarts the bot. The slowest tick is one where Telegram does not answer: every digest due in it
+# waits out the 60-second timeout (send_digests goes on after a network error), about 15 minutes
+# for today's users. Past about 30 digests due at once such a tick restarts the bot, which loses
+# nothing: the work is saved item by item, and what was not sent is still due.
 STALL_AFTER = 30 * 60.0
 
 

@@ -9,11 +9,11 @@
 | `results/results.json` | Те же результаты в машинном виде — из них собирается таблица тест-кейсов в отчёте |
 | `results/screens/` | Снимки окна приложения, сделанные во время прогона |
 
-Запуск (Windows, Python 3.11+; для снимков нужен пакет Pillow):
+Запуск из этой папки (Windows, Python 3.11+; для снимков нужен пакет Pillow):
 
 ```powershell
 pip install pillow
-python testingstm_autotest.py <папка с student_task_manager.py> testingesults
+python stm_autotest.py <папка с student_task_manager.py> results
 ```
 
 Каждый тест работает со своей копией продукта и своим файлом данных, поэтому исходная папка приложения не изменяется. Сам тестируемый продукт в репозиторий не входит: он принадлежит другой команде.

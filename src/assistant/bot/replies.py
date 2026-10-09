@@ -16,8 +16,9 @@ from aiogram.types import (
 log = logging.getLogger(__name__)
 Markup = InlineKeyboardMarkup | ReplyKeyboardMarkup | None
 # For messages whose links are not their point (the sites of the data in /start and /help,
-# addresses in notes, reminders and lessons): Telegram would otherwise add a preview card of the
-# first link to each of them. The views of the weather, which have no link, are sent the same way.
+# addresses in notes and in the reminders and lessons that «Мой день» and the digest list):
+# Telegram would otherwise add a preview card of the first link to each of them. The views of the
+# weather, which have no link, are sent the same way.
 NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
 

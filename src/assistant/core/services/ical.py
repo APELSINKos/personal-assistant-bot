@@ -78,8 +78,8 @@ ISOLATED = True
 # What the child's Python needs of the environment to run the module from the venv. The rest of
 # this process's, the bot token above all, stays out of the child's environment and so out of its
 # error output, which is logged. It is no wall: the child runs as the same user and could still
-# read the token (the environment file, this process's /proc/<pid>/environ) and the database;
-# its limits bound only time and memory.
+# read the token (the environment file, this process's /proc/<pid>/environ) and read or change
+# the database; its limits bound only time and memory.
 _CHILD_ENV = frozenset({"PATH", "LANG", "TZ", "HOME"})
 _CHILD_ENV_PREFIXES = ("LC_", "PYTHON")
 TITLE_LENGTH = 200
