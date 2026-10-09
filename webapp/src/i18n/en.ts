@@ -77,6 +77,9 @@ export const en: Dict = {
     polarDay: "☀️ Polar day",
     cityGone: "This city is no longer on your list",
     unavailable: "Weather is temporarily unavailable",
+    share: "Share the forecast",
+    cardSent: "The picture is in the chat with the bot — forward it anywhere",
+    writeText: "Without it the bot can't send you the picture.",
   },
   calendar: {
     title: "Calendar",

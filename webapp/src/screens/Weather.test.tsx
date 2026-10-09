@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { keys } from "../api/queries";
 import type { Forecast } from "../api/types";
 import { Toasts } from "../components/Toasts";
 import type { Lang } from "../i18n";
@@ -32,6 +33,11 @@ function cardOf(name: string): HTMLElement {
   const card = screen.getByRole("heading", { name }).closest("section");
   if (!card) throw new Error(`no card ${name}`);
   return card;
+}
+
+/** The POST requests the screen has sent, in order. */
+function posts(calls: { method: string; path: string }[]): string[] {
+  return calls.filter((call) => call.method === "POST").map((call) => call.path);
 }
 
 /** A pull down the screen far enough to refresh it. */
@@ -119,14 +125,92 @@ describe("Weather", () => {
     expect(within(days[1] as HTMLElement).getByText("+11°")).toBeInTheDocument();
   });
 
-  it("ends with the sun, naming no source of the data", async () => {
+  it("ends with the sun and «Поделиться прогнозом», naming no source of the data", async () => {
     installTelegram();
     mockApi({ "GET /me": me, "GET /me/cities": [], "GET /weather": forecast });
     renderWeather();
     const sun = await screen.findByText("🌅 06:40 · 🌇 18:40");
-    expect(sun.nextElementSibling).toBeNull();
+    const share = screen.getByRole("button", { name: "Поделиться прогнозом" });
+    expect(sun.nextElementSibling).toBe(share);
+    expect(share.nextElementSibling).toBeNull();
     // Open-Meteo, GeoNames and the licence are named in «Ещё» → «Данные».
     expect(screen.queryByText(/open-meteo/)).not.toBeInTheDocument();
+  });
+
+  it("shares the week of the home city through Telegram", async () => {
+    const app = installTelegram();
+    const { calls } = mockApi({
+      "GET /me": me, "GET /me/cities": [], "GET /weather": forecast,
+      "POST /weather/share?city=0": { prepared_id: "prepared-1" },
+    });
+    renderWeather();
+    fireEvent.click(await screen.findByRole("button", { name: "Поделиться прогнозом" }));
+    await waitFor(() => expect(app.shareMessage).toHaveBeenCalledWith("prepared-1", expect.any(Function)));
+    expect(posts(calls)).toEqual(["/weather/share?city=0"]);
+  });
+
+  it("keeps the button inactive while the picture is on its way", async () => {
+    installTelegram();
+    let answer: (reply: { body: unknown }) => void = () => undefined;
+    mockApi({
+      "GET /me": me, "GET /me/cities": [], "GET /weather": forecast,
+      "POST /weather/share?city=0": () => new Promise((resolve) => (answer = resolve)),
+    });
+    renderWeather();
+    const share = await screen.findByRole("button", { name: "Поделиться прогнозом" });
+    fireEvent.click(share);
+    await waitFor(() => expect(share).toBeDisabled());
+    act(() => answer({ body: { prepared_id: "prepared-1" } }));
+    await waitFor(() => expect(share).toBeEnabled());
+  });
+
+  it("says where the picture went when the bot sent it to its chat", async () => {
+    installTelegram({}, "7.10");
+    const { calls } = mockApi({
+      "GET /me": me, "GET /me/cities": [], "GET /weather": forecast, "POST /weather/card?city=0": { status: 204 },
+    });
+    renderWeather();
+    fireEvent.click(await screen.findByRole("button", { name: "Поделиться прогнозом" }));
+    expect(await screen.findByText("Картинка в чате с ботом — перешли её, куда захочешь")).toBeInTheDocument();
+    expect(posts(calls)).toEqual(["/weather/card?city=0"]);
+  });
+
+  it("asks under the button to let the bot write when the user did not", async () => {
+    const refuse = vi.fn((callback?: (allowed: boolean) => void) => callback?.(false));
+    installTelegram({ requestWriteAccess: refuse }, "7.10");
+    const { calls } = mockApi({ "GET /me": { ...me, can_write: false }, "GET /me/cities": [], "GET /weather": forecast });
+    const { client } = renderWeather();
+    await waitFor(() => expect(client.getQueryData(keys.me)).toBeDefined());
+    const share = await screen.findByRole("button", { name: "Поделиться прогнозом" });
+    fireEvent.click(share);
+    const card = await screen.findByRole("alert");
+    expect(share.nextElementSibling).toBe(card);
+    expect(within(card).getByRole("heading", { name: "Разрешить боту писать?" })).toBeInTheDocument();
+    expect(within(card).getByText("Без разрешения бот не сможет прислать картинку.")).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Открыть чат с ботом" })).toBeInTheDocument();
+    expect(posts(calls)).toEqual([]);
+  });
+
+  it("shows no such card when only saving the permission failed", async () => {
+    installTelegram({}, "7.10");
+    const { calls } = mockApi({
+      "GET /me": { ...me, can_write: false }, "GET /me/cities": [], "GET /weather": forecast,
+      "POST /me/write-access": { status: 500, body: { status: 500, code: "generic", title: "x" } },
+    });
+    const { client } = renderWeather();
+    await waitFor(() => expect(client.getQueryData(keys.me)).toBeDefined());
+    fireEvent.click(await screen.findByRole("button", { name: "Поделиться прогнозом" }));
+    expect(await screen.findByText("Что-то пошло не так. Попробуй ещё раз.")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(posts(calls)).toEqual(["/me/write-access"]);
+  });
+
+  it("offers no picture of a week without days", async () => {
+    installTelegram();
+    mockApi({ "GET /me": me, "GET /me/cities": [], "GET /weather": { ...forecast, days: [] } });
+    renderWeather();
+    expect(await screen.findByText("🌅 06:40 · 🌇 18:40")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Поделиться прогнозом" })).not.toBeInTheDocument();
   });
 
   it("names a polar night or day instead of the sunrise and the sunset", async () => {
@@ -182,6 +266,7 @@ describe("Weather", () => {
     expect(days[1]).toHaveTextContent(/^Tomorrow/);
     expect(days[2]).toHaveTextContent(/^Wed, Sep 30/);
     expect(days[2]).toHaveAccessibleName("Wednesday, September 30: пасмурно, +5° to +10°");
+    expect(screen.getByRole("button", { name: "Share the forecast" })).toBeInTheDocument();
   });
 });
 
@@ -208,6 +293,19 @@ describe("Weather in the extra cities", () => {
     fireEvent.click(home);
     expect(await screen.findByRole("heading", { name: "Москва" })).toBeInTheDocument();
     expect(history).toEqual(["/weather"]);
+  });
+
+  it("shares the week of the city shown", async () => {
+    const app = installTelegram();
+    const { calls } = mockApi({
+      "GET /me": me, "GET /me/cities": [tula], "GET /weather?city=3": TULA,
+      "POST /weather/share?city=3": { prepared_id: "prepared-3" },
+    });
+    renderWeather("/weather/3");
+    expect(await screen.findByRole("heading", { name: "Тула" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Поделиться прогнозом" }));
+    await waitFor(() => expect(app.shareMessage).toHaveBeenCalledWith("prepared-3", expect.any(Function)));
+    expect(posts(calls)).toEqual(["/weather/share?city=3"]);
   });
 
   it("opens an extra city by its address", async () => {
