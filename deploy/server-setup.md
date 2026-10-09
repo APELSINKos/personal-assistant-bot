@@ -792,7 +792,7 @@ ssh <server> 'sudo bash -s' <<'EOF'
 set -euo pipefail
 systemctl stop assistant-bot assistant-api
 keep=/var/backups/assistant/before-restore-$(date -u +%Y%m%dT%H%M%S).db
-cp -p /var/lib/assistant/assistant.db "$keep"
+[ ! -f /var/lib/assistant/assistant.db ] || cp -p /var/lib/assistant/assistant.db "$keep"
 [ ! -f /var/lib/assistant/assistant.db-wal ] || cp -p /var/lib/assistant/assistant.db-wal "$keep-wal"
 install -o assistant -g assistant -m 0640 /var/backups/assistant/<snapshot>.db /var/lib/assistant/assistant.db
 rm -f /var/lib/assistant/assistant.db-wal /var/lib/assistant/assistant.db-shm
@@ -802,8 +802,8 @@ systemctl start assistant-api assistant-bot
 EOF
 ```
 
-Replace `<snapshot>` with the file to restore. The database being replaced
-is kept first, with its `-wal` if a crash left one, next to the copies as
+Replace `<snapshot>` with the file to restore. The database being replaced, if
+there is one, is kept first, with its `-wal` if a crash left one, next to the copies as
 `before-restore-<UTC time>.db`, which no pruning touches: delete it by hand
 once the restore is confirmed. Removing the `-wal`/`-shm`
 files prevents SQLite from replaying write-ahead log entries that belong to

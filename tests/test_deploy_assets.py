@@ -293,7 +293,10 @@ def test_restore_keeps_the_database_it_replaces() -> None:
     stop = section.index("systemctl stop assistant-bot assistant-api\n")
     keep = [
         section.index("keep=/var/backups/assistant/before-restore-$(date -u +%Y%m%dT%H%M%S).db\n"),
-        section.index('cp -p /var/lib/assistant/assistant.db "$keep"\n'),
+        section.index(
+            "[ ! -f /var/lib/assistant/assistant.db ] || "
+            'cp -p /var/lib/assistant/assistant.db "$keep"\n'
+        ),
         section.index(
             "[ ! -f /var/lib/assistant/assistant.db-wal ] || "
             'cp -p /var/lib/assistant/assistant.db-wal "$keep-wal"\n'
