@@ -78,7 +78,7 @@ export const en: Dict = {
     cityGone: "This city is no longer on your list",
     unavailable: "Weather is temporarily unavailable",
     share: "Share the forecast",
-    cardSent: "The picture is in the chat with the bot — forward it anywhere",
+    cardSent: "The picture is in the chat with the bot\u00a0— forward it anywhere",
     writeText: "Without it the bot can't send you the picture.",
   },
   calendar: {
@@ -138,7 +138,7 @@ export const en: Dict = {
     yearMap: "Last 12 months",
     dayToggle: (date: string, state: string) => `${date}: ${state}. Tap to change`,
     share: "Share",
-    cardSent: "The card is in the chat with the bot — forward it anywhere",
+    cardSent: "The card is in the chat with the bot\u00a0— forward it anywhere",
     writeText: "Without it the bot can't send you the card.",
     edit: "Edit",
     editTitle: "Habit",
@@ -325,8 +325,8 @@ export const en: Dict = {
     limit_note_item: "This note already has 20 items",
     limit_city: "You already have 5 cities including home — remove one",
     duplicate_city: "This city is already on your list",
-    write_forbidden: "The bot can't message you yet — open the chat with the bot and press Start",
-    share_failed: "Couldn't send the picture — try again or pick another chat",
+    write_forbidden: "The bot can't message you yet\u00a0— open the chat with the bot and press Start",
+    share_failed: "Couldn't send the picture\u00a0— try again or pick another chat",
     weather_unavailable: "Weather is temporarily unavailable",
   },
   schedule: {
