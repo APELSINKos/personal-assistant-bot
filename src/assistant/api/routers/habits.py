@@ -128,7 +128,7 @@ async def share_habit(habit_id: ItemId, user: CurrentUser, db: Session, state: S
         raise UpstreamUnavailable(service="telegram")
     card, image, t = await _draw(db, user, habit_id, state, bot)
     now = state.clock()
-    token = await sharing.save(db, user.id, habit_id, image, now)
+    token = await sharing.save(db, user.id, image, now, habit_id=habit_id)
     await db.commit()
     link = f"{state.site}/api/share/{token}.jpg"
     try:
