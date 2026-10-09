@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import { keys } from "../api/queries";
 import type { Forecast } from "../api/types";
 import { Toasts } from "../components/Toasts";
@@ -46,6 +46,23 @@ function pullDown() {
   fireEvent.touchStart(title, { touches: [{ clientX: 100, clientY: 100 }] });
   fireEvent.touchMove(title, { touches: [{ clientX: 100, clientY: 300 }] });
   fireEvent.touchEnd(title);
+}
+
+/** Telegram's dialog «Разрешить боту писать?», answered no. */
+const refuse = () => vi.fn((callback?: (allowed: boolean) => void) => callback?.(false));
+
+/** Lets the renders and the effects of a step land. */
+const landed = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+
+/** Runs `check` with a stand-in for scrollIntoView, which jsdom has not. */
+async function withScrollIntoView(check: (scrollIntoView: Mock) => Promise<void>) {
+  const scrollIntoView = vi.fn();
+  Object.defineProperty(Element.prototype, "scrollIntoView", { configurable: true, writable: true, value: scrollIntoView });
+  try {
+    await check(scrollIntoView);
+  } finally {
+    Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+  }
 }
 
 describe("Weather", () => {
@@ -191,6 +208,22 @@ describe("Weather", () => {
     expect(posts(calls)).toEqual([]);
   });
 
+  it("brings that card into view: the button ends a long screen, and the refusal says nothing else", async () => {
+    await withScrollIntoView(async (scrollIntoView) => {
+      installTelegram({ requestWriteAccess: refuse() }, "7.10");
+      mockApi({ "GET /me": { ...me, can_write: false }, "GET /me/cities": [], "GET /weather": forecast });
+      const { client } = renderWeather();
+      await waitFor(() => expect(client.getQueryData(keys.me)).toBeDefined());
+      fireEvent.click(await screen.findByRole("button", { name: "Поделиться прогнозом" }));
+      const card = await screen.findByRole("alert");
+      await landed();
+      // Just enough to show all of it, above the bottom bar: html's scroll-padding-bottom.
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest", behavior: "smooth" });
+      expect(scrollIntoView.mock.contexts[0]).toBe(card);
+    });
+  });
+
   it("shows no such card when only saving the permission failed", async () => {
     installTelegram({}, "7.10");
     const { calls } = mockApi({
@@ -306,6 +339,27 @@ describe("Weather in the extra cities", () => {
     fireEvent.click(screen.getByRole("button", { name: "Поделиться прогнозом" }));
     await waitFor(() => expect(app.shareMessage).toHaveBeenCalledWith("prepared-3", expect.any(Function)));
     expect(posts(calls)).toEqual(["/weather/share?city=3"]);
+  });
+
+  it("keeps a refusal's card under the button of the city a chip shows, and the page where it is", async () => {
+    await withScrollIntoView(async (scrollIntoView) => {
+      installTelegram({ requestWriteAccess: refuse() }, "7.10");
+      mockApi({
+        "GET /me": { ...me, can_write: false }, "GET /me/cities": [tula], "GET /weather": forecast, "GET /weather?city=3": TULA,
+      });
+      renderWeather();
+      const chips = await screen.findByRole("group", { name: "Города" });
+      fireEvent.click(await screen.findByRole("button", { name: "Поделиться прогнозом" }));
+      await screen.findByRole("alert");
+      await landed();
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+      fireEvent.click(within(chips).getByRole("button", { name: "Тула" }));
+      expect(await screen.findByRole("heading", { name: "Тула" })).toBeInTheDocument();
+      await landed();
+      expect(screen.getByRole("button", { name: "Поделиться прогнозом" }).nextElementSibling).toBe(screen.getByRole("alert"));
+      // Drawn again for Тула, not refused again: the reader, up at the chips, stays there.
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("opens an extra city by its address", async () => {

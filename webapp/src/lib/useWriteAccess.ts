@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAllowWrite } from "../api/queries";
 import { requestWriteAccess } from "../telegram";
 
@@ -9,16 +9,34 @@ import { requestWriteAccess } from "../telegram";
  * action that needs it may go on; while the profile is not loaded (`canWrite` is undefined) the
  * action goes on, and the server has the last word. `refused` is set by a refusal and cleared by
  * the next `ensure()` that lets the action go on, whichever way the permission came.
+ *
+ * `card` is for the screen's WriteRefusedCard. A refusal says nothing else, and its card may come
+ * in out of sight: under the bottom bar, below the last thing of a long screen («Поделиться
+ * прогнозом»), or at the top of a form read down to its end. Each refusal scrolls the page just
+ * enough to show all of the card, above the bar (html's scroll-padding-bottom); a card only drawn
+ * again, with no new refusal (another city's forecast under the same one), leaves the page where
+ * it is.
  */
 export function useWriteAccess(canWrite: boolean | undefined) {
   const allowWrite = useAllowWrite();
   const [refused, setRefused] = useState(false);
+  // Every refusal, also one that finds `refused` up already: each brings the card in.
+  const [refusals, setRefusals] = useState(0);
+  const card = useRef<HTMLDivElement>(null);
   // From the first tap until the flow ends: a second tap must not open a second dialog on top.
   const asking = useRef(false);
+
+  // At once where less motion is asked for. Optional: jsdom has no scrollIntoView.
+  useEffect(() => {
+    if (refusals === 0) return;
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    card.current?.scrollIntoView?.({ block: "nearest", behavior: still ? "auto" : "smooth" });
+  }, [refusals]);
 
   const ask = async (): Promise<boolean> => {
     if (!(await requestWriteAccess())) {
       setRefused(true);
+      setRefusals((count) => count + 1);
       return false;
     }
     try {
@@ -43,5 +61,5 @@ export function useWriteAccess(canWrite: boolean | undefined) {
     return true;
   };
 
-  return { ensure, refused, pending: allowWrite.isPending };
+  return { ensure, refused, pending: allowWrite.isPending, card };
 }

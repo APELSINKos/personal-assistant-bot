@@ -174,7 +174,7 @@ function ShareForecast({ city, write }: { city: number; write: WriteAccess }) {
       >
         {t.weather.share}
       </button>
-      {write.refused && <WriteRefusedCard text={t.weather.writeText} />}
+      {write.refused && <WriteRefusedCard card={write.card} text={t.weather.writeText} />}
     </>
   );
 }

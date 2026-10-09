@@ -141,7 +141,7 @@ export function HabitScreen() {
         <button type="button" className="button button--primary" disabled={share.isPending} onClick={onShare}>
           {t.habits.share}
         </button>
-        {write.refused && <WriteRefusedCard text={t.habits.writeText} />}
+        {write.refused && <WriteRefusedCard card={write.card} text={t.habits.writeText} />}
         <Link href={`/habits/${data.id}/edit`} className="button">{t.habits.edit}</Link>
         <button type="button" className="button button--danger" onClick={() => void onDelete()}>
           {t.habits.deleteButton}
