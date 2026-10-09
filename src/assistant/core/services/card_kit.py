@@ -1,5 +1,6 @@
-"""The drawing kit of the share pictures (the habit card, the month report, the rates): one size,
-the dark «Вечерний» backdrop and glass, the bundled fonts and emoji, and one drawing thread.
+"""The drawing kit of the share pictures (the habit card, the month report, the rates, the week's
+forecast): one size, the dark «Вечерний» backdrop and glass, the bundled fonts and emoji, and one
+drawing thread.
 
 Everything is drawn from assistant/assets only (see SOURCES.md), with Pillow's BASIC layout, so the
 same input gives the same bytes on any machine. A line of user text is drawn in pieces: a letter its

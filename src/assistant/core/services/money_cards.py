@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 
 from assistant.core.clients.cbr import Point
 from assistant.core.habit_style import COLORS
-from assistant.core.i18n import Translator, format_day, format_number
+from assistant.core.i18n import Translator, format_day, format_day_month, format_number
 from assistant.core.money_style import CURRENCIES
 from assistant.core.services import card_kit as kit
 from assistant.core.services.card_kit import HEIGHT, HINT, LEFT, PANEL, RIGHT, TEXT, WIDTH
@@ -92,11 +92,6 @@ def sign_for(currency: str) -> str:
 
 def _money(hundredths: int, report: Report, lang: str) -> str:
     return format_amount(hundredths, report.currency, lang, sign=sign_for(report.currency))
-
-
-def _day_month(day: date, lang: str) -> str:
-    """«3 сент.» / «Sep 3»."""
-    return str(format_date(day, "d MMM" if lang == "ru" else "MMM d", locale=lang))
 
 
 def month_title(first: date, lang: str) -> str:
@@ -363,7 +358,9 @@ def render_rates(card: RatesCard, t: Translator) -> bytes:
             font=tiny,
             fill=HINT,
         )
-        draw.text((chart[0], chart[3] + 6), _day_month(points[0].day, lang), font=tiny, fill=HINT)
+        draw.text(
+            (chart[0], chart[3] + 6), format_day_month(points[0].day, lang), font=tiny, fill=HINT
+        )
     kit.footer(draw, card.bot, card.today, t)
     return kit.jpeg(picture, overlay)
 

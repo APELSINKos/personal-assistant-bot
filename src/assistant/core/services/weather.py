@@ -34,6 +34,9 @@ _CODES: tuple[tuple[int, int, str, str], ...] = (
 NO_CODE = -1  # the code of an hour, a day or of now that came without one: «нет данных»
 NIGHT_ICON = "🌙"  # instead of the sun of a clear or partly cloudy sky at night
 HOUR = timedelta(hours=1)
+# A chance of rain or snow is worth a mention from this many percent on: in the bot, on the
+# forecast picture and in the app (shownChance).
+CHANCE_SHOWN = 20
 # The classes line mentions rain or snow on the way from this chance on.
 CLASSES_CHANCE = 30
 

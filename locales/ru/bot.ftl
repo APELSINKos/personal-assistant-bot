@@ -117,6 +117,16 @@ weather-week-title = 📅 { $city } — 7 дней
 weather-day = { $label } { $emoji } { $range }
 weather-day-chance = { $label } { $emoji } { $range } 💧 { $chance } %
 weather-days-none = Прогноза на неделю сейчас нет.
+forecast-card-period = Прогноз на { $count } { $count ->
+        [one] день
+        [few] дня
+       *[many] дней
+    } · { $dates }
+forecast-card-feels = Ощущается как { $temp }
+forecast-card-wind = Ветер { $speed } м/с
+forecast-card-now = сейчас { $time }
+forecast-card-chance = { $chance } %
+forecast-card-caption = { $emoji } { $city }: погода на неделю
 
 ## My day and the morning digest
 today-title = { $part ->

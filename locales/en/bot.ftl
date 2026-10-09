@@ -108,6 +108,12 @@ weather-week-title = 📅 { $city } — 7 days
 weather-day = { $label } { $emoji } { $range }
 weather-day-chance = { $label } { $emoji } { $range } 💧 { $chance }%
 weather-days-none = No forecast for the week right now.
+forecast-card-period = { $count }-day forecast · { $dates }
+forecast-card-feels = Feels like { $temp }
+forecast-card-wind = Wind { $speed } m/s
+forecast-card-now = now { $time }
+forecast-card-chance = { $chance }%
+forecast-card-caption = { $emoji } { $city }: the week's weather
 
 ## My day and the morning digest
 today-title = { $part ->
