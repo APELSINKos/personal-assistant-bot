@@ -259,6 +259,74 @@ def test_runbook_checks_what_it_installs_before_it_goes_live() -> None:
     assert "set -a; . /etc/caddy/assistant.env; set +a" in setup
 
 
+def runbook_section(heading: str) -> str:
+    """The runbook's text under `heading`, up to the next heading of its level or a higher one."""
+    setup = (DEPLOY / "server-setup.md").read_text(encoding="utf-8")
+    section = setup[setup.index(f"\n{heading}\n") :]
+    level = len(heading) - len(heading.lstrip("#"))
+    ends = [section.find("\n" + "#" * n + " ", 1) for n in range(2, level + 1)]
+    return section[: min((end for end in ends if end != -1), default=len(section))]
+
+
+def test_restore_migrates_the_copy_before_the_services_start() -> None:
+    section = runbook_section("## 8. Restore from a backup")
+    remove = section.index(
+        "rm -f /var/lib/assistant/assistant.db-wal /var/lib/assistant/assistant.db-shm"
+    )
+    upgrade = section.index(
+        "runuser -u assistant -- bash -c 'set -a; . /etc/assistant/assistant.env; set +a; "
+        "exec .venv/bin/alembic upgrade head'"
+    )
+    start = section.index("systemctl start assistant-api assistant-bot")
+    # The services never migrate by themselves: a copy from before the newest migration would
+    # start the code on an older schema (notes, checklists and cities fail, reminders work).
+    assert remove < upgrade < start
+    assert "cd /opt/assistant/app" in section[:upgrade]
+    # Every deploy leaves a snapshot, not only a failed one (assistant-deploy, take_snapshot).
+    assert "every deploy also leaves a" in section
+    assert "a failed deploy also leaves" not in section
+
+
+def test_runbook_moves_the_site_to_another_host() -> None:
+    section = runbook_section("## 9. Changing the site host")
+    for expected in (
+        "/etc/caddy/assistant.env",
+        "caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile",
+        "WEBAPP_URL=https://$SITE_HOST/",
+        "systemctl restart assistant-api assistant-bot",
+        "DEPLOY_KNOWN_HOSTS",
+    ):
+        assert expected in section, expected
+
+
+def test_runbook_takes_the_token_in_an_editor_and_needs_no_retired_bot() -> None:
+    setup = (DEPLOY / "server-setup.md").read_text(encoding="utf-8")
+    # The v1 bot leaves the server after 2026-10-13: a rebuild takes the token from @BotFather,
+    # typed into an editor, never onto a command line.
+    assert "/opt/tgbot" not in setup
+    assert "echo 'BOT_TOKEN='" in setup
+    assert "ssh -t <server> 'sudoedit /etc/assistant/assistant.env'" in setup
+
+
+def test_the_move_to_2_6_1_installs_the_scripts_before_its_deploy_runs() -> None:
+    block = runbook_section("### Going from 2.6.0 to 2.6.1")
+    # Every file 2.6.1 changed in deploy/ is installed by hand; the deploy touches none of them.
+    # The scripts go first, or the deploy's own snapshot is still written 0644. The copies made
+    # before them are fixed once, after everything else is in place.
+    scripts = block.index("for script in assistant-deploy assistant-backup; do")
+    others = [
+        block.index(
+            "for unit in assistant-bot.service assistant-api.service assistant-backup.service; do"
+        ),
+        block.index("show caddy-assistant.conf > "),
+        block.index("show Caddyfile > "),
+    ]
+    chmod = block.index("chmod 0640 /var/lib/assistant/assistant.db* /var/backups/assistant/*.db")
+    assert scripts < min(others) and max(others) < chmod
+    # The units hand the process the notify socket: the watchdog is on once 2.6.1 runs in them.
+    assert "systemctl show -p WatchdogUSec assistant-bot assistant-api" in block
+
+
 def test_timer_runs_nightly() -> None:
     timer = (DEPLOY / "assistant-backup.timer").read_text(encoding="utf-8")
     assert "OnCalendar=*-*-* 03:30:00 UTC" in timer and "Persistent=true" in timer
