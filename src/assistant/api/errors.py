@@ -18,6 +18,7 @@ from assistant.core.errors import (
     NotFound,
     ServiceError,
     UpstreamUnavailable,
+    WriteForbidden,
 )
 
 log = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ _SERVICE: dict[type[ServiceError], tuple[int, str, str]] = {
     LimitReached: (409, "limit_reached", "Limit reached"),
     NotFound: (404, "not_found", "Not found"),
     UpstreamUnavailable: (503, "upstream_unavailable", "Upstream service unavailable"),
+    WriteForbidden: (403, "write_forbidden", "The bot may not write to the user"),
 }
 
 

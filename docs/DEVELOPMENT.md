@@ -129,6 +129,7 @@ uv run alembic upgrade head
 | Статус | `code` | Параметры |
 |---|---|---|
 | 401 | `invalid_init_data`, `expired_init_data` | — |
+| 403 | `write_forbidden` | — |
 | 404 | `not_found` | `entity` |
 | 409 | `limit_reached` | `entity` и `limit`: `note` 50, `pinned_note` 5, `note_item` 20, `city` 4, `reminder` 20, `habit` 10, `category` 40, `entry` 50 000, `entry_month` 1 000 |
 | 422 | `validation_error` | `field`, `reason`, `limit`: например, `{"field": "items", "reason": "length", "limit": 100}`; повтор — `reason: "duplicate"` |

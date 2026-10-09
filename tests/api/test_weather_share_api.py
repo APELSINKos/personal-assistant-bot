@@ -7,12 +7,12 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 import pytest
-from aiogram.exceptions import TelegramNetworkError
+from aiogram.exceptions import TelegramForbiddenError, TelegramNetworkError
 from aiogram.methods import GetMe, SavePreparedInlineMessage, SendPhoto
 from sqlalchemy import func, select
 
 from assistant.core.i18n import Translator
-from assistant.core.models import ShareCard
+from assistant.core.models import ShareCard, User
 from assistant.core.services import forecast_cards
 from assistant.core.services.forecast_cards import ForecastCard
 from tests.stubs import forecast_payload
@@ -221,3 +221,19 @@ async def test_without_the_bot_or_the_site_it_is_503_and_spends_nothing(
     assert meteo.user_ids == [] and telegram.calls == []
     assert [state.cards.check(1) for _ in range(6)] == [None] * 6
     state.bot, state.site = bot, site
+
+
+async def test_the_week_in_the_chat_says_when_the_bot_may_not_write(
+    client, auth, telegram, session
+) -> None:
+    message = "Forbidden: bot was blocked by the user"
+    blocked = TelegramForbiddenError(method=GetMe(), message=message)
+    assert (await client.post("/api/weather/card", headers=auth())).status_code == 204  # name kept
+    telegram.errors.append(blocked)
+    refused = await client.post("/api/weather/card", headers=auth())
+    assert (refused.status_code, refused.json()["code"]) == (403, "write_forbidden")
+    # The flag is the bot's own: the API never sets it.
+    assert await session.scalar(select(User.bot_blocked).where(User.id == 1)) is False
+    # Only the photo in the chat says so: a message not prepared sends the app on to the photo.
+    telegram.errors.append(blocked)
+    assert _refused(await client.post("/api/weather/share", headers=auth()), 503, "telegram")

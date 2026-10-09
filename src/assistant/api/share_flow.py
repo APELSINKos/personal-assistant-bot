@@ -8,13 +8,13 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from aiogram import Bot
-from aiogram.exceptions import ClientDecodeError, TelegramAPIError
+from aiogram.exceptions import ClientDecodeError, TelegramAPIError, TelegramForbiddenError
 from aiogram.types import BufferedInputFile, InlineQueryResultPhoto
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from assistant.api.schemas import SharedOut
 from assistant.api.state import AppState
-from assistant.core.errors import UpstreamUnavailable
+from assistant.core.errors import UpstreamUnavailable, WriteForbidden
 from assistant.core.services import sharing
 
 log = logging.getLogger(__name__)
@@ -92,11 +92,17 @@ async def prepare(
 
 
 async def send(bot: Bot, user_id: int, image: bytes, filename: str, caption: str) -> None:
-    """The picture as a photo in the chat with the bot."""
+    """The picture as a photo in the chat with the bot. WriteForbidden when Telegram does not
+    let the bot write to the user, so the app asks them to start the bot rather than calling the
+    service down. `bot_blocked` stays the bot's: it marks a block when a message of its own fails
+    and lifts it when the user writes."""
     try:
         await bot.send_photo(
             chat_id=user_id, photo=BufferedInputFile(image, filename=filename), caption=caption
         )
+    except TelegramForbiddenError as error:  # a subclass of TelegramAPIError: caught first
+        log.info("the bot may not write to user %s: %s", user_id, error)
+        raise WriteForbidden() from error
     except (TelegramAPIError, ClientDecodeError) as error:
         log.warning("sending a picture to user %s failed: %s", user_id, error)
         raise UpstreamUnavailable(service="telegram") from error
