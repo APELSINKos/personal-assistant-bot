@@ -23,6 +23,9 @@ const STYLE = /(?:url\(\s*["']?|@import\s+["'])\s*\/\/([a-z0-9.-]*)/gi;
 const IP_SERVICE = /(?:sslip|nip)\.io/i;
 // Four numbers with nothing but other characters around them: not a part of «1.2.3.4.5».
 const IPV4 = /(?:^|[^\d.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\d.])/g;
+// A group that looks behind: "(?<" with "=" or "!". Escaped, since no source of the webapp holds the
+// two together (src/test/sourceRules.test.ts).
+const LOOKBEHIND = /\(\?<[=!]/;
 
 /** The hosts an address pattern finds that are not on the list. */
 function strangers(text, pattern) {
@@ -83,7 +86,7 @@ function check(folder) {
       ...(markup || kind === ".css" ? strangers(text, STYLE) : []),
     ];
     if (found.length > 0) problems.add(`${shown}: an address whose host is not on the list`);
-    if (SCRIPTS.has(kind) && (text.includes("(?<=") || text.includes("(?<!"))) {
+    if (SCRIPTS.has(kind) && LOOKBEHIND.test(text)) {
       problems.add(`${shown}: a lookbehind in a regular expression`);
     }
     if (kind === ".html") {
