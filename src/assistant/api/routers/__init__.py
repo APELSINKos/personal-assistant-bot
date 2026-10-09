@@ -16,12 +16,14 @@ from assistant.api.routers import (
     schedule,
     share,
     today,
+    weather,
 )
 
 ALL: list[APIRouter] = [
     health.router,
     me.router,
     today.router,
+    weather.router,
     notes.router,
     reminders.router,
     habits.router,
