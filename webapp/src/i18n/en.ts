@@ -136,6 +136,7 @@ export const en: Dict = {
     dayToggle: (date: string, state: string) => `${date}: ${state}. Tap to change`,
     share: "Share",
     cardSent: "The card is in the chat with the bot — forward it anywhere",
+    writeText: "Without it the bot can't send you the card.",
     edit: "Edit",
     editTitle: "Habit",
     emoji: "Emoji",
@@ -321,6 +322,9 @@ export const en: Dict = {
     limit_note_item: "This note already has 20 items",
     limit_city: "You already have 5 cities including home — remove one",
     duplicate_city: "This city is already on your list",
+    write_forbidden: "The bot can't message you yet — open the chat with the bot and press Start",
+    share_failed: "Couldn't send the picture — try again or pick another chat",
+    weather_unavailable: "Weather is temporarily unavailable",
   },
   schedule: {
     title: "Schedule",

@@ -8,10 +8,12 @@ import { HabitLoadError } from "../components/HabitBits";
 import { MonthMarks } from "../components/MonthMarks";
 import { ErrorState, Loader } from "../components/States";
 import { toast } from "../components/toastStore";
+import { WriteRefusedCard } from "../components/WriteRefusedCard";
 import { YearMap } from "../components/YearMap";
 import { useLang, useT } from "../i18n";
 import { addDaysIso, dayMonth, localTodayIso, monthTitle } from "../lib/format";
 import { DAILY, monthOfWeek, nextDone } from "../lib/habits";
+import { useWriteAccess } from "../lib/useWriteAccess";
 import { confirmAction } from "../telegram";
 
 /** The first of the month `months` away from the month of `iso`. */
@@ -37,7 +39,9 @@ export function HabitScreen() {
   const me = useMe();
   const zone = me.data?.city.timezone;
   const mark = useMarkDay();
-  const share = useShareHabit();
+  // Where Telegram cannot share from the app, the bot sends the card to its chat, once it may write.
+  const write = useWriteAccess(me.data?.can_write);
+  const share = useShareHabit(id, write.ensure);
   const remove = useDeleteHabit();
   const [month, setMonth] = useState<string | null>(null);
 
@@ -60,7 +64,7 @@ export function HabitScreen() {
   const since = dayMonth(data.created_on, lang, data.created_on.slice(0, 4) !== today.slice(0, 4));
 
   const onShare = () =>
-    share.mutate(data.id, {
+    share.mutate(undefined, {
       onSuccess: (result) => {
         if (result === "sent") toast({ kind: "success", text: t.habits.cardSent });
       },
@@ -137,6 +141,7 @@ export function HabitScreen() {
         <button type="button" className="button button--primary" disabled={share.isPending} onClick={onShare}>
           {t.habits.share}
         </button>
+        {write.refused && <WriteRefusedCard text={t.habits.writeText} />}
         <Link href={`/habits/${data.id}/edit`} className="button">{t.habits.edit}</Link>
         <button type="button" className="button button--danger" onClick={() => void onDelete()}>
           {t.habits.deleteButton}

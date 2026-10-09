@@ -1,6 +1,14 @@
 import { vi } from "vitest";
 import type { TgWebApp } from "../telegram";
 
+type Listener = (...args: unknown[]) => void;
+
+/**
+ * The installed app's listeners by event, the log telegram-web-app.js keeps of them: each listener
+ * once however often it subscribes, in the order they came.
+ */
+let listeners = new Map<string, Listener[]>();
+
 function compareVersions(a: string, b: string): number {
   const left = a.split(".").map(Number);
   const right = b.split(".").map(Number);
@@ -16,6 +24,7 @@ function button() {
 }
 
 export function installTelegram(overrides: Partial<TgWebApp> = {}, version = "8.0"): TgWebApp {
+  listeners = new Map();
   const app: TgWebApp = {
     initData: "query_id=q&user=%7B%22id%22%3A1%7D&auth_date=1&hash=abc",
     initDataUnsafe: { user: { id: 1, first_name: "Alex", language_code: "ru" } },
@@ -35,8 +44,13 @@ export function installTelegram(overrides: Partial<TgWebApp> = {}, version = "8.
     requestWriteAccess: vi.fn((callback?: (allowed: boolean) => void) => callback?.(true)),
     shareMessage: vi.fn((_id: string, callback?: (sent: boolean) => void) => callback?.(true)),
     openTelegramLink: vi.fn(),
-    onEvent: vi.fn(),
-    offEvent: vi.fn(),
+    onEvent: vi.fn((event: string, callback: Listener) => {
+      const list = subscribers(event);
+      if (!list.includes(callback)) listeners.set(event, [...list, callback]);
+    }),
+    offEvent: vi.fn((event: string, callback: Listener) => {
+      listeners.set(event, subscribers(event).filter((listener) => listener !== callback));
+    }),
     BackButton: button(),
     MainButton: { ...button(), setParams: vi.fn(), showProgress: vi.fn(), hideProgress: vi.fn() },
     HapticFeedback: {
@@ -59,6 +73,28 @@ export function oldHeaderColor() {
   });
 }
 
+/** The listeners the installed app holds for an event now. */
+export function subscribers(event: string): readonly Listener[] {
+  return listeners.get(event) ?? [];
+}
+
+/** Calls an event's listeners with its arguments, one after another, as telegram-web-app.js does. */
+function emit(event: string, ...args: unknown[]): void {
+  for (const listener of subscribers(event)) listener(...args);
+}
+
+/**
+ * shareMessage as telegram-web-app.js answers a message that did not go: the callback with false,
+ * then shareMessageFailed with Telegram's reason, in the same turn.
+ */
+export function shareFails(reason?: string) {
+  return vi.fn((_id: string, callback?: (sent: boolean) => void) => {
+    callback?.(false);
+    emit("shareMessageFailed", { error: reason });
+  });
+}
+
 export function removeTelegram(): void {
   delete window.Telegram;
+  listeners = new Map();
 }

@@ -239,7 +239,7 @@ function AlertsCard({ source, canWrite }: { source: ScheduleSource; canWrite: bo
           ))}
         </div>
       </Card>
-      {write.refused && <WriteRefusedCard />}
+      {write.refused && <WriteRefusedCard text={t.reminderForm.writeText} />}
     </>
   );
 }
