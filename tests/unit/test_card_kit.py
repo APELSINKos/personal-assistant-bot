@@ -90,6 +90,29 @@ def test_a_title_takes_the_largest_size_at_which_it_fits_two_lines() -> None:
         assert box is not None and box[2] <= NAME_WIDTH
 
 
+@pytest.mark.parametrize(
+    ("title", "size"),
+    [
+        ("Комсомольск-на-Амуре", 56),  # «Комсомольск-на-Амур» / «е» at 64 px before 2.7
+        ("Петропавловск-Камчатский", 48),  # «Петропавловск-Камча» / «тский»
+        ("Petropavlovsk-Kamchatsky", 48),  # «Petropavlovsk-Kamcha» / «tsky»
+        ("Самосовершенствование", 56),  # a habit: «Самосовершенствова» / «ние»
+    ],
+    ids=["komsomolsk", "petropavlovsk", "petropavlovsk-en", "habit"],
+)
+def test_a_title_keeps_its_words_whole_a_size_smaller_rather_than_cut_one(
+    title: str, size: int
+) -> None:
+    _, draw = canvas()
+    assert kit.title_lines(draw, title, NAME_WIDTH) == (size, [title])
+
+
+def test_a_word_too_wide_for_a_line_even_at_48_px_is_cut_at_the_largest_size() -> None:
+    _, draw = canvas()
+    word = "Рентгеноэлектрокардиографический"
+    assert kit.title_lines(draw, word, NAME_WIDTH) == (64, ["Рентгеноэлектрокард", "иографический"])
+
+
 def test_emoji_files_leave_out_the_variation_selector() -> None:
     # The weather writes ☀ and ☁ with U+FE0F; noto-emoji names their files without it.
     assert emoji_file("☀\ufe0f") == "emoji_u2600.png"

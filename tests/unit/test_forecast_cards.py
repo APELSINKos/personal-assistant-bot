@@ -266,7 +266,7 @@ def test_six_days_and_one_day(count: int) -> None:
 @pytest.mark.parametrize(
     ("city", "size"),
     [
-        ("Петропавловск-Камчатский", 64),  # the tallest header: two lines of the largest size
+        ("Новоалександровск Ставропольский", 64),  # the tallest header: two lines at 64 px
         ("Новоалександровск Ставропольского края и ещё длиннее название", 48),
     ],
     ids=["two-lines", "ellipsis"],

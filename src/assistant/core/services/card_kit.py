@@ -159,9 +159,11 @@ def wrap(
     weight: int,
     width: float,
     lines: int,
+    *,
+    whole_words: bool = False,
 ) -> list[str] | None:
     """Break `text` into at most `lines` lines of `width` — between words when it can, inside
-    a word when it must. None when it does not fit."""
+    a word when it must, unless `whole_words`. None when it does not fit."""
 
     def fits(line: str) -> bool:
         return length(draw, line, family, size, weight) <= width
@@ -176,6 +178,8 @@ def wrap(
         if line:
             result.append(line)
             line = ""
+        if whole_words and not fits(word):
+            return None
         while not fits(word):  # a word longer than a line
             cut = len(word)
             while cut > 1 and not fits(word[:cut]):
@@ -198,12 +202,13 @@ def shorten(
 
 def title_lines(draw: ImageDraw.ImageDraw, text: str, width: float) -> tuple[int, list[str]]:
     """A title such as a habit's name, in Manrope 800 at 64, 56 or 48 px: the largest at which it
-    fits in two lines of `width`; when even 48 needs more, the second line ends in «…». The size
-    and the lines."""
-    for size in (64, 56, 48):
-        lines = wrap(draw, text, "Manrope", size, 800, width, 2)
-        if lines is not None:
-            return size, lines
+    fits in two lines of `width` with its words whole, or else with a word cut; when even 48
+    needs more, the second line ends in «…». The size and the lines."""
+    for whole_words in (True, False):
+        for size in (64, 56, 48):
+            lines = wrap(draw, text, "Manrope", size, 800, width, 2, whole_words=whole_words)
+            if lines is not None:
+                return size, lines
     lines = wrap(draw, text, "Manrope", 48, 800, width, 99) or [text]
     return 48, [lines[0], shorten(draw, " ".join(lines[1:]), "Manrope", 48, 800, width)]
 
