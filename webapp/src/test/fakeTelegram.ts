@@ -64,6 +64,56 @@ export function installTelegram(overrides: Partial<TgWebApp> = {}, version = "8.
   return app;
 }
 
+/** What Telegram shows of its main button. */
+export interface MainButtonShown {
+  text: string;
+  visible: boolean;
+  active: boolean;
+  progress: boolean;
+}
+
+/**
+ * Telegram's main button as telegram-web-app.js keeps it, with `shown` telling what the user sees:
+ * showProgress makes the button inactive unless asked to leave it active, hideProgress makes it
+ * active again, and a press of an inactive button never reaches the app.
+ */
+export function scriptMainButton() {
+  const shown: MainButtonShown = { text: "", visible: false, active: true, progress: false };
+  const clicks: (() => void)[] = [];
+  const mainButton: TgWebApp["MainButton"] = {
+    setParams: vi.fn((params: { text?: string; is_active?: boolean; is_visible?: boolean }) => {
+      if (params.text !== undefined) shown.text = params.text;
+      if (params.is_active !== undefined) shown.active = params.is_active;
+      if (params.is_visible !== undefined) shown.visible = params.is_visible;
+    }),
+    show: vi.fn(() => {
+      shown.visible = true;
+    }),
+    hide: vi.fn(() => {
+      shown.visible = false;
+    }),
+    showProgress: vi.fn((leaveActive?: boolean) => {
+      shown.active = Boolean(leaveActive);
+      shown.progress = true;
+    }),
+    hideProgress: vi.fn(() => {
+      if (!shown.active) shown.active = true;
+      shown.progress = false;
+    }),
+    onClick: vi.fn((callback: () => void) => {
+      if (!clicks.includes(callback)) clicks.push(callback);
+    }),
+    offClick: vi.fn((callback: () => void) => {
+      const index = clicks.indexOf(callback);
+      if (index !== -1) clicks.splice(index, 1);
+    }),
+  };
+  const press = () => {
+    if (shown.active) for (const click of [...clicks]) click();
+  };
+  return { mainButton, shown, press };
+}
+
 /** setHeaderColor as telegram-web-app.js has it before 6.9: a hex colour throws, only keys pass. */
 export function oldHeaderColor() {
   return vi.fn((color: string) => {
