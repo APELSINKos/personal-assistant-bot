@@ -106,6 +106,7 @@ weather-city-gone = Этого города уже нет в списке
 button-weather-now = 🌤 Сейчас
 button-hours = 🕐 По часам
 button-week = 📅 Неделя
+button-weather-card = 🖼 Картинка
 button-city-home = 🏠 { $city }
 weather-hours-title = 🕐 { $city } — по часам
 weather-hours-title-local = 🕐 { $city } — по часам (местное время)
@@ -517,7 +518,7 @@ habit-emoji-ask = 🎨 Выбери эмодзи для «{ $name }»:
 habit-color-ask = 🎨 И цвет — для карточки и приложения:
 habit-rename-ask = ✍️ Новое название для «{ $name }» (до { $limit } символов):
 habit-renamed = ✅ Готово: «{ $name }».
-habit-cards-wait = ⏳ Слишком много карточек подряд — попробуй через { $seconds } с.
+habit-cards-wait = ⏳ Слишком много картинок подряд — попробуй через { $seconds } с.
 
 ## Money
 money-cat-groceries = Продукты
