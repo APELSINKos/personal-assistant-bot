@@ -58,7 +58,10 @@ export function demoTelegram(host: DemoHost): TgWebApp {
 
   const user = { id: host.user.id, first_name: host.user.first_name, language_code: host.user.language_code };
   host.connect({
-    mainButtonClicked: () => emit("mainButtonClicked"),
+    // As telegram-web-app.js: a press of an inactive button never reaches the app.
+    mainButtonClicked: () => {
+      if (main.active) emit("mainButtonClicked");
+    },
     backButtonClicked: () => emit("backButtonClicked"),
     themeChanged: () => emit("themeChanged"),
   });

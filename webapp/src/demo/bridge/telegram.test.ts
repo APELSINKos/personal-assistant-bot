@@ -75,17 +75,34 @@ describe("the Telegram bridge", () => {
     const button = app().MainButton;
     const pressed = vi.fn();
     button.onClick(pressed);
-    button.setParams({ text: "Сохранить", is_active: false, is_visible: true });
+    button.setParams({ text: "Сохранить", is_active: true, is_visible: true });
     expect(stand.host.mainButton).toHaveBeenLastCalledWith(
-      { text: "Сохранить", visible: true, active: false, progress: false },
+      { text: "Сохранить", visible: true, active: true, progress: false },
     );
     stand.frame().mainButtonClicked();
     expect(pressed).toHaveBeenCalledOnce();
     button.offClick(pressed);
     button.hide();
     expect(stand.host.mainButton).toHaveBeenLastCalledWith(
-      { text: "Сохранить", visible: false, active: false, progress: false },
+      { text: "Сохранить", visible: false, active: true, progress: false },
     );
+    stand.frame().mainButtonClicked();
+    expect(pressed).toHaveBeenCalledOnce();
+  });
+
+  it("passes no press of an inactive main button on, as Telegram does", () => {
+    const stand = testHost();
+    installTelegram(stand.host);
+    const button = app().MainButton;
+    const pressed = vi.fn();
+    button.onClick(pressed);
+    button.setParams({ text: "Сохранить", is_active: false, is_visible: true });
+    expect(stand.host.mainButton).toHaveBeenLastCalledWith(
+      { text: "Сохранить", visible: true, active: false, progress: false },
+    );
+    stand.frame().mainButtonClicked();
+    expect(pressed).not.toHaveBeenCalled();
+    button.showProgress?.(true);
     stand.frame().mainButtonClicked();
     expect(pressed).toHaveBeenCalledOnce();
   });
