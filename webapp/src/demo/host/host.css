@@ -1,0 +1,26 @@
+/* The demo's host page. For now the app's frame fills the window, as on a phone. */
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: #0a0913;
+}
+
+@media (prefers-color-scheme: light) {
+  body {
+    background: #f7f5f2;
+  }
+}
+
+.demo-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
