@@ -613,6 +613,13 @@ a:focus-visible,
   font-weight: 700;
 }
 
+/* The kicker stands where the lavender glow is strongest: there the light --accent-text measures
+   4.14:1 and this darker green at least 5.20:1 (rendered pixels, worst case, windows from 900 to
+   1920 px wide), and 5.15:1 on the glow's own colour. */
+[data-theme="light"] .pitch__kicker {
+  color: #08694f;
+}
+
 .pitch__title {
   margin: 0 0 14px;
   font-family: var(--font-display);
