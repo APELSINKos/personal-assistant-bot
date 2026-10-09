@@ -711,9 +711,13 @@ EOF
 
 If the deploy gets there first, nothing is lost: the `chmod` below covers its
 snapshot too. Once the deploy has finished (`journalctl -t assistant-deploy`
-says `deployed <sha>`), install the units and Caddy's files, restart the
-services in the new units, make every copy of the database the service's
-alone and run the nightly copy once:
+says `deployed <sha>`), and outside the nightly copy's window (03:25–03:40
+UTC), install the units and Caddy's files, restart the services in the new
+units, make every copy of the database the service's alone and run the
+nightly copy once. Opening a copy read-only leaves `-wal` and `-shm` files
+next to it that nothing prunes; the block deletes them for every copy whose
+`-wal` is empty or missing, which is safe because no copy is open and an
+empty `-wal` holds nothing:
 
 ```bash
 ssh <server> 'sudo bash -s' <<'EOF'
@@ -734,7 +738,8 @@ set -a; . /etc/caddy/assistant.env; set +a
 caddy validate --config /etc/caddy/Caddyfile.new --adapter caddyfile
 mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
 systemctl reload caddy
-chmod 0640 /var/lib/assistant/assistant.db* /var/backups/assistant/*.db
+for db in /var/backups/assistant/*.db; do [ -s "$db-wal" ] || rm -f "$db-wal" "$db-shm"; done
+chmod 0640 /var/lib/assistant/assistant.db* /var/backups/assistant/*.db*
 systemctl start assistant-backup.service
 journalctl _SYSTEMD_UNIT=assistant-backup.service -n 1 -o cat --no-pager
 systemd-analyze security assistant-backup.service | tail -1
@@ -769,6 +774,10 @@ ssh <server> 'sudo DEPLOY_ALLOW_OLDER=1 /usr/local/sbin/assistant-deploy <v2.6.0
 The scripts, units and Caddy files of 2.6.1 can stay as they are: 2.6.0
 never turns the watchdog on, so systemd does not watch it.
 
+Anyone who keeps the app open across the rollback has to close and reopen
+it: the habits list of 2.6.1 marks the `day` that `GET /habits` returns, which
+the API of 2.6.0 does not send, so until then a tap in that list is refused.
+
 ## 8. Restore from a backup
 
 Nightly backups live in `/var/backups/assistant`
@@ -782,6 +791,9 @@ restore one by hand:
 ssh <server> 'sudo bash -s' <<'EOF'
 set -euo pipefail
 systemctl stop assistant-bot assistant-api
+keep=/var/backups/assistant/before-restore-$(date -u +%Y%m%dT%H%M%S).db
+cp -p /var/lib/assistant/assistant.db "$keep"
+[ ! -f /var/lib/assistant/assistant.db-wal ] || cp -p /var/lib/assistant/assistant.db-wal "$keep-wal"
 install -o assistant -g assistant -m 0640 /var/backups/assistant/<snapshot>.db /var/lib/assistant/assistant.db
 rm -f /var/lib/assistant/assistant.db-wal /var/lib/assistant/assistant.db-shm
 cd /opt/assistant/app
@@ -790,7 +802,10 @@ systemctl start assistant-api assistant-bot
 EOF
 ```
 
-Replace `<snapshot>` with the file to restore. Removing the `-wal`/`-shm`
+Replace `<snapshot>` with the file to restore. The database being replaced
+is kept first, with its `-wal` if a crash left one, next to the copies as
+`before-restore-<UTC time>.db`, which no pruning touches: delete it by hand
+once the restore is confirmed. Removing the `-wal`/`-shm`
 files prevents SQLite from replaying write-ahead log entries that belong to
 the database file being replaced. The services never migrate the database
 themselves, and a copy made before the newest migration (any pre-deploy

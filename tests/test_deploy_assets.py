@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fnmatch
 import os
 import re
 import shutil
@@ -287,6 +288,32 @@ def test_restore_migrates_the_copy_before_the_services_start() -> None:
     assert "a failed deploy also leaves" not in section
 
 
+def test_restore_keeps_the_database_it_replaces() -> None:
+    section = runbook_section("## 8. Restore from a backup")
+    stop = section.index("systemctl stop assistant-bot assistant-api\n")
+    keep = [
+        section.index("keep=/var/backups/assistant/before-restore-$(date -u +%Y%m%dT%H%M%S).db\n"),
+        section.index('cp -p /var/lib/assistant/assistant.db "$keep"\n'),
+        section.index(
+            "[ ! -f /var/lib/assistant/assistant.db-wal ] || "
+            'cp -p /var/lib/assistant/assistant.db-wal "$keep-wal"\n'
+        ),
+    ]
+    install = section.index("install -o assistant -g assistant -m 0640 ")
+    # A wrong copy picked in an incident loses nothing: the stopped database, with the -wal a
+    # crash may have left, is copied as it is (it may be the broken one, and a failed .backup
+    # would end the restore) before anything overwrites it.
+    assert stop < keep[0] < keep[1] < keep[2] < install
+    # No pruning reaches what is kept: it stays until it is deleted by hand.
+    kept = ("before-restore-20261009T120000.db", "before-restore-20261009T120000.db-wal")
+    for script in ("assistant-backup", "assistant-deploy"):
+        text = (DEPLOY / script).read_text(encoding="utf-8")
+        patterns = re.findall(r"-name ['\"]([^'\"]+)['\"]", text)
+        assert patterns, script
+        for pattern in patterns:
+            assert not any(fnmatch.fnmatchcase(name, pattern) for name in kept), pattern
+
+
 def test_runbook_moves_the_site_to_another_host() -> None:
     section = runbook_section("## 9. Changing the site host")
     for expected in (
@@ -321,10 +348,28 @@ def test_the_move_to_2_6_1_installs_the_scripts_before_its_deploy_runs() -> None
         block.index("show caddy-assistant.conf > "),
         block.index("show Caddyfile > "),
     ]
-    chmod = block.index("chmod 0640 /var/lib/assistant/assistant.db* /var/backups/assistant/*.db")
+    chmod = block.index(
+        "chmod 0640 /var/lib/assistant/assistant.db* /var/backups/assistant/*.db*\n"
+    )
     assert scripts < min(others) and max(others) < chmod
     # The units hand the process the notify socket: the watchdog is on once 2.6.1 runs in them.
     assert "systemctl show -p WatchdogUSec assistant-bot assistant-api" in block
+
+
+def test_the_move_to_2_6_1_leaves_no_copy_readable_by_others() -> None:
+    block = runbook_section("### Going from 2.6.0 to 2.6.1")
+    # A copy opened read-only keeps the -wal and -shm SQLite made for it, in the copy's mode, and
+    # no pruning removes them: those of a copy whose -wal is empty hold nothing and go, the chmod
+    # covers whatever is left, and the check at the end finds nothing.
+    sides = block.index(
+        "for db in /var/backups/assistant/*.db; do "
+        '[ -s "$db-wal" ] || rm -f "$db-wal" "$db-shm"; done\n'
+    )
+    chmod = block.index(
+        "chmod 0640 /var/lib/assistant/assistant.db* /var/backups/assistant/*.db*\n"
+    )
+    check = block.index("find /var/lib/assistant /var/backups/assistant -name '*.db*' -perm /o=r")
+    assert sides < chmod < check
 
 
 def test_the_runbook_shows_the_backups_own_line() -> None:
