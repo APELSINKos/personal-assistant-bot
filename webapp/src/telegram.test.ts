@@ -62,6 +62,17 @@ describe("telegram", () => {
     await expect(confirmAction("Удалить?")).resolves.toBe(false);
   });
 
+  it("takes a popup Telegram refuses for a no", async () => {
+    // telegram-web-app.js throws while another popup is open, or on a message over 256 units.
+    const app = installTelegram({
+      showConfirm: vi.fn(() => {
+        throw new Error("WebAppPopupOpened");
+      }),
+    });
+    await expect(confirmAction("Удалить?")).resolves.toBe(false);
+    expect(app.showConfirm).toHaveBeenCalled();
+  });
+
   describe("normalizeLaunchHash", () => {
     afterEach(() => {
       window.history.replaceState(null, "", "/");

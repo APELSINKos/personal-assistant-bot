@@ -168,11 +168,12 @@ function NewNote() {
 
   const trimmed = text.trim();
   const length = codePoints(trimmed);
-  const valid = length > 0 && length <= MAX_TEXT;
   // An item typed but not added goes with the note when the add button would take it.
   const typed = cleanItem(itemDraft);
   const typedLength = codePoints(typed);
   const pending = typedLength > 0 && typedLength <= MAX_ITEM && items.length < MAX_ITEMS ? typed : null;
+  // One it would not take (too long, or a 21st) keeps «Сохранить» off: the line under it says why.
+  const valid = length > 0 && length <= MAX_TEXT && (typed === "" || pending !== null);
   // Anything typed or added is asked about before it is left behind.
   const started = trimmed !== "" || items.length > 0 || typed !== "";
   const leave = async () => {

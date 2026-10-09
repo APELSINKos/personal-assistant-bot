@@ -49,6 +49,7 @@ def last_answer(fake) -> AnswerCallbackQuery:
 def stats(habit: Habit, **values: object) -> HabitStats:
     base: dict[str, object] = {
         "habit": habit,
+        "today": TODAY,
         "done_today": True,
         "streak": 42,
         "done_days": 200,
@@ -135,13 +136,89 @@ async def test_past_days_change_a_mark_round_the_circle(feed, fake, session, mak
     ]
     habit_id, yesterday = habit.id, date(2026, 10, 1)
     for expected in (True, False, None):
-        await feed(press("day", habit_id, yesterday.isoformat()))
+        shown = fake.of(EditMessageText)[-1].reply_markup.inline_keyboard[0][-2]
+        await feed(callback_update(shown.callback_data))
         done = await session.scalar(
             select(HabitMark.done).where(HabitMark.habit_id == habit_id, HabitMark.day == yesterday)
         )
         assert done is expected
         # yesterday's button shows the mark it now has
         assert buttons(fake)[0][-2].endswith({True: "✅", False: "❌", None: "⬜"}[expected])
+
+
+async def test_an_old_day_button_still_switches_the_mark(feed, fake, session, make_user) -> None:
+    # The button of «📅 Прошлые дни» before 2.6.1, still in the chats: it carries only its day
+    # and switches the mark that day has.
+    habit = await make_habit(session, make_user, days_old=3)
+    yesterday = date(2026, 10, 1)
+    for expected in (True, False, None):
+        await feed(press("day", habit.id, yesterday.isoformat()))
+        assert await session.scalar(select(HabitMark.done)) is expected
+        assert buttons(fake)[0][-2].endswith({True: "✅", False: "❌", None: "⬜"}[expected])
+
+
+async def test_a_past_day_gets_the_mark_its_button_offers_after_the_app(
+    feed, fake, session, make_user
+) -> None:
+    habit = await make_habit(session, make_user, days_old=3)
+    await feed(press("days", habit.id))
+    button = fake.of(EditMessageText)[-1].reply_markup.inline_keyboard[0][2]
+    assert button.text == "чт 1 ⬜"
+    # The app marks 1 October done meanwhile: the chat's ⬜ still means «done», not «missed».
+    owner = await session.get(User, habit.user_id)
+    assert owner is not None
+    await habits.set_mark(session, owner, habit.id, date(2026, 10, 1), True, now=NOW)
+    await session.commit()
+    await feed(callback_update(button.callback_data))
+    assert await session.scalar(select(HabitMark.done)) is True
+    assert buttons(fake)[0][2] == "чт 1 ✅"
+
+
+async def test_past_days_drawn_before_midnight_mark_the_days_they_show(
+    feed, fake, session, make_user, monkeypatch
+) -> None:
+    habit = await make_habit(session, make_user, days_old=8)
+    moment = [datetime(2026, 10, 1, 20, 59, 30, tzinfo=UTC)]  # 23:59:30 on 1 October in Moscow
+    monkeypatch.setattr(habits_router, "clock", lambda: moment[0])
+    await feed(press("days", habit.id))
+    drawn = fake.of(EditMessageText)[-1].reply_markup.inline_keyboard
+    assert [button.text for button in drawn[0] + drawn[1]] == [
+        "пт 25 ⬜",
+        "сб 26 ⬜",
+        "вс 27 ⬜",
+        "пн 28 ⬜",
+        "вт 29 ⬜",
+        "ср 30 ⬜",
+        "чт 1 ⬜",
+    ]
+    moment[0] = datetime(2026, 10, 1, 21, 0, 30, tzinfo=UTC)  # 00:00:30 on 2 October
+    await feed(callback_update(drawn[1][2].callback_data))  # 1 October, yesterday by now
+    marks = (await session.execute(select(HabitMark.day, HabitMark.done))).all()
+    assert [tuple(mark) for mark in marks] == [(date(2026, 10, 1), True)]
+    await feed(callback_update(drawn[0][0].callback_data))  # 25 September, a week ago by now
+    assert last_answer(fake).text == STALE
+    assert len((await session.scalars(select(HabitMark))).all()) == 1
+
+
+async def test_a_forged_or_stale_past_day_button_is_refused(feed, fake, session, make_user) -> None:
+    habit = await make_habit(session, make_user, days_old=3)  # begun on 29 September
+    owner = await session.get(User, habit.user_id)
+    assert owner is not None
+    # Begun on 21 September: the habit itself would take each of its days below.
+    older = await habits.create(session, owner, "Чтение", NOW - timedelta(days=11))
+    await session.commit()
+    for habit_id, value in (
+        (habit.id, "2026-10-01"),  # no mark to set
+        (habit.id, "2026-10-01~x"),
+        (habit.id, "garbage~1"),
+        (habit.id, "2026-10-03~1"),  # tomorrow
+        (habit.id, "2026-09-28~1"),  # before the habit
+        (older.id, "2026-09-25~1"),  # a week ago
+        (older.id, "2026-09-21~1"),
+    ):
+        await feed(press("dput", habit_id, value))
+        assert last_answer(fake).text == STALE, value
+    assert (await session.scalars(select(HabitMark))).all() == []
 
 
 async def test_a_forged_or_too_early_day_is_refused(feed, fake, session, make_user) -> None:
@@ -244,6 +321,8 @@ async def test_a_deleted_habits_buttons_say_so(feed, fake, session, make_user) -
         ("map", ""),
         ("days", ""),
         ("day", TODAY.isoformat()),
+        ("dput", f"{TODAY.isoformat()}~1"),
+        ("put", f"{TODAY.isoformat()}~1"),
         ("goal", ""),
         ("setgoal", "3"),
         ("style", ""),

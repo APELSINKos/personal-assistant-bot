@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     api_port: int = 8000
     # Requests per minute per user; zero would refuse every request.
     api_rate_limit: int = Field(120, ge=1)
+    # Swagger UI at /api/docs and the schema at /api/openapi.json, for development: Swagger UI
+    # loads its script from a CDN, so the server leaves them off.
+    api_docs: bool = False
     # The bot builds the MIREA group directory in the background (a full crawl takes about
     # 35 minutes); .env.example turns it off for development.
     mirea_directory: bool = True

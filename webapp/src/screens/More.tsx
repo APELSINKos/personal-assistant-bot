@@ -8,12 +8,13 @@ import {
 import type { City, WeatherCity } from "../api/types";
 import { Card } from "../components/Card";
 import { Credit } from "../components/Credit";
-import { SearchStatus } from "../components/SearchStatus";
+import { SearchProgress, SearchStatus } from "../components/SearchStatus";
 import { ErrorState, Loader } from "../components/States";
 import { SwipeRow } from "../components/SwipeRow";
 import { useTextLimit } from "../components/TextLimit";
 import { toast } from "../components/toastStore";
 import { useLang, useT } from "../i18n";
+import { clip } from "../lib/format";
 import { CURRENCY_CODES, currencyName, currencySign } from "../lib/money";
 import { useDebounced } from "../lib/useDebounced";
 import { openLink } from "../telegram";
@@ -90,7 +91,7 @@ function CitySearch({
         </div>
       )}
       <SearchStatus count={found > 0 ? t.more.citiesFound(found) : null}>
-        {searching && results.isError && !results.data && <p className="muted">{t.errors.upstream_unavailable}</p>}
+        {searching && <SearchProgress search={results} />}
         {searching && results.data?.length === 0 && <p className="muted">{t.more.noCities}</p>}
       </SearchStatus>
     </div>
@@ -99,11 +100,11 @@ function CitySearch({
 
 /**
  * The cities of the weather: the home one, whose clock everything keeps, and up to four more,
- * each deleted by a swipe without a question (it is easy to add again). The search is there only
- * when a button asks for it, and the same button hides it again: «Сменить домашний» puts the
- * city found in place of the home one, «Добавить город» adds it to the others. A city saved
- * closes the search, and the focus goes back to the button; one refused leaves it open, for
- * another choice.
+ * each deleted without a question by a swipe on a phone (it is easy to add again), and after one
+ * with a mouse or the keyboard. The search is there only when a button asks for it, and the same
+ * button hides it again: «Сменить домашний» puts the city found in place of the home one,
+ * «Добавить город» adds it to the others. A city saved closes the search, and the focus goes back
+ * to the button; one refused leaves it open, for another choice.
  */
 function CitiesCard({ home, list, index }: { home: string; list: UseQueryResult<WeatherCity[]>; index: number }) {
   const t = useT();
@@ -166,7 +167,11 @@ function CitiesCard({ home, list, index }: { home: string; list: UseQueryResult<
             const area = placeNames(city).slice(1).join(", ");
             return (
               <li key={city.id}>
-                <SwipeRow onDelete={() => remove.mutate(city.id)} deleteLabel={t.more.deleteCity}>
+                <SwipeRow
+                  onDelete={() => remove.mutate(city.id)}
+                  deleteLabel={t.more.deleteCity(city.name)}
+                  question={t.more.confirmDeleteCity(clip(city.name))}
+                >
                   <span className="city-list__name">{city.name}</span>
                   {area && <span className="muted city-list__area">{area}</span>}
                 </SwipeRow>
@@ -305,11 +310,13 @@ export function MoreScreen() {
 
       <Card title={t.more.language} index={3}>
         <div className="segmented" role="group" aria-label={t.more.language}>
+          {/* Each language is named in its own words, and a screen reader reads them so too. */}
           {(["auto", "ru", "en"] as const).map((option) => (
             <button
               type="button"
               key={option}
               className="segmented__option"
+              lang={option === "auto" ? undefined : option}
               aria-pressed={profile.language_setting === option}
               onClick={() => update.mutate({ language: option })}
             >

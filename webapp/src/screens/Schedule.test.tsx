@@ -7,6 +7,7 @@ import { BOT_CHAT_URL } from "../lib/links";
 import { installTelegram } from "../test/fakeTelegram";
 import { me, scheduleSource } from "../test/fixtures";
 import { mockApi, type ApiCall } from "../test/mockApi";
+import { RATE_LIMITED, refresh } from "../test/refresh";
 import { renderWithApp } from "../test/render";
 import { ScheduleScreen } from "./Schedule";
 
@@ -178,6 +179,44 @@ describe("Schedule", () => {
     expect(screen.getByLabelText("Группа МИРЭА")).toBeInTheDocument();
   });
 
+  it("says it is searching while the first answer is on the way, where the results are read out", async () => {
+    installTelegram();
+    const groups = held();
+    const { calls } = mockApi({
+      "GET /me": me,
+      "GET /schedule": { source: null },
+      "GET /schedule/groups?q=ikbo": groups.handler,
+    });
+    show();
+    fireEvent.change(await screen.findByLabelText("Группа МИРЭА"), { target: { value: "ikbo" } });
+    const searching = await screen.findByText("Ищу…");
+    expect(searching.closest('[role="status"]')).toHaveAttribute("aria-live", "polite");
+    // «Ищу…» is drawn as the search starts, a moment before its request goes out (an effect sends
+    // it): the answer waits for the request, or it would answer nothing and the search would hang.
+    await waitFor(() => expect(searches(calls)).toHaveLength(1));
+    expect(screen.getByText("Ищу…")).toBeInTheDocument();
+    groups.answer({ body: { groups: [{ id: 4805, name: "ИКБО-63-24" }], building: false } });
+    expect(await screen.findByRole("button", { name: "ИКБО-63-24" })).toBeInTheDocument();
+    expect(screen.queryByText("Ищу…")).not.toBeInTheDocument();
+  });
+
+  it("tries an unavailable group search once more, then says so", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    installTelegram();
+    const { calls } = mockApi({
+      "GET /me": me,
+      "GET /schedule": { source: null },
+      "GET /schedule/groups?q=ikbo": { status: 503, body: { status: 503, code: "upstream_unavailable", title: "Unavailable" } },
+    });
+    show();
+    fireEvent.change(await screen.findByLabelText("Группа МИРЭА"), { target: { value: "ikbo" } });
+    expect(await screen.findByText("Ищу…")).toBeInTheDocument();
+    await act(() => vi.advanceTimersByTimeAsync(5_000));
+    expect(screen.getByText("Сервис временно недоступен")).toBeInTheDocument();
+    expect(screen.queryByText("Ищу…")).not.toBeInTheDocument();
+    expect(searches(calls)).toHaveLength(2);
+  });
+
   it("starts looking for a group at two characters, and drops the suggestions below that", async () => {
     installTelegram();
     const { calls } = mockApi({
@@ -255,6 +294,22 @@ describe("Schedule", () => {
     expect(await screen.findByText("Это не похоже на календарь .ics")).toBeInTheDocument();
     expect(calls).toContainEqual({ method: "PUT", path: "/schedule", body: { url: "https://uni.example/login" } });
     expect(screen.getByRole("button", { name: "Подключить" })).toBeInTheDocument();
+  });
+
+  it("keeps a link typed for another source when a refresh fails", async () => {
+    installTelegram();
+    mockApi({ "GET /me": me, "GET /schedule": { source: scheduleSource } });
+    const { client } = show();
+    fireEvent.click(await screen.findByRole("button", { name: "Сменить источник" }));
+    const link = "webcal://uni.example/timetable.ics";
+    fireEvent.change(screen.getByLabelText("Ссылка на календарь"), { target: { value: link } });
+    mockApi({ "GET /me": RATE_LIMITED, "GET /schedule": { source: scheduleSource } });
+    await refresh(client, keys.me);
+    expect(screen.getByLabelText("Ссылка на календарь")).toHaveValue(link);
+    mockApi({ "GET /me": RATE_LIMITED, "GET /schedule": RATE_LIMITED });
+    await refresh(client, keys.schedule);
+    expect(screen.getByLabelText("Ссылка на календарь")).toHaveValue(link);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("uploads a picked .ics file", async () => {

@@ -19,7 +19,6 @@ MY_DAY = (
     "\n"
     "🌤 Москва: +10°C, малооблачно\n"
     "🚲 Сегодня хороший день для велосипеда\n"
-    "Данные о погоде: open-meteo.com\n"
     "\n"
     "📌 На сегодня напоминаний нет\n"
     "🎯 Привычек пока нет\n"
@@ -47,7 +46,7 @@ async def test_weather(feed, fake) -> None:
     await feed(message_update("🌤 Погода"))
     [reply] = fake.of(SendMessage)
     assert reply.text.startswith("🌤 Москва: +10°C, малооблачно")
-    assert reply.text.endswith("\n\nДанные о погоде: open-meteo.com")
+    assert reply.text.endswith("\n\n🚲 Сегодня хороший день для велосипеда")
     button = reply.reply_markup.inline_keyboard[-1][0]
     assert button.text == "🏙 Города"
     assert CityCb.unpack(button.callback_data) == CityCb(action="list", back="w")
@@ -63,7 +62,7 @@ async def test_today(feed, fake) -> None:
     await feed(message_update("📅 Мой день"))
     [sent] = fake.of(SendMessage)
     assert sent.text == MY_DAY
-    assert sent.link_preview_options.is_disabled  # open-meteo.com without a preview card
+    assert sent.link_preview_options.is_disabled  # no card of an address in a reminder or a note
     # The home city's hours and week, each as a message of its own.
     assert buttons(sent) == [["🕐 По часам", "📅 Неделя"]]
     assert [button.callback_data for button in sent.reply_markup.inline_keyboard[0]] == [
@@ -85,8 +84,8 @@ async def test_today_survives_upstream_failures(feed, fake, meteo, cbr, settings
     await feed(message_update("📅 Мой день"))
     [sent] = fake.of(SendMessage)
     assert "🌤 Погода временно недоступна" in sent.text and "💵" not in sent.text
-    # Without the weather neither its source nor the buttons of the forecast.
-    assert "open-meteo.com" not in sent.text and sent.reply_markup is None
+    # Without the weather no buttons of the forecast.
+    assert sent.reply_markup is None
     assert sent.link_preview_options.is_disabled
     settings.webapp_url = APP
     await feed(message_update("📅 Мой день"))
@@ -110,7 +109,7 @@ async def test_my_day_in_the_evening(feed, fake, now, session, make_user) -> Non
         "🌤 Москва: +10°C, малооблачно",
         "🚲 Сегодня хороший день для велосипеда",
         "Завтра: 🌤 +6…+13°C",
-        "Данные о погоде: open-meteo.com",
+        "",
     ]
     # The pinned ones under the count, the last pinned first.
     assert lines[-4:-1] == ["📝 Заметок: 3", "📌 Пароль от wifi: hunter2", "📌 Ещё покупки ✅ 1/1"]

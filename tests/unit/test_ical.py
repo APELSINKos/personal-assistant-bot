@@ -257,16 +257,18 @@ def test_a_flood_of_week_labels_is_refused_without_building_them_all() -> None:
     body = f"BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{events}END:VCALENDAR\r\n".encode()
     tracemalloc.start()
     try:
-        began = time.perf_counter()
+        began = time.process_time()
         with pytest.raises(InvalidInput) as caught:
             ical.parse(body, utc(2026, 9, 6, 21), utc(2026, 12, 27, 21), "Europe/Moscow")
-        took, (_, peak) = time.perf_counter() - began, tracemalloc.get_traced_memory()
+        took, (_, peak) = time.process_time() - began, tracemalloc.get_traced_memory()
     finally:
         tracemalloc.stop()
     assert caught.value.params == {"field": "calendar", "reason": "too_large"}
     # All built at once they took ~74 MB; a week at a time the budget stops them at ~26 MB.
     assert peak < 45 * 2**20
-    assert took < 5  # tracemalloc slows every allocation
+    # CPU seconds of this process, where it parses: a busy machine does not stretch them, but
+    # tracemalloc slows every allocation.
+    assert took < 5
 
 
 _FIRST_WEEK = ",".join(f"{date(2026, 9, 27) + timedelta(days=n):%Y%m%d}" for n in range(8))

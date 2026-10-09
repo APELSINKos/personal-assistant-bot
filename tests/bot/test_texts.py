@@ -46,13 +46,31 @@ WEATHER = WeatherNow(
 RATES = Rates(date(2026, 9, 28), Rate(84.1975, -0.3118), Rate(96.6671, 0.0))
 
 
+def habit_today(mark: bool | None) -> HabitStats:
+    """A daily habit with today's mark: done (True), skipped (False) or none yet (None)."""
+    return HabitStats(
+        habit=Habit(name="Спорт", weekly_goal=7, emoji="🎯"),
+        today=date(2026, 9, 28),
+        done_today=mark,
+        streak=5,
+        done_days=5,
+        total_days=5,
+        last_days=(True,) * 8 + (mark,),
+        record=5,
+        percent=100,
+        week_done=1,
+        week_goal=7,
+        week="1......",
+    )
+
+
 def day_data(**changes: object) -> TodayData:
     values: dict[str, object] = {
         "local_now": datetime(2026, 9, 28, 8, 0, tzinfo=MSK),
         "part_of_day": "morning",
         "weather": WEATHER,
         "reminders": [Reminder(text="встреча", due_at=datetime(2026, 9, 28, 9, 30, tzinfo=UTC))],
-        "habits": [],
+        "habits": [habit_today(True), habit_today(None), habit_today(None)],
         "habits_done": 1,
         "habits_total": 3,
         "notes_count": 4,
@@ -77,11 +95,9 @@ def test_weather_text() -> None:
         "Ощущается как +7°C, ветер 3 м/с\n"
         "Сегодня: +6…+13°C\n"
         "\n"
-        "🚲 Сегодня хороший день для велосипеда\n"
-        "\n"
-        "Данные о погоде: open-meteo.com"
+        "🚲 Сегодня хороший день для велосипеда"
     )
-    assert texts.weather_text(WEATHER, EN).endswith("\n\nWeather data: open-meteo.com")
+    assert texts.weather_text(WEATHER, EN).endswith("\n\n🚲 A great day for a bike ride")
 
 
 def test_weather_at_night_shows_the_moon_for_a_clear_sky() -> None:
@@ -111,9 +127,7 @@ def test_hours_text() -> None:
         "19:00 🌙 +11°C\n"
         "20:00 🌙 +10°C\n"
         "21:00 🌙 +9°C\n"
-        "22:00 🌙 +8°C\n"
-        "\n"
-        "Данные о погоде: open-meteo.com"
+        "22:00 🌙 +8°C"
     )
 
 
@@ -127,27 +141,21 @@ def test_hours_across_midnight() -> None:
         "Завтра, 29 сентября",
         "00:00 🌙 +7°C",
     ]
-    assert lines[-3:] == ["08:00 🌤 +8°C", "", "Данные о погоде: open-meteo.com"]
+    assert lines[-1] == "08:00 🌤 +8°C"
     # The date line comes first when every hour shown is tomorrow's.
     late = datetime(2026, 9, 28, 23, 30, tzinfo=MSK)
     lines = texts.hours_text(FORECAST, late, "Europe/Moscow", EN).split("\n")
     assert lines[:4] == ["🕐 Москва — hourly", "", "Tomorrow, September 29", "00:00 🌙 +7°C"]
-    assert len(lines) == 4 + 11 + 2  # twelve hours
+    assert len(lines) == 4 + 11  # twelve hours
 
 
 def test_hours_at_the_end_of_the_forecast() -> None:
     last = datetime(2026, 10, 4, 20, 30, tzinfo=MSK)  # three hours of the week are left
     lines = texts.hours_text(FORECAST, last, "Europe/Moscow", RU).split("\n")
-    assert lines[2:] == [
-        "21:00 🌙 +9°C",
-        "22:00 🌙 +8°C",
-        "23:00 🌙 +8°C",
-        "",
-        "Данные о погоде: open-meteo.com",
-    ]
+    assert lines[2:] == ["21:00 🌙 +9°C", "22:00 🌙 +8°C", "23:00 🌙 +8°C"]
     gone = datetime(2026, 10, 4, 23, 30, tzinfo=MSK)
     lines = texts.hours_text(FORECAST, gone, "Europe/Moscow", RU).split("\n")
-    assert lines[2:] == ["Почасового прогноза сейчас нет.", "", "Данные о погоде: open-meteo.com"]
+    assert lines[2:] == ["Почасового прогноза сейчас нет."]
     english = texts.hours_text(FORECAST, gone, "Europe/Moscow", EN)
     assert english.split("\n")[2] == "No hourly forecast right now."
 
@@ -223,9 +231,7 @@ def test_week_text() -> None:
         "чт, 1 окт. 🌤 +6…+13°C\n"
         "пт, 2 окт. 🌤 +6…+13°C\n"
         "сб, 3 окт. 🌤 +6…+13°C\n"
-        "вс, 4 окт. 🌤 +6…+13°C\n"
-        "\n"
-        "Данные о погоде: open-meteo.com"
+        "вс, 4 окт. 🌤 +6…+13°C"
     )
     assert texts.week_text(FORECAST, FORECAST_NOW, EN).split("\n")[:5] == [
         "📅 Москва — 7 days",
@@ -241,7 +247,7 @@ def test_the_week_just_after_midnight_has_six_days() -> None:
     asked = datetime(2026, 9, 27, 23, 50, tzinfo=MSK)
     forecast = parse_forecast(forecast_payload(asked), "Москва")
     text = texts.week_text(forecast, datetime(2026, 9, 28, 0, 5, tzinfo=MSK), RU)
-    assert text.split("\n")[2:-2] == [
+    assert text.split("\n")[2:] == [
         "Сегодня 🌤 +6…+13°C",
         "Завтра 🌤 +6…+13°C",
         "ср, 30 сент. 🌤 +6…+13°C",
@@ -260,8 +266,6 @@ def test_a_week_without_days_says_so() -> None:
         "📅 Москва — 7 дней",
         "",
         "Прогноза на неделю сейчас нет.",
-        "",
-        "Данные о погоде: open-meteo.com",
     ]
     english = texts.week_text(forecast, FORECAST_NOW, EN)
     assert english.split("\n")[2] == "No forecast for the week right now."
@@ -274,7 +278,6 @@ def test_today_text_full() -> None:
         "\n"
         "🌤 Москва: +10°C, малооблачно\n"
         "🚲 Сегодня хороший день для велосипеда\n"
-        "Данные о погоде: open-meteo.com\n"
         "\n"
         "📌 На сегодня 1 напоминание:\n"
         "• 12:30 — встреча\n"
@@ -290,6 +293,7 @@ def test_today_text_when_everything_is_missing() -> None:
         part_of_day="night",
         weather=None,
         reminders=[],
+        habits=[],
         habits_done=0,
         habits_total=0,
         notes_count=0,
@@ -335,19 +339,20 @@ def test_morning_text() -> None:
         "\n"
         "🌤 Москва: +10°C, малооблачно · днём до +13°C\n"
         "🚲 Сегодня хороший день для велосипеда\n"
-        "Данные о погоде: open-meteo.com\n"
         "\n"
         "📌 Сегодня:\n"
         "• 12:30 — встреча\n"
         "\n"
-        "🎯 Привычек на сегодня: 3 — не забудь отметить\n"
+        "🎯 Привычек на сегодня: 2 — не забудь отметить\n"  # one of the three is marked
         "🔥 Лучшая серия: «Спорт» — 5 дней\n"
         "💵 84,20 ₽ · 💶 96,67 ₽"
     )
 
 
 def test_morning_text_minimal() -> None:
-    data = day_data(weather=None, reminders=[], habits_total=0, best_streak=None, rates=None)
+    data = day_data(
+        weather=None, reminders=[], habits=[], habits_total=0, best_streak=None, rates=None
+    )
     assert texts.morning_text(data, "Alex", RU) == (
         "☀️ Доброе утро, Alex!\n"
         "📅 28 сентября, понедельник\n"
@@ -356,6 +361,27 @@ def test_morning_text_minimal() -> None:
         "\n"
         "📌 На сегодня напоминаний нет"
     )
+
+
+def habits_line(marks: Sequence[bool | None], t: Translator) -> list[str]:
+    """The digest's line of habits, if any, for habits with these marks today."""
+    habits = [habit_today(mark) for mark in marks]
+    data = day_data(habits=habits, habits_done=marks.count(True), habits_total=len(marks))
+    return [line for line in texts.morning_text(data, "Alex", t).split("\n") if "🎯" in line]
+
+
+def test_the_digest_counts_only_the_habits_not_yet_marked() -> None:
+    # «Спорт» marked just after midnight, or in the app at 07:05: one habit of the two to go.
+    assert habits_line([True, None], RU) == ["🎯 Привычек на сегодня: 1 — не забудь отметить"]
+    assert habits_line([True, None], EN) == ["🎯 Habits for today: 1 — don't forget to mark it"]
+    assert habits_line([None, False, None], RU) == [
+        "🎯 Привычек на сегодня: 2 — не забудь отметить"
+    ]
+    assert habits_line([None, False, None], EN) == [
+        "🎯 Habits for today: 2 — don't forget to mark them"
+    ]
+    # Done or skipped, every habit has its mark: nothing to remind of.
+    assert habits_line([True, False], RU) == habits_line([True, False], EN) == []
 
 
 def test_the_digest_tells_the_weather_now_and_the_days_highest() -> None:
@@ -553,7 +579,6 @@ def test_my_day_in_the_evening_with_all_of_its_weather() -> None:
         "🚲 Сегодня хороший день для велосипеда\n"
         "🎓 На пары (18:00): +12°C · после пар (19:30): +11°C, 💧 60 %\n"
         "Завтра: 🌧 +6…+13°C, 💧 80 %\n"
-        "Данные о погоде: open-meteo.com\n"
         "\n"
         "📌 На сегодня 1 напоминание:\n"
         "• 12:30 — встреча\n"
@@ -570,7 +595,7 @@ def test_my_day_in_the_evening_with_all_of_its_weather() -> None:
     assert english[5:8] == [
         "🎓 To classes (18:00): +12°C · after (19:30): +11°C, 💧 60%",
         "Tomorrow: 🌧 +6…+13°C, 💧 80%",
-        "Weather data: open-meteo.com",
+        "",
     ]
 
 
@@ -582,7 +607,6 @@ def test_the_digest_with_the_way_to_the_classes() -> None:
         "🌤 Москва: +10°C, малооблачно · днём до +13°C\n"
         "🚲 Сегодня хороший день для велосипеда\n"
         "🎓 На пары (09:00): +9°C · после пар (16:20): +13°C, 💧 70 %\n"
-        "Данные о погоде: open-meteo.com\n"
         "\n"
         "📌 Сегодня:\n"
         "• 12:30 — встреча\n"
@@ -590,10 +614,30 @@ def test_the_digest_with_the_way_to_the_classes() -> None:
         "• 09:00–10:30 ЛК Физика · А-16\n"
         "• 14:50–16:20 ПР Разработка баз данных · И-212-б\n"
         "\n"
-        "🎯 Привычек на сегодня: 3 — не забудь отметить\n"
+        "🎯 Привычек на сегодня: 2 — не забудь отметить\n"
         "🔥 Лучшая серия: «Спорт» — 5 дней\n"
         "💵 84,20 ₽ · 💶 96,67 ₽"
     )
+
+
+@pytest.mark.parametrize("t", [RU, EN], ids=["ru", "en"])
+def test_no_weather_names_its_source(t: Translator) -> None:
+    # Open-Meteo, GeoNames and the licence are named in /start and /help instead.
+    evening = day_data(
+        local_now=at("17:30"),
+        part_of_day="evening",
+        forecast=RAIN_HOME,
+        has_schedule=True,
+        lessons=[lesson_at("18:00", "19:30")],
+    )
+    for text in (
+        texts.weather_text(WEATHER, t),
+        texts.hours_text(FORECAST, FORECAST_NOW, "Europe/Moscow", t),
+        texts.week_text(FORECAST, FORECAST_NOW, t),
+        texts.today_text(evening, "Alex", t),  # with the way to the classes and tomorrow
+        texts.morning_text(classes_day("08:00"), "Alex", t),
+    ):
+        assert "open-meteo.com" not in text
 
 
 def test_reminder_list_is_capped_within_the_telegram_message_limit() -> None:
@@ -767,6 +811,8 @@ def fullest_day() -> TodayData:
         weather=replace(forecast.now, tips=TIPS),
         forecast=forecast,
         reminders=[Reminder(text="🎉" * 200, due_at=due) for _ in range(20)],
+        # Each line of habits at its longest: «10 из 10» in «Мой день», 10 to mark in the digest.
+        habits=[habit_today(None)] * 10,
         habits_total=10,
         habits_done=10,
         best_streak=Streak("П" * 50, 3650, "days"),
@@ -799,7 +845,6 @@ def test_my_day_and_the_digest_fit_telegram_however_full_the_day(t, render) -> N
         *texts.tip_lines(TIPS[:1] if my_day else TIPS, t),
         FULLEST_WAY[t.lang],
         *([FULLEST_TOMORROW[t.lang]] if my_day else []),
-        t("weather-credit"),
     ]
     if my_day:
         notes = lines.index(t("today-notes", count=50))
@@ -853,6 +898,7 @@ def test_every_list_fits_telegram_at_its_maxima(t) -> None:
     stats = [
         HabitStats(
             habit=Habit(id=n, name="🎉" * 50, weekly_goal=7, emoji="🎯"),
+            today=date(2026, 9, 28),
             done_today=None,
             streak=3650,
             done_days=3650,

@@ -5,6 +5,7 @@ import type { ClassesWeather, ForecastDay, PinnedNote, TodayLesson } from "../ap
 import { installTelegram } from "../test/fakeTelegram";
 import { habit, today } from "../test/fixtures";
 import { mockApi } from "../test/mockApi";
+import { RATE_LIMITED, refresh } from "../test/refresh";
 import { renderWithApp } from "../test/render";
 import { TodayScreen } from "./Today";
 
@@ -28,6 +29,29 @@ describe("Today", () => {
     expect(screen.getByText(/USD 84,20 ₽/)).toBeInTheDocument();
     expect(screen.getByText("📝 4 заметки")).toBeInTheDocument();
     expect(screen.getByText("🔥 Лучшая серия: «Спорт» — 5 дней")).toBeInTheDocument();
+  });
+
+  it("heads the screen with the day: its one h1", async () => {
+    installTelegram();
+    mockApi({ "GET /today": today });
+    renderWithApp(<TodayScreen />);
+    const title = await screen.findByRole("heading", { level: 1 });
+    expect(within(title).getByText("28")).toBeInTheDocument();
+    expect(title).toHaveTextContent(/понедельник\s*сентябрь 2026$/);
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+  });
+
+  it("titles the habits card plainly when there are no habits", async () => {
+    installTelegram();
+    const none = { ...today, habits: { done: 0, total: 0, items: [] }, best_streak: null };
+    mockApi({ "GET /today": none });
+    const { unmount } = renderWithApp(<TodayScreen />);
+    expect(await screen.findByRole("heading", { level: 2, name: "Привычки" })).toBeInTheDocument();
+    expect(screen.getByText("Привычек пока нет — добавь первую во вкладке «Привычки»")).toBeInTheDocument();
+    expect(screen.queryByText(/0 из 0/)).not.toBeInTheDocument();
+    unmount();
+    renderWithApp(<TodayScreen />, { lang: "en" });
+    expect(await screen.findByRole("heading", { level: 2, name: "Habits" })).toBeInTheDocument();
   });
 
   it("names the best streak in English, and only when there is one", async () => {
@@ -100,6 +124,18 @@ describe("Today", () => {
     renderWithApp(<TodayScreen />);
     expect(await screen.findByRole("button", { name: "Повторить" })).toBeInTheDocument();
   });
+
+  it("keeps the day on screen when a refresh fails", async () => {
+    installTelegram();
+    mockApi({ "GET /today": today });
+    const { client } = renderWithApp(<TodayScreen />);
+    expect(await screen.findByText("28")).toBeInTheDocument();
+    mockApi({ "GET /today": RATE_LIMITED });
+    await refresh(client, keys.today);
+    expect(client.getQueryState(keys.today)?.status).toBe("error");
+    expect(screen.getByText("28")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });
 
 describe("Today's weather", () => {
@@ -107,8 +143,8 @@ describe("Today's weather", () => {
     date: "2026-09-29", emoji: "🌧", description: "дождь", tmin: 6.1, tmax: 11.0, precip_chance: 80,
   };
 
-  it("opens the weather screen, and credits Open-Meteo under the card", async () => {
-    const app = installTelegram();
+  it("opens the weather screen, and names no source of the data under the card", async () => {
+    installTelegram();
     mockApi({ "GET /today": today });
     renderWithApp(<TodayScreen />);
     const card = await screen.findByRole("link", { name: /^Москва/ });
@@ -117,20 +153,16 @@ describe("Today's weather", () => {
     expect(within(card).getByText("ощущается как +7°")).toBeInTheDocument();
     expect(within(card).getByText("+6…+13°")).toBeInTheDocument();
     expect(within(card).queryByText(/Завтра/)).not.toBeInTheDocument(); // before 17:00 the server sends none
-    const credit = screen.getByRole("button", { name: "open-meteo.com" });
-    expect(card).not.toContainElement(credit);
-    expect(credit.closest("p")).toHaveTextContent("Данные о погоде: open-meteo.com");
-    fireEvent.click(credit);
-    expect(app.openLink).toHaveBeenCalledWith("https://open-meteo.com/");
+    // Open-Meteo, GeoNames and the licence are named in «Ещё» → «Данные».
+    expect(screen.queryByText(/open-meteo/)).not.toBeInTheDocument();
   });
 
-  it("opens the weather screen without the weather too, and credits no one then", async () => {
+  it("opens the weather screen without the weather too", async () => {
     installTelegram();
     mockApi({ "GET /today": { ...today, weather: null } });
     renderWithApp(<TodayScreen />);
     const card = await screen.findByRole("link", { name: /Погода временно недоступна/ });
     expect(card).toHaveAttribute("href", "/weather");
-    expect(screen.queryByText(/open-meteo/)).not.toBeInTheDocument();
   });
 
   it("tells tomorrow's weather in the evening, with a chance from 20 %", async () => {

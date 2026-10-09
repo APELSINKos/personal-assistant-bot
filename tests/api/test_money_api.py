@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from assistant.core.models import User
+from assistant.core.services import money
+from assistant.core.services.money_phrases import Quick
+
 
 async def categories(client, auth, user_id: int = 1) -> dict[str, int]:
     """The ids of the categories by name (the presets in Russian)."""
@@ -102,6 +106,32 @@ async def test_an_entry_changes_and_goes(client, auth) -> None:
     ).status_code == 404
 
 
+async def test_a_category_changed_in_the_app_teaches_quick_input(
+    client, auth, sessionmaker
+) -> None:
+    ids = await categories(client, auth)
+
+    async def guessed(note: str = "кофе") -> int:
+        async with sessionmaker() as session:  # read afresh, as the bot's next update would
+            user = await session.get(User, 1)
+            return (await money.guess_category(session, user, Quick(30000, note, None))).id
+
+    coffee = await add(client, auth, amount="250", category_id=ids["Кафе"], note="Кофе")
+    url = f"/api/money/entries/{coffee['entry']['id']}"
+    changed = await client.patch(url, json={"amount": "300"}, headers=auth())
+    assert changed.status_code == 200 and await guessed() == ids["Кафе"]
+    moved = await client.patch(url, json={"category_id": ids["Продукты"]}, headers=auth())
+    assert moved.status_code == 200 and await guessed() == ids["Продукты"]
+    # Only another category teaches, and the note it teaches is the one after the change.
+    other = await add(client, auth, amount="90", category_id=ids["Транспорт"], note="кофе")
+    url = f"/api/money/entries/{other['entry']['id']}"
+    assert (await client.patch(url, json={"amount": "95"}, headers=auth())).status_code == 200
+    assert await guessed() == ids["Продукты"]
+    both = {"category_id": ids["Кафе"], "note": "сюрприз"}
+    assert (await client.patch(url, json=both, headers=auth())).status_code == 200
+    assert (await guessed("сюрприз"), await guessed()) == (ids["Кафе"], ids["Продукты"])
+
+
 async def test_a_budget_warning_comes_once(client, auth) -> None:
     ids = await categories(client, auth)
     budget = await client.put("/api/money/budget", json={"amount": "1000"}, headers=auth())
@@ -129,6 +159,35 @@ async def test_a_budget_warning_comes_once(client, auth) -> None:
     for amount in ("0", "1000000000.01"):
         refused = await client.put("/api/money/budget", json={"amount": amount}, headers=auth())
         assert refused.status_code == 422 and refused.json()["field"] == "amount", amount
+
+
+async def test_a_corrected_or_deleted_entry_lets_the_budget_warn_again(client, auth) -> None:
+    ids = await categories(client, auth)
+    await client.put("/api/money/budget", json={"amount": "30000"}, headers=auth())
+
+    async def change(saved: dict, **body: object) -> list[int]:
+        changed = await client.patch(
+            f"/api/money/entries/{saved['entry']['id']}", json=body, headers=auth()
+        )
+        assert changed.status_code == 200, changed.json()
+        return [alert["threshold"] for alert in changed.json()["alerts"]]
+
+    typo = await add(client, auth, amount="26000", category_id=ids["Продукты"])
+    assert [alert["threshold"] for alert in typo["alerts"]] == [80]
+    assert await change(typo, amount="2600") == []
+    real = await add(client, auth, amount="22000", category_id=ids["Продукты"])
+    assert real["alerts"] == [
+        {
+            "category_id": None, "emoji": None, "name": None, "threshold": 80, "spent": 2460000,
+            "budget": 3000000,
+        }
+    ]  # fmt: skip
+    gone = await client.delete(f"/api/money/entries/{real['entry']['id']}", headers=auth())
+    assert gone.status_code == 204
+    again = await add(client, auth, amount="22000", category_id=ids["Продукты"])
+    assert [alert["threshold"] for alert in again["alerts"]] == [80]
+    # 24 100 of 30 000 after the change is still over 80 %: the warning is not shown twice.
+    assert await change(again, amount="21500", note="рынок") == []
 
 
 async def test_categories_are_made_renamed_hidden_and_budgeted(client, auth) -> None:

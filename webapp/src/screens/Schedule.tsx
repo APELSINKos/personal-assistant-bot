@@ -1,6 +1,5 @@
 import { useRef, useState, type FormEvent } from "react";
 import {
-  errorCode,
   GROUP_QUERY_MAX,
   searchable,
   useConnectSchedule,
@@ -15,12 +14,12 @@ import {
 } from "../api/queries";
 import type { AlertMinutes, ScheduleSource } from "../api/types";
 import { Card } from "../components/Card";
-import { SearchStatus } from "../components/SearchStatus";
+import { SearchProgress, SearchStatus } from "../components/SearchStatus";
 import { ErrorState, Loader } from "../components/States";
 import { useTextLimit } from "../components/TextLimit";
 import { toast } from "../components/toastStore";
 import { WriteRefusedCard } from "../components/WriteRefusedCard";
-import { errorText, useLang, useT } from "../i18n";
+import { useLang, useT } from "../i18n";
 import { shortMoment } from "../lib/format";
 import { useDebounced } from "../lib/useDebounced";
 import { useWriteAccess } from "../lib/useWriteAccess";
@@ -106,9 +105,7 @@ function ConnectForm({ onDone, onCancel }: { onDone: () => void; onCancel?: () =
           </div>
         )}
         <SearchStatus count={found > 0 ? t.schedule.groupsFound(found) : null}>
-          {searching && groups.isError && !groups.data && (
-            <p className="muted">{errorText(t, errorCode(groups.error))}</p>
-          )}
+          {searching && <SearchProgress search={groups} />}
           {searching && groups.data?.building && <p className="muted">{t.schedule.building}</p>}
           {searching && groups.data && !groups.data.building && groups.data.groups.length === 0 && (
             <p className="muted">{t.schedule.noGroups}</p>
@@ -253,8 +250,10 @@ export function ScheduleScreen() {
   const schedule = useSchedule();
   const [changing, setChanging] = useState(false);
 
-  if (me.isError) return <ErrorState onRetry={() => void me.refetch()} />;
-  if (schedule.isError) return <ErrorState onRetry={() => void schedule.refetch()} />;
+  // A failed refresh keeps the screen, and a link typed into it: only a first load that failed is
+  // an error.
+  if (me.isLoadingError) return <ErrorState onRetry={() => void me.refetch()} />;
+  if (schedule.isLoadingError) return <ErrorState onRetry={() => void schedule.refetch()} />;
   if (me.isPending || schedule.isPending) return <Loader />;
 
   const source = schedule.data.source;

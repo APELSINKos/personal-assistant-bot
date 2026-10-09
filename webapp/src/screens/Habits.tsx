@@ -1,13 +1,12 @@
 import type { CSSProperties } from "react";
 import { Link } from "wouter";
-import { useHabits, useMe, useSetMark } from "../api/queries";
+import { useHabits, useSetMark } from "../api/queries";
 import type { Habit } from "../api/types";
 import { Card } from "../components/Card";
 import { Fab } from "../components/Fab";
 import { HabitToggle, nextMark, WeekDots } from "../components/HabitBits";
 import { Empty, ErrorState, Loader } from "../components/States";
 import { useT } from "../i18n";
-import { localTodayIso } from "../lib/format";
 
 function Progress({ habit }: { habit: Habit }) {
   const t = useT();
@@ -21,18 +20,12 @@ function Progress({ habit }: { habit: Habit }) {
 
 export function HabitsScreen() {
   const t = useT();
-  const me = useMe();
-  // "Today" is the city's today; until /me names the city's zone, a mark could hit another day.
-  const zone = me.data?.city.timezone;
   const habits = useHabits();
   const setMark = useSetMark();
 
   if (habits.isPending) return <Loader />;
   // A failed refresh keeps the list on screen: only a first load that failed is an error.
   if (habits.isLoadingError) return <ErrorState onRetry={() => void habits.refetch()} />;
-  // Without /me no mark could ever be made: «Повторить» asks for it again, where every toggle
-  // would wait, disabled, for an answer that is not coming. A failed refresh keeps the zone known.
-  if (me.isLoadingError) return <ErrorState onRetry={() => void me.refetch()} />;
 
   return (
     <>
@@ -48,12 +41,11 @@ export function HabitsScreen() {
                 <Progress habit={habit} />
               </span>
             </Link>
+            {/* The day the list was counted for, not the device's today: a tap after midnight
+                still marks the day whose mark the toggle shows. */}
             <HabitToggle
               habit={habit}
-              disabled={zone === undefined}
-              onToggle={() => {
-                if (zone) setMark.mutate({ id: habit.id, day: localTodayIso(zone), done: nextMark(habit.done_today) });
-              }}
+              onToggle={() => setMark.mutate({ id: habit.id, day: habit.day, done: nextMark(habit.done_today) })}
             />
             <WeekDots week={habit.week} />
           </div>

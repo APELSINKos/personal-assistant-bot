@@ -175,6 +175,20 @@ describe("optimistic mutation rollback", () => {
     await waitFor(() =>
       expect(client.getQueryData<Habit[]>(keys.habits)?.[0]?.done_today).toBeNull());
   });
+
+  it("puts back a habit whose delete failed", async () => {
+    const client = createQueryClient();
+    client.setQueryData(keys.habits, [habit]);
+    const { pending, resolveAt } = controllableFetch();
+    const { result } = renderHook(() => useDeleteHabit(), { wrapper: wrapperFor(client) });
+
+    act(() => result.current.mutate(habit.id));
+    await waitFor(() => expect(client.getQueryData<Habit[]>(keys.habits)).toEqual([]));
+    expect(pending).toHaveLength(1);
+    act(() => resolveAt(0, 500, { status: 500, code: "generic", title: "Oops" }));
+    await waitFor(() => expect(statuses(client)).toEqual(["error"]));
+    expect(client.getQueryData<Habit[]>(keys.habits)).toEqual([habit]);
+  });
 });
 
 describe("useSetMark race safety", () => {
@@ -339,7 +353,9 @@ describe("useUpdateMe", () => {
     await waitFor(() => expect(client.getQueryData<Me>(keys.me)).toEqual(last));
   });
 
-  it("asks for the weather again after a change of language: the server words it in that language", async () => {
+  it("asks again for what the server words in the user's language once the language changes", async () => {
+    // Every forecast and the weather's cities, the calendar's repeats, the reminders, the cities found.
+    const worded = [keys.weather, ["agenda"], keys.reminders, ["cities"]];
     const client = createQueryClient();
     client.setQueryData(keys.me, me);
     const invalidate = vi.spyOn(client, "invalidateQueries");
@@ -347,12 +363,26 @@ describe("useUpdateMe", () => {
     const { result } = renderHook(() => useUpdateMe(), { wrapper: wrapperFor(client) });
     act(() => result.current.mutate({ language: "en" }));
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.weather }); // every forecast and the cities
-    // Another setting leaves the weather as it is.
+    for (const queryKey of worded) expect(invalidate).toHaveBeenCalledWith({ queryKey });
+    // Another setting leaves them as they are.
     invalidate.mockClear();
     act(() => result.current.mutate({ morning_enabled: false }));
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: keys.today }));
-    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: keys.weather });
+    for (const queryKey of worded) expect(invalidate).not.toHaveBeenCalledWith({ queryKey });
+  });
+
+  it("puts the settings back when a change fails", async () => {
+    const client = createQueryClient();
+    client.setQueryData(keys.me, me);
+    const { pending, resolveAt } = controllableFetch();
+    const { result } = renderHook(() => useUpdateMe(), { wrapper: wrapperFor(client) });
+
+    act(() => result.current.mutate({ morning_time: "07:15" }));
+    await waitFor(() => expect(client.getQueryData<Me>(keys.me)?.morning.time).toBe("07:15"));
+    expect(pending).toHaveLength(1);
+    act(() => resolveAt(0, 500, { status: 500, code: "generic", title: "Oops" }));
+    await waitFor(() => expect(statuses(client)).toEqual(["error"]));
+    expect(client.getQueryData<Me>(keys.me)).toEqual(me);
   });
 });
 

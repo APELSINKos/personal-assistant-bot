@@ -8,6 +8,7 @@ import asyncio
 import contextlib
 import logging
 import math
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -34,7 +35,7 @@ from assistant.core.clients.cbr import CbrClient
 from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.errors import NotFound
 from assistant.core.i18n import Translator, resolve_language, translator
-from assistant.core.models import FsmState, Lesson, Reminder, User
+from assistant.core.models import FsmState, Lesson, Reminder, ReminderStatus, User
 from assistant.core.services import digest, reminders, schedule, sharing, users
 from assistant.core.timeutil import digest_window_date, now_local, to_local, utcnow
 
@@ -49,6 +50,13 @@ REFRESH_BATCH = 2  # sources per refresh pass, a download each: stop() waits for
 # every tick: one failure of Open-Meteo at 08:00 must not cost the weather to everyone whose
 # digest is due at that minute. Past them the digest goes without it.
 WEATHER_WAIT_MINUTES = 10
+# A tick that has been running this long is stuck, and so is a scheduler that has not begun one
+# for this long: alive() turns false, the watchdog (core.watchdog) is no longer fed, and systemd
+# restarts the bot. The slowest tick is one where Telegram does not answer: every digest due in it
+# waits out the 60-second timeout (send_digests goes on after a network error), about 15 minutes
+# for today's users. Past about 30 digests due at once such a tick restarts the bot, which loses
+# nothing: the work is saved item by item, and what was not sent is still due.
+STALL_AFTER = 30 * 60.0
 
 
 @dataclass(frozen=True)
@@ -62,6 +70,16 @@ class Delivery:
 
 def _translator(user: User) -> Translator:
     return translator(resolve_language(user.language, user.tg_language))
+
+
+def _same_firing(current: Reminder, sent: Reminder) -> bool:
+    """Whether the reminder is still the firing that was sent: nothing moved, snoozed, finished
+    or cancelled it while the message was on its way."""
+    return (
+        current.status is ReminderStatus.PENDING
+        and current.occurrence_at == sent.occurrence_at
+        and current.due_at == sent.due_at
+    )
 
 
 def reminder_text(
@@ -89,6 +107,7 @@ class Scheduler:
         interval: float = 20.0,
         clock: Callable[[], datetime] = utcnow,
         calendars: Calendars | None = None,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self._bot = bot
         self._calendars = calendars
@@ -100,11 +119,14 @@ class Scheduler:
         self._last_cleanup: datetime | None = None
         self._stopping = asyncio.Event()
         self._refreshing: asyncio.Task[None] | None = None
+        self._monotonic = monotonic
+        self._beat = monotonic()  # when the current (or the last) tick began
 
     async def run(self) -> None:
         log.info("Scheduler started, every %.0f s", self._interval)
         try:
             while not self._stopping.is_set():
+                self._beat = self._monotonic()
                 await self.tick()
                 # Sleep until the next tick, but wake up at once when stop() is called.
                 with contextlib.suppress(TimeoutError):
@@ -119,6 +141,11 @@ class Scheduler:
                 self._refreshing.cancel()
                 await asyncio.wait({self._refreshing})
         log.info("Scheduler stopped")
+
+    def alive(self) -> bool:
+        """Whether the current (or the last) tick began less than STALL_AFTER ago: false once
+        a tick hangs or run() has died."""
+        return self._monotonic() - self._beat < STALL_AFTER
 
     def stop(self) -> None:
         """Finish the current tick and the schedule refresh in flight (their writes included)
@@ -184,25 +211,26 @@ class Scheduler:
             return Delivery(False, error=f"{type(error).__name__}: {error.message}")
         return Delivery(True)
 
-    async def _update_reminder(self, reminder_id: int, mutate: Callable[[Reminder], None]) -> None:
+    async def _update_reminder(self, sent: Reminder, mutate: Callable[[Reminder], None]) -> None:
         """Re-fetch one reminder in its own session and commit a single mutation.
 
         Never holds a write transaction open across a network await: each call opens,
-        writes and commits before returning. A reminder gone by the time we get here
-        (e.g. the user was deleted meanwhile) is silently skipped.
+        writes and commits before returning. The mutation lands only on the firing that was
+        sent: a reminder moved, snoozed, done or cancelled while the message was on its way
+        keeps that change, and one gone meanwhile (e.g. the user was deleted) is skipped.
         """
         async with self._sessionmaker() as session:
-            reminder = await session.get(Reminder, reminder_id)
-            if reminder is not None:
+            reminder = await session.get(Reminder, sent.id)
+            if reminder is not None and _same_firing(reminder, sent):
                 mutate(reminder)
                 await session.commit()
 
     async def _fail_and_block(
-        self, reminder_id: int, user_id: int, error: str, now: datetime, tz: str
+        self, sent: Reminder, user_id: int, error: str, now: datetime, tz: str
     ) -> None:
         async with self._sessionmaker() as session:
-            reminder = await session.get(Reminder, reminder_id)
-            if reminder is not None:
+            reminder = await session.get(Reminder, sent.id)
+            if reminder is not None and _same_firing(reminder, sent):
                 reminders.give_up(reminder, error, now, tz)
             await users.mark_blocked(session, user_id)
             await session.commit()
@@ -229,7 +257,7 @@ class Scheduler:
                 )
                 if delivery.retry_after is not None:
                     await self._update_reminder(
-                        reminder.id,
+                        reminder,
                         partial(
                             reminders.schedule_retry,
                             now=now,
@@ -241,24 +269,24 @@ class Scheduler:
                     break
                 if delivery.ok:
                     await self._update_reminder(
-                        reminder.id, partial(reminders.mark_delivered, now=now, tz=user.timezone)
+                        reminder, partial(reminders.mark_delivered, now=now, tz=user.timezone)
                     )
                     sent += 1
                 elif delivery.blocked:
                     await self._fail_and_block(
-                        reminder.id, user.id, delivery.error, now, user.timezone
+                        reminder, user.id, delivery.error, now, user.timezone
                     )
                     blocked.add(user.id)
                     log.info("reminder %s: gave up this firing: %s", reminder.id, delivery.error)
                 elif delivery.permanent:
                     await self._update_reminder(
-                        reminder.id,
+                        reminder,
                         partial(reminders.give_up, error=delivery.error, now=now, tz=user.timezone),
                     )
                     log.info("reminder %s: gave up this firing: %s", reminder.id, delivery.error)
                 else:
                     await self._update_reminder(
-                        reminder.id,
+                        reminder,
                         partial(
                             reminders.schedule_retry,
                             now=now,
@@ -278,7 +306,7 @@ class Scheduler:
                 # move on. No reminder text in the log — only ids and error types.
                 log.exception("reminder %s failed", reminder.id)
                 await self._update_reminder(
-                    reminder.id,
+                    reminder,
                     partial(
                         reminders.schedule_retry,
                         now=now,
@@ -292,7 +320,13 @@ class Scheduler:
         async with self._sessionmaker() as session:
             candidates = (
                 await session.scalars(
-                    select(User).where(User.morning_enabled.is_(True), User.bot_blocked.is_(False))
+                    select(User).where(
+                        User.morning_enabled.is_(True),
+                        User.bot_blocked.is_(False),
+                        # Telegram refuses a first message to someone who never wrote to the bot
+                        # nor allowed it in the app, and that refusal would mark them blocked.
+                        User.can_write.is_(True),
+                    )
                 )
             ).all()
         # The session is closed; the loaded attributes stay readable on the detached objects.
@@ -428,5 +462,6 @@ class Scheduler:
             )
             alerts = await schedule.forget_alerts(session, now - ALERTS_KEPT)
             cards = await sharing.prune(session, now)
+            finished = await reminders.forget_finished(session, now)
             await session.commit()
-        return int(result.rowcount) + alerts + cards  # type: ignore[attr-defined]
+        return int(result.rowcount) + alerts + cards + finished  # type: ignore[attr-defined]

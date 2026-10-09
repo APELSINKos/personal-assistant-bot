@@ -108,7 +108,6 @@ weather-week-title = 📅 { $city } — 7 days
 weather-day = { $label } { $emoji } { $range }
 weather-day-chance = { $label } { $emoji } { $range } 💧 { $chance }%
 weather-days-none = No forecast for the week right now.
-weather-credit = Weather data: open-meteo.com
 
 ## My day and the morning digest
 today-title = { $part ->
@@ -156,7 +155,10 @@ morning-reminders = { $count ->
         [0] 📌 No reminders for today
        *[other] 📌 Today:
     }
-morning-habits = 🎯 Habits for today: { $count } — don't forget to mark them
+morning-habits = 🎯 Habits for today: { $count } — don't forget to mark { $count ->
+        [one] it
+       *[other] them
+    }
 
 ## Exchange rates
 rates-title = 💱 Bank of Russia rates for { $date }

@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { type CSSProperties, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
-import { useDeleteHabit, useHabit, useMarkDay, useMe, useShareHabit } from "../api/queries";
+import { isGone, useDeleteHabit, useHabit, useMarkDay, useMe, useShareHabit } from "../api/queries";
 import type { HabitDetail } from "../api/types";
 import { Card } from "../components/Card";
 import { HabitLoadError } from "../components/HabitBits";
@@ -41,7 +41,11 @@ export function HabitScreen() {
   const remove = useDeleteHabit();
   const [month, setMonth] = useState<string | null>(null);
 
-  if (habit.isError) return <HabitLoadError error={habit.error} onRetry={() => void habit.refetch()} />;
+  // A failed refresh keeps the habit on screen: only a first load that failed is an error, and a
+  // refresh that finds the habit deleted meanwhile says so.
+  if (habit.isLoadingError || isGone(habit.error)) {
+    return <HabitLoadError error={habit.error} onRetry={() => void habit.refetch()} />;
+  }
   // The month is shown by the city's today: without /me there is none to wait for; a failed
   // refresh of /me keeps the zone already known.
   if (me.isLoadingError) return <ErrorState onRetry={() => void me.refetch()} />;

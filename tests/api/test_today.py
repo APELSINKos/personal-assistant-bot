@@ -102,6 +102,11 @@ async def test_today_survives_upstream_failures(client, auth, meteo, cbr) -> Non
     assert response.json()["weather"] is None and response.json()["rates"] is None
 
 
+async def test_today_spends_the_weather_budget_of_its_user(client, auth, meteo) -> None:
+    assert (await client.get("/api/today", headers=auth(7))).status_code == 200
+    assert meteo.user_ids == [7]
+
+
 async def test_weather_and_rates(client, auth) -> None:
     weather = (await client.get("/api/weather", headers=auth())).json()
     today = weather["days"][0]

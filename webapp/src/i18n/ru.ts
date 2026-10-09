@@ -58,6 +58,7 @@ export const ru = {
     save: "Сохранить",
     retry: "Повторить",
     loading: "Загрузка…",
+    searching: "Ищу…",
     add: "Добавить",
     saved: "Сохранено",
     sections: "Разделы",
@@ -108,7 +109,6 @@ export const ru = {
     sun: (sunrise: string, sunset: string) => `🌅 ${sunrise} · 🌇 ${sunset}`,
     polarNight: "🌑 Полярная ночь",
     polarDay: "☀️ Полярный день",
-    credit: "Данные о погоде: open-meteo.com",
     cityGone: "Этого города уже нет в списке",
     unavailable: "Погода временно недоступна",
   },
@@ -252,6 +252,7 @@ export const ru = {
     emptyCategory: "В этой категории в этом месяце записей нет.",
     showAll: (name: string) => `Показать все записи, не только «${name}»`,
     deleteEntry: "Удалить запись",
+    deleteRow: (title: string, amount: string) => `Удалить запись «${title}», ${amount}`,
     add: "Добавить запись",
     newEntry: "Новая запись",
     editEntry: "Запись",
@@ -323,10 +324,12 @@ export const ru = {
     newHome: "Новый домашний город",
     cityToAdd: "Какой город добавить",
     citiesLimit: "До 5 городов вместе с домашним",
-    deleteCity: "Удалить город",
+    deleteCity: (name: string) => `Удалить город «${name}»`,
+    confirmDeleteCity: (name: string) => `Удалить город «${name}»?`,
     data: "Данные",
-    // The licence's name does not break across lines.
-    credits: "Погода — open-meteo.com, названия городов — geonames.org; лицензия CC\u00a0BY\u00a04.0 (creativecommons.org/licenses/by/4.0), приложение округляет данные и добавляет советы.",
+    // The licence's name does not break across lines, and no line starts with a dash: each dash
+    // keeps the word before it.
+    credits: "Погода\u00a0— open-meteo.com, названия городов\u00a0— geonames.org; лицензия CC\u00a0BY\u00a04.0 (creativecommons.org/licenses/by/4.0), приложение округляет данные и добавляет советы.",
   },
   errors: {
     generic: "Что-то пошло не так. Попробуй ещё раз.",

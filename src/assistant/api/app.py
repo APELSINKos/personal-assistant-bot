@@ -47,9 +47,9 @@ def create_app(
     app = FastAPI(
         title="Personal Assistant API",
         version=__version__,
-        docs_url="/api/docs",
+        docs_url="/api/docs" if settings.api_docs else None,
         redoc_url=None,
-        openapi_url="/api/openapi.json",
+        openapi_url="/api/openapi.json" if settings.api_docs else None,
     )
     app.state.assistant = AppState(
         settings=settings,

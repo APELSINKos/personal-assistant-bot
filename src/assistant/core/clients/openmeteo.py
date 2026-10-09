@@ -2,11 +2,13 @@
 
 One forecast request per place carries all the bot and the app show; its answer is checked
 before it is kept. At most two forecasts are asked for at once, and a failure of Open-Meteo
-pauses forecasts for a minute."""
+pauses forecasts for a minute. Every request, forecast or search, counts against a budget of
+the process and of the user it is for."""
 
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 import time
 from collections import OrderedDict
@@ -17,7 +19,10 @@ from typing import Any
 import httpx
 
 from assistant.core.errors import UpstreamUnavailable
+from assistant.core.ratelimit import RateLimiter
 from assistant.core.timeutil import is_valid_timezone
+
+log = logging.getLogger(__name__)
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
@@ -80,6 +85,16 @@ PAUSE = 60.0  # seconds without forecast requests after Open-Meteo failed
 SEARCH_TTL = 3600.0
 SEARCH_QUERIES = 256  # searches kept per process
 SEARCH_COUNT = 5  # places one geocoding request offers
+# Requests to Open-Meteo, forecasts and searches together, within a sliding day. The free plan
+# allows an IP under 600 calls a minute, 5 000 an hour and 10 000 a day; a forecast is 2.3 calls,
+# and the bot and the API share the server's IP. A process's budget, even spent within one hour,
+# keeps the two under the hourly limit (2 × 1 000 × 2.3 = 4 600) and so under the daily one, but
+# only between restarts: the budgets live in the processes' memory. A user's budget keeps one
+# account from spending it.
+BUDGET_WINDOW = 86_400.0
+PROCESS_BUDGET = 1_000
+USER_BUDGET = 200
+BUDGET_WARN_EVERY = 3_600.0  # seconds between two log lines about a spent process budget
 
 
 @dataclass(frozen=True)
@@ -196,13 +211,19 @@ class OpenMeteoClient:
         self._searches: _Cache[tuple[str, str], tuple[City, ...]] = _Cache(
             SEARCH_TTL, SEARCH_QUERIES, clock
         )
+        self._budget = RateLimiter(PROCESS_BUDGET, BUDGET_WINDOW, clock)
+        self._user_budgets = RateLimiter(USER_BUDGET, BUDGET_WINDOW, clock)
+        self._warned_at = -math.inf  # when the log last told of the spent process budget
 
-    async def forecast(self, lat: float, lon: float) -> dict[str, Any]:
+    async def forecast(
+        self, lat: float, lon: float, *, user_id: int | None = None
+    ) -> dict[str, Any]:
         """The forecast for the place, checked by check_forecast and at most 10 minutes old.
         Places are told apart to 0.01°, and Open-Meteo gets no more: it keeps its logs.
 
-        UpstreamUnavailable when Open-Meteo fails, during the pause after a failure, and when
-        no answer comes within the deadline."""
+        UpstreamUnavailable when Open-Meteo fails, during the pause after a failure, when no
+        answer comes within the deadline, and when the process's budget or that of the user
+        `user_id` is spent (None: the process's alone). A kept forecast costs no budget."""
         key = (round(lat, 2), round(lon, 2))
         if (kept := self._kept(key)) is not None:
             return kept
@@ -213,6 +234,7 @@ class OpenMeteoClient:
                 # behind one that has just fetched the same place.
                 if (kept := self._kept(key)) is not None:
                     return kept
+                self._spend(user_id)
                 asked = True
                 return await self._ask(key)
         except TimeoutError as error:
@@ -257,24 +279,39 @@ class OpenMeteoClient:
     def _pause(self) -> None:
         self._resume_at = self._clock() + PAUSE
 
-    async def search(self, name: str, lang: str) -> list[City]:
+    def _spend(self, user_id: int | None) -> None:
+        """Count a request about to go out, against the user's budget first: one the user's
+        budget refuses costs the process's nothing. UpstreamUnavailable when either is spent;
+        no pause, Open-Meteo has not failed."""
+        if user_id is not None and self._user_budgets.check(user_id) is not None:
+            raise UpstreamUnavailable(service="open-meteo")
+        if self._budget.check(0) is not None:
+            now = self._clock()
+            if now - self._warned_at >= BUDGET_WARN_EVERY:
+                self._warned_at = now
+                log.warning("Open-Meteo: this process spent its %d requests a day", PROCESS_BUDGET)
+            raise UpstreamUnavailable(service="open-meteo")
+
+    async def search(self, name: str, lang: str, *, user_id: int | None = None) -> list[City]:
         """Places called `name`, named in `lang`, only those whose time zone the server knows.
-        Kept for an hour, nothing found too; UpstreamUnavailable on a failure, not kept."""
+        Kept for an hour, nothing found too; UpstreamUnavailable on a failure, not kept. Every
+        spelling tried spends the budgets, as a forecast does."""
         query = " ".join(name.split())
         key = (query.lower(), lang)
         found = self._searches.get(key)
         if found is None:
             found = ()
             for attempt in _attempts(query):
-                found = await self._look_up(attempt, lang)
+                found = await self._look_up(attempt, lang, user_id)
                 if found:
                     break
             self._searches.put(key, found)
         return list(found)
 
-    async def _look_up(self, name: str, lang: str) -> tuple[City, ...]:
-        """One geocoding request. The geocoder is a service apart: a request takes no forecast
-        slot and neither minds nor opens the pause."""
+    async def _look_up(self, name: str, lang: str, user_id: int | None) -> tuple[City, ...]:
+        """One geocoding request, which spends the budgets. The geocoder is a service apart: a
+        request takes no forecast slot and neither minds nor opens the pause."""
+        self._spend(user_id)
         params: dict[str, str | int] = {"name": name, "count": SEARCH_COUNT, "language": lang}
         try:
             async with asyncio.timeout(self._deadline):

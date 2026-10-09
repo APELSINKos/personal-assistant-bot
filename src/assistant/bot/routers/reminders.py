@@ -160,6 +160,7 @@ async def _ask_time(send: Send, ctx: Ctx, parsed: Parsed, local_now: datetime) -
         {
             "parsed": phrases.dump(parsed),
             "at": local_now.isoformat(),
+            "tz": ctx.user.timezone,
             "card": card,
             "hint": "hint-reminder-time",
         }
@@ -185,7 +186,9 @@ async def _offer(send: Send, ctx: Ctx, parsed: Parsed, local_now: datetime) -> N
         await _ask_time(send, ctx, parsed, local_now)
         return
     when = parsed.when(local_now)
-    if when is not None and when <= local_now.replace(tzinfo=None):
+    # «через …» is always ahead (✅ checks the real clock), and naive wall times compare
+    # wrongly inside the hour that repeats when the clocks go back.
+    if when is not None and parsed.delta is None and when <= local_now.replace(tzinfo=None):
         await send(ctx.t("reminder-past"), None)
         await _ask_time(send, ctx, parsed, local_now)
         return
@@ -195,6 +198,7 @@ async def _offer(send: Send, ctx: Ctx, parsed: Parsed, local_now: datetime) -> N
         {
             "parsed": phrases.dump(parsed),
             "at": local_now.isoformat(),
+            "tz": ctx.user.timezone,
             "card": card,
             "hint": "reminder-use-card",
         }
@@ -257,6 +261,7 @@ class _Draft:
     parsed: Parsed
     at: datetime
     card: int
+    tz: str | None  # the zone it was drawn in; a draft kept before 2.6.1 has none
 
 
 async def _draft(ctx: Ctx) -> _Draft | None:
@@ -264,7 +269,13 @@ async def _draft(ctx: Ctx) -> _Draft | None:
     raw, at, card = data.get("parsed"), data.get("at"), data.get("card")
     if not isinstance(raw, dict) or not isinstance(at, str) or not isinstance(card, int):
         return None
-    return _Draft(parsed=phrases.load(raw), at=datetime.fromisoformat(at), card=card)
+    tz = data.get("tz")
+    return _Draft(
+        parsed=phrases.load(raw),
+        at=datetime.fromisoformat(at),
+        card=card,
+        tz=tz if isinstance(tz, str) else None,
+    )
 
 
 def _expired(draft: _Draft) -> bool:
@@ -354,14 +365,22 @@ async def on_create(query: CallbackQuery, callback_data: ReminderCb, ctx: Ctx, b
     await ctx.state.clear()
     parsed, card_now = draft.parsed, draft.at
     send = _send_to(bot, query)
+    if draft.tz is not None and draft.tz != ctx.user.timezone:
+        # The home city changed under the card (in the app), so its time meant the old zone:
+        # the card comes again in the new one, and this tap saves nothing.
+        await replies.answer_quietly(query)
+        await replies.drop_buttons(bot, query)
+        await _offer(send, ctx, parsed, _local_now(ctx))
+        return
     try:
         if parsed.repeat is not Repeat.NONE:
             # The first firing is counted from the press, never from when the card was shown.
             reminder = await reminders.create_from(ctx.session, ctx.user, parsed, clock())
         else:
             # The card's own "now" for the wall time: «через 20 минут» means what the card
-            # showed. The past check itself still runs against the real clock.
-            when = parsed.when(card_now)
+            # showed. The draft keeps only its offset: back in the zone, a change of clocks
+            # inside the span counts. The past check itself still runs against the real clock.
+            when = parsed.when(to_local(card_now, ctx.user.timezone))
             if when is None:
                 raise InvalidInput(field="when", reason="needs_time")
             reminder = await reminders.create(ctx.session, ctx.user, parsed.text, when, clock())
@@ -409,9 +428,6 @@ async def on_card_cancel(
     await replies.send(bot, query, ctx.t("cancelled"), main_menu(ctx.t))
 
 
-FIRED_TTL = timedelta(days=7)
-
-
 def _moment_label(moment: datetime, ctx: Ctx, now: datetime) -> str:
     tz = ctx.user.timezone
     if to_local(moment, tz).date() == to_local(now, tz).date():
@@ -429,7 +445,7 @@ async def on_fired(query: CallbackQuery, callback_data: FireCb, ctx: Ctx, bot: B
         await replies.answer_quietly(query, ctx.t("already-deleted"))
         await replies.drop_buttons(bot, query)
 
-    if now - fired_at > FIRED_TTL:
+    if now - fired_at > reminders.FIRED_TTL:
         await gone()
         return
     if callback_data.action == "done":

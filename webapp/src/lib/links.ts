@@ -3,7 +3,8 @@ import { openLink, openTelegramLink } from "../telegram";
 /** The bot's chat: where "Start" gives the bot permission to write. */
 export const BOT_CHAT_URL = "https://t.me/ikbo63_24_bot";
 
-// The weather's source, the city names' and their licence: CC BY 4.0 asks for them next to the data.
+// The weather's source, the city names' and their licence: CC BY 4.0 asks for them to be named,
+// as «Ещё» → «Данные» does.
 export const OPEN_METEO_URL = "https://open-meteo.com/";
 export const GEONAMES_URL = "https://www.geonames.org/";
 export const LICENCE_URL = "https://creativecommons.org/licenses/by/4.0/";
@@ -93,8 +94,8 @@ export function findLinks(text: string): Link[] {
 }
 
 /**
- * A credit line (`weather.credit`, `more.credits`) with each source it names as a link: the line
- * writes them as bare hosts, which are no addresses for a note.
+ * A credit line (`more.credits`) with each source it names as a link: the line writes them as
+ * bare hosts, which are no addresses for a note.
  */
 export function creditParts(text: string): TextPart[] {
   return cut(text, CREDIT, (found) => {

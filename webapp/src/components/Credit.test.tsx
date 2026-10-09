@@ -22,8 +22,8 @@ describe("Credit", () => {
   });
 
   it("keeps nothing more with a link that ends the line", () => {
-    const { container } = render(<Credit text={dict("ru").weather.credit} />);
-    expect(container.textContent).toBe("Данные о погоде: open-meteo.com");
+    const { container } = render(<Credit text="Погода — open-meteo.com" />);
+    expect(container.textContent).toBe("Погода — open-meteo.com");
     expect(piece("open-meteo.com")).toHaveTextContent(/^open-meteo\.com$/);
   });
 

@@ -4,13 +4,13 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from aiogram.fsm.storage.base import StorageKey
-from aiogram.methods import AnswerCallbackQuery, SendMessage
+from aiogram.methods import AnswerCallbackQuery, EditMessageReplyMarkup, SendMessage
 from sqlalchemy import select
 
 from assistant.bot.keyboards import ReminderCb, SettingsCb
 from assistant.bot.routers import reminders as reminders_router
 from assistant.core.models import Reminder, ReminderStatus, Repeat
-from assistant.core.services import reminders
+from assistant.core.services import reminders, users
 from tests.bot.fakes import callback_update, message_update
 
 NOW = datetime(2026, 9, 28, 12, 0, tzinfo=UTC)  # Monday, 15:00 in Moscow
@@ -167,6 +167,65 @@ async def test_a_card_pressed_after_its_time_asks_again(feed, fake, session, mon
     assert await all_reminders(session) == []
 
 
+async def test_a_time_button_replaces_a_relative_moment(feed, fake, session) -> None:
+    await feed(message_update("через 20 минут чай"))
+    await feed(callback_update(button_data(fake, "🕘 Другое время")))
+    await feed(callback_update(button_data(fake, "18:00")))
+    assert fake.sent_texts()[-1] == "⏰ Сегодня, 18:00 — чай"
+    await feed(callback_update(button_data(fake, "✅ Создать")))
+    (stored,) = await all_reminders(session)
+    assert stored.due_at == datetime(2026, 9, 28, 15, 0, tzinfo=UTC)
+
+
+async def test_a_time_button_after_a_late_press_sets_that_time(feed, fake, monkeypatch) -> None:
+    await feed(message_update("через 20 минут чай"))
+    ok = button_data(fake, "✅ Создать")
+    monkeypatch.setattr(reminders_router, "clock", lambda: NOW + timedelta(minutes=30))
+    await feed(callback_update(ok))
+    assert fake.sent_texts()[-1] == ASK_TIME
+    await feed(callback_update(button_data(fake, "18:00")))
+    assert fake.sent_texts()[-1] == "⏰ Сегодня, 18:00 — чай"
+
+
+@pytest.mark.parametrize(
+    ("now", "phrase", "card", "due_at"),
+    [
+        # 01:30 CEST on 25.10: at 03:00 the clocks go back to 02:00, so two hours on is 02:30.
+        (
+            datetime(2026, 10, 24, 23, 30, tzinfo=UTC),
+            "через 2 часа позвонить",
+            "⏰ Сегодня, 02:30 — позвонить",
+            datetime(2026, 10, 25, 1, 30, tzinfo=UTC),
+        ),
+        # 02:40 CEST, the first pass of the repeated hour: half an hour on is 02:10 CET.
+        (
+            datetime(2026, 10, 25, 0, 40, tzinfo=UTC),
+            "через 30 минут выключить духовку",
+            "⏰ Сегодня, 02:10 — выключить духовку",
+            datetime(2026, 10, 25, 1, 10, tzinfo=UTC),
+        ),
+        # 01:30 CET on 29.03: at 02:00 the clocks go forward to 03:00, so two hours on is 04:30.
+        (
+            datetime(2026, 3, 29, 0, 30, tzinfo=UTC),
+            "через 2 часа позвонить",
+            "⏰ Сегодня, 04:30 — позвонить",
+            datetime(2026, 3, 29, 2, 30, tzinfo=UTC),
+        ),
+    ],
+    ids=["back", "inside-the-repeated-hour", "forward"],
+)
+async def test_a_span_through_the_night_the_clocks_change(
+    feed, fake, session, make_user, monkeypatch, now, phrase, card, due_at
+) -> None:
+    await make_user(tz="Europe/Berlin")
+    monkeypatch.setattr(reminders_router, "clock", lambda: now)
+    await feed(message_update(phrase))
+    assert fake.sent_texts()[-1] == card
+    await feed(callback_update(button_data(fake, "✅ Создать")))
+    (stored,) = await all_reminders(session)
+    assert stored.due_at == due_at
+
+
 async def test_a_repeat_card_pressed_later_starts_from_the_press(
     feed, fake, session, monkeypatch
 ) -> None:
@@ -189,6 +248,42 @@ async def test_an_older_card_cannot_create_a_newer_one(feed, fake, session) -> N
     await feed(callback_update(button_data(fake, "✅ Создать")))
     (stored,) = await all_reminders(session)
     assert stored.text == "чай"
+
+
+async def test_a_card_drawn_before_a_change_of_city_is_offered_again(
+    feed, fake, session, make_user, monkeypatch
+) -> None:
+    user = await make_user()  # Moscow, UTC+3
+    await feed(message_update("через 2 часа позвонить маме"))
+    assert fake.sent_texts()[-1] == "⏰ Сегодня, 17:00 — позвонить маме"
+    old_ok = button_data(fake, "✅ Создать")
+    # Meanwhile the app moves the home city to Yekaterinburg, UTC+5.
+    await users.set_city(session, user, "Екатеринбург", 56.84, 60.61, "Asia/Yekaterinburg", now=NOW)
+    await session.commit()
+    press = NOW + timedelta(minutes=5)
+    monkeypatch.setattr(reminders_router, "clock", lambda: press)
+    await feed(callback_update(old_ok))
+    assert fake.of(EditMessageReplyMarkup)[-1].reply_markup is None
+    assert fake.sent_texts()[-1] == "⏰ Сегодня, 19:05 — позвонить маме"
+    assert await all_reminders(session) == []
+    await feed(callback_update(old_ok))  # the old card is gone for good
+    assert fake.of(AnswerCallbackQuery)[-1].text == "Этого уже нет."
+    await feed(callback_update(button_data(fake, "✅ Создать")))
+    (stored,) = await all_reminders(session)
+    assert stored.due_at == press + timedelta(hours=2)
+
+
+async def test_a_card_kept_without_its_zone_is_created_as_before(
+    feed, fake, session, dp, bot
+) -> None:
+    await feed(message_update("через 2 часа позвонить маме"))
+    key = StorageKey(bot_id=bot.id, chat_id=1, user_id=1)
+    data = await dp.storage.get_data(key)
+    data.pop("tz", None)  # a card shown before 2.6.1
+    await dp.storage.set_data(key, data)
+    await feed(callback_update(button_data(fake, "✅ Создать")))
+    (stored,) = await all_reminders(session)
+    assert stored.due_at == NOW + timedelta(hours=2)
 
 
 async def test_a_long_text_is_refused_before_the_card(feed, fake) -> None:
@@ -302,6 +397,13 @@ async def test_the_time_prompt_can_be_cancelled(feed, fake) -> None:
 async def test_a_date_next_year_shows_the_year(feed, fake) -> None:
     await feed(message_update("29.02 в 10 тест"))
     assert fake.sent_texts()[-1] == "⏰ вт, 29 февр. 2028, 10:00 — тест"
+
+
+async def test_a_moment_after_2100_is_not_saved(feed, fake, session) -> None:
+    await feed(message_update("31.12.9999 в 23:59 тест"))
+    await feed(callback_update(button_data(fake, "✅ Создать")))
+    assert fake.sent_texts()[-1] == ASK_TIME
+    assert await all_reminders(session) == []
 
 
 async def test_a_stale_card_does_not_break_another_dialog(feed, fake, session) -> None:

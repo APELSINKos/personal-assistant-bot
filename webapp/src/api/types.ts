@@ -134,6 +134,11 @@ export interface Habit {
   /** 1–7 days a week; 7 is a daily habit. */
   weekly_goal: number;
   created_on: string;
+  /**
+   * The user's today on the server when the statistics were counted: the day of `done_today`,
+   * the one a tap on the list marks — a list drawn before midnight marks the day it shows.
+   */
+  day: string;
   done_today: boolean | null;
   streak: number;
   streak_unit: StreakUnit;

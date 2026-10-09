@@ -24,6 +24,7 @@ export const en: Dict = {
     save: "Save",
     retry: "Retry",
     loading: "Loading…",
+    searching: "Searching…",
     add: "Add",
     saved: "Saved",
     sections: "Sections",
@@ -74,7 +75,6 @@ export const en: Dict = {
     sun: (sunrise: string, sunset: string) => `🌅 ${sunrise} · 🌇 ${sunset}`,
     polarNight: "🌑 Polar night",
     polarDay: "☀️ Polar day",
-    credit: "Weather data: open-meteo.com",
     cityGone: "This city is no longer on your list",
     unavailable: "Weather is temporarily unavailable",
   },
@@ -216,6 +216,7 @@ export const en: Dict = {
     emptyCategory: "No entries in this category this month.",
     showAll: (name: string) => `Show all the entries, not only “${name}”`,
     deleteEntry: "Delete the entry",
+    deleteRow: (title: string, amount: string) => `Delete the entry “${title}”, ${amount}`,
     add: "Add an entry",
     newEntry: "New entry",
     editEntry: "Entry",
@@ -289,10 +290,12 @@ export const en: Dict = {
     newHome: "New home city",
     cityToAdd: "City to add",
     citiesLimit: "Up to 5 cities including your home city",
-    deleteCity: "Remove city",
+    deleteCity: (name: string) => `Remove the city “${name}”`,
+    confirmDeleteCity: (name: string) => `Remove the city “${name}”?`,
     data: "Data",
-    // The licence's name does not break across lines.
-    credits: "Weather — open-meteo.com, city names — geonames.org; licence CC\u00a0BY\u00a04.0 (creativecommons.org/licenses/by/4.0), the app rounds the data and adds tips.",
+    // The licence's name does not break across lines, and no line starts with a dash: each dash
+    // keeps the word before it.
+    credits: "Weather\u00a0— open-meteo.com, city names\u00a0— geonames.org; licence CC\u00a0BY\u00a04.0 (creativecommons.org/licenses/by/4.0), the app rounds the data and adds tips.",
   },
   errors: {
     generic: "Something went wrong. Please try again.",

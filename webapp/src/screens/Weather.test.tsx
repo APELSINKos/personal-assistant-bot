@@ -119,14 +119,14 @@ describe("Weather", () => {
     expect(within(days[1] as HTMLElement).getByText("+11°")).toBeInTheDocument();
   });
 
-  it("credits Open-Meteo at the bottom, with a link to it", async () => {
-    const app = installTelegram();
+  it("ends with the sun, naming no source of the data", async () => {
+    installTelegram();
     mockApi({ "GET /me": me, "GET /me/cities": [], "GET /weather": forecast });
     renderWeather();
-    const link = await screen.findByRole("button", { name: "open-meteo.com" });
-    expect(link.closest("p")).toHaveTextContent("Данные о погоде: open-meteo.com");
-    fireEvent.click(link);
-    expect(app.openLink).toHaveBeenCalledWith("https://open-meteo.com/");
+    const sun = await screen.findByText("🌅 06:40 · 🌇 18:40");
+    expect(sun.nextElementSibling).toBeNull();
+    // Open-Meteo, GeoNames and the licence are named in «Ещё» → «Данные».
+    expect(screen.queryByText(/open-meteo/)).not.toBeInTheDocument();
   });
 
   it("names a polar night or day instead of the sunrise and the sunset", async () => {
@@ -182,9 +182,6 @@ describe("Weather", () => {
     expect(days[1]).toHaveTextContent(/^Tomorrow/);
     expect(days[2]).toHaveTextContent(/^Wed, Sep 30/);
     expect(days[2]).toHaveAccessibleName("Wednesday, September 30: пасмурно, +5° to +10°");
-    expect(screen.getByRole("button", { name: "open-meteo.com" }).closest("p")).toHaveTextContent(
-      "Weather data: open-meteo.com",
-    );
   });
 });
 

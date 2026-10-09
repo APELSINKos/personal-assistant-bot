@@ -98,6 +98,20 @@ describe("i18n", () => {
     expect(en.today.classes("09:00", "+3°", "16:20", "+6°")).toBe("🎓 To classes (09:00): +3° · after (16:20): +6°");
   });
 
+  it("names the row a list's delete button removes, and the city it asks about", () => {
+    expect(ru.money.deleteRow("кофе", `430,50${NBSP}₽`)).toBe(`Удалить запись «кофе», 430,50${NBSP}₽`);
+    expect(en.money.deleteRow("coffee", "$4.50")).toBe("Delete the entry “coffee”, $4.50");
+    expect(ru.more.deleteCity("Тула")).toBe("Удалить город «Тула»");
+    expect(en.more.deleteCity("Tula")).toBe("Remove the city “Tula”");
+    expect(ru.more.confirmDeleteCity("Тула")).toBe("Удалить город «Тула»?");
+    expect(en.more.confirmDeleteCity("Tula")).toBe("Remove the city “Tula”?");
+  });
+
+  it("says a search is on its way", () => {
+    expect(ru.common.searching).toBe("Ищу…");
+    expect(en.common.searching).toBe("Searching…");
+  });
+
   it("knows which error codes have texts of their own", () => {
     expect(["limit_pinned_note", "limit_note_item", "limit_city", "duplicate_city"].every(hasErrorText)).toBe(true);
     expect(hasErrorText("limit_note")).toBe(false); // 50 notes: the app says so before asking

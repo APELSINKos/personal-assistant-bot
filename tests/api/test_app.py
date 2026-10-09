@@ -13,10 +13,12 @@ import assistant
 from assistant.api import __main__ as entry
 from assistant.api.app import create_app
 from assistant.api.routers.health import read_commit
+from assistant.core.clients.cbr import CbrClient
 from assistant.core.clients.openmeteo import OpenMeteoClient
+from assistant.core.config import Settings
 from assistant.core.models import User
 from assistant.core.ratelimit import RateLimiter
-from tests.api.conftest import NOW
+from tests.api.conftest import NOW, TOKEN, make_init_data
 from tests.stubs import StubCalendars
 
 PROBLEM = "application/problem+json"
@@ -28,8 +30,29 @@ async def test_health_needs_no_auth(client) -> None:
     assert response.json() == {"status": "ok", "version": assistant.__version__, "commit": "0" * 40}
 
 
-async def test_openapi_schema_is_served(client) -> None:
-    assert (await client.get("/api/openapi.json")).status_code == 200
+@pytest.mark.parametrize("path", ["/api/docs", "/api/openapi.json"])
+async def test_the_api_docs_are_off_by_default(client, path) -> None:
+    # Swagger UI loads an unpinned script from a CDN: the server does not serve the docs.
+    response = await client.get(path)
+    assert response.status_code == 404 and response.json()["code"] == "not_found"
+
+
+async def test_api_docs_turns_the_docs_on(monkeypatch, sessionmaker, meteo, cbr) -> None:
+    monkeypatch.setenv("API_DOCS", "true")  # .env.example has it, for development
+    settings = Settings(_env_file=None, bot_token=TOKEN)
+    app = create_app(
+        settings=settings,
+        sessionmaker=sessionmaker,
+        meteo=meteo,
+        cbr=cbr,
+        calendars=StubCalendars(),
+    )
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
+        docs = await http.get("/api/docs")
+        schema = await http.get("/api/openapi.json")
+    assert docs.status_code == 200 and "swagger-ui" in docs.text
+    assert schema.status_code == 200 and schema.json()["info"]["title"] == "Personal Assistant API"
 
 
 @pytest.mark.parametrize("header", [None, "Bearer x", "tma ", "tma garbage"])
@@ -40,6 +63,11 @@ async def test_missing_or_bad_auth_is_a_401_problem(client, header) -> None:
     assert response.headers["content-type"].startswith(PROBLEM)
     body = response.json()
     assert body["code"] == "invalid_init_data" and body["status"] == 401
+
+
+async def test_a_valid_init_data_under_another_scheme_is_401(client) -> None:
+    response = await client.get("/api/me", headers={"Authorization": f"Bearer {make_init_data()}"})
+    assert response.status_code == 401 and response.json()["code"] == "invalid_init_data"
 
 
 async def test_expired_init_data_is_401(client, auth) -> None:
@@ -148,6 +176,7 @@ async def test_api_gives_upstream_services_a_short_time_budget(monkeypatch, api_
     deadlines: list[float] = []
     real_client = httpx.AsyncClient
     real_meteo = entry.OpenMeteoClient
+    real_cbr = entry.CbrClient
 
     def recording_client(*, timeout: float, **options: object) -> httpx.AsyncClient:
         timeouts.append(timeout)
@@ -156,6 +185,10 @@ async def test_api_gives_upstream_services_a_short_time_budget(monkeypatch, api_
     def recording_meteo(http: httpx.AsyncClient, *, deadline: float) -> OpenMeteoClient:
         deadlines.append(deadline)
         return real_meteo(http, deadline=deadline)
+
+    def recording_cbr(http: httpx.AsyncClient, *, deadline: float) -> CbrClient:
+        deadlines.append(deadline)
+        return real_cbr(http, deadline=deadline)
 
     class NoServer:
         def __init__(self, config: object) -> None:
@@ -168,13 +201,43 @@ async def test_api_gives_upstream_services_a_short_time_budget(monkeypatch, api_
     monkeypatch.setattr(entry, "setup_logging", lambda *args: None)
     monkeypatch.setattr(entry.httpx, "AsyncClient", recording_client)
     monkeypatch.setattr(entry, "OpenMeteoClient", recording_meteo)
+    monkeypatch.setattr(entry, "CbrClient", recording_cbr)
     monkeypatch.setattr(entry.uvicorn, "Server", NoServer)
     await entry.main()
     # «Сегодня» must not wait for a hanging upstream as long as the bot may; calendars have a
     # client of their own with the whole ten seconds.
     assert timeouts == [4.0, 10.0] and api_settings.http_timeout == 10.0
-    # A forecast gets the same 4 seconds in all, the wait for one of its two slots included.
-    assert deadlines == [4.0]
+    # A forecast gets the same 4 seconds in all, the wait for one of its two slots included, and
+    # so does an exchange with the bank: httpx's 4 s are per phase, and a trickle outlasts them.
+    assert deadlines == [4.0, 4.0]
+
+
+async def test_the_watchdog_is_fed_while_the_api_serves(monkeypatch, api_settings) -> None:
+    given: list[tuple[object, ...]] = []
+    serving: list[asyncio.Task[object]] = []
+
+    async def keep_alive(*alive: object) -> None:
+        given.append(alive)
+        await asyncio.Event().wait()
+
+    class Server:
+        def __init__(self, config: object) -> None:
+            pass
+
+        async def serve(self) -> None:
+            await asyncio.sleep(0)  # the watchdog's task takes its first step
+            serving.extend(task for task in asyncio.all_tasks() if task.get_name() == "watchdog")
+
+    monkeypatch.setattr(entry, "get_settings", lambda: api_settings)
+    monkeypatch.setattr(entry, "setup_logging", lambda *args: None)
+    monkeypatch.setattr(entry, "keep_alive", keep_alive)
+    monkeypatch.setattr(entry.uvicorn, "Server", Server)
+    await entry.main()
+    # Fed for as long as the event loop runs: the API has no scheduler to vouch for.
+    assert given == [()]
+    [watchdog] = serving
+    await asyncio.wait({watchdog}, timeout=5)
+    assert watchdog.cancelled()  # it stops with the API
 
 
 def test_the_api_waits_for_telegram_15_seconds() -> None:

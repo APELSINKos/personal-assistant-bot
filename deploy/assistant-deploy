@@ -51,7 +51,8 @@ if [[ $EUID -ne 0 ]]; then
   exit 2
 fi
 
-# Caddy (a different user) must be able to read the built web app.
+# Caddy (a different user) must be able to read the built web app. Copies of the database are
+# made under umask 0027 instead (take_snapshot, restore_snapshot): they are the service's alone.
 umask 0022
 
 exec 9>/run/assistant-deploy.lock
@@ -186,12 +187,12 @@ snapshot=""
 take_snapshot() {
   [[ -f $DB ]] || return 0
   snapshot="$SNAPSHOTS/pre-deploy-${sha:0:12}.db"
-  as_app sqlite3 "$DB" ".backup '$snapshot'" &&
+  ( umask 0027; as_app sqlite3 "$DB" ".backup '$snapshot'" ) &&
     prune_snapshots
 }
 
 restore_snapshot() {
-  as_app cp "$snapshot" "$DB.restore" &&
+  ( umask 0027; as_app cp "$snapshot" "$DB.restore" ) &&
     mv -f "$DB.restore" "$DB" &&
     rm -f "$DB-wal" "$DB-shm"
 }

@@ -1,6 +1,6 @@
 import { type CSSProperties, useState } from "react";
 import { useLocation, useRoute } from "wouter";
-import { useCreateHabit, useHabit, useUpdateHabit } from "../api/queries";
+import { isGone, useCreateHabit, useHabit, useUpdateHabit } from "../api/queries";
 import type { HabitColor } from "../api/types";
 import { HabitLoadError } from "../components/HabitBits";
 import { MainAction } from "../components/MainAction";
@@ -53,7 +53,11 @@ export function HabitForm() {
     })();
   });
 
-  if (id !== null && habit.isError) return <HabitLoadError error={habit.error} onRetry={() => void habit.refetch()} />;
+  // A failed refresh keeps the form and its draft: only a first load that failed is an error, and a
+  // refresh that finds the habit deleted meanwhile says so.
+  if (id !== null && (habit.isLoadingError || isGone(habit.error))) {
+    return <HabitLoadError error={habit.error} onRetry={() => void habit.refetch()} />;
+  }
   if (id !== null && habit.isPending) return <Loader />;
 
   const save = () => {

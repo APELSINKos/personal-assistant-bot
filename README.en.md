@@ -5,7 +5,7 @@
 <h1 align="center">Personal Assistant</h1>
 
 <p align="center">
-  A Telegram bot that doesn't just say “+12°C” — it says “🌧 Rain in 40 minutes, take an umbrella”.<br>
+  A Telegram bot that doesn't just say “+12°C” — it says “🌧 Rain in 40 min — take an umbrella”.<br>
   Weather, reminders, class schedule, notes, habits and money — in the chat and in an app right inside Telegram, and in the morning the bot writes first.
 </p>
 
@@ -26,7 +26,7 @@
 | | |
 |---|---|
 | 📱 **Mini App** | The same inside Telegram as an app: a Today screen, the weather for a day and a week, a calendar with classes and reminders, one-tap habits, money with charts, notes with checklists and settings. Theme and language follow Telegram |
-| 🌤 **Weather with tips** | Not just degrees: in how many minutes rain or snow starts, whether it gets colder by the evening, whether it's a good day for a bike ride. An hourly and a 7-day forecast in the same message, for your home city and four more, and the weather on the way to classes and back |
+| 🌤 **Weather with tips** | Not just degrees: in how many minutes rain or snow starts, whether it gets colder by the evening, whether it's too windy or cold, whether it's a good day for a bike ride. An hourly and a 7-day forecast in the same message, for your home city and four more, and the weather on the way to classes and back |
 | ☀️ **Morning digest** | The bot writes at the time you choose, in your city's time zone: the weather now and for your classes, today's plans, habits, yesterday's spending, rates |
 | 📅 **My day** | Everything important for today in one message — with your pinned notes, and in the evening with tomorrow's weather |
 | ⏰ **Reminders** | Write like to a person: “tomorrow at 9 buy milk”, “in 20 minutes tea”, “on weekdays at 7:30 workout”. Repeats on weekdays, every other week or monthly — in your city's time zone; a delivered reminder has “+10 min”, “+1 h”, “Tomorrow”, “✓ Done” buttons |
@@ -44,7 +44,6 @@
 ☔ Rain expected after 18:00 — an umbrella will come in handy
 🧥 Cold in the morning, warmer in the evening
 🎓 To classes (10:40): +10°C · after (14:10): +13°C
-Weather data: open-meteo.com
 
 📌 Today:
 • 19:00 — workout
@@ -68,8 +67,6 @@ Thu, 1 Oct ☀️ +3…+12°C
 Fri, 2 Oct 🌧 +6…+10°C 💧 70%
 Sat, 3 Oct ☁️ +5…+9°C
 Sun, 4 Oct 🌤 +2…+8°C
-
-Weather data: open-meteo.com
 [🌤 Now] [🕐 Hourly]
 [🏠 Moscow] [Tula] [Sochi]
 [🏙 Cities]
@@ -131,7 +128,7 @@ The Open button next to the message field opens the app right inside Telegram �
 |---|---|
 | **Today** | A big date, weather with tips (a tap opens the Weather screen), today's classes with the weather on the way and today's plans, one-tap habit marks, today's spending with the budget bar, pinned notes, rates and the best streak. Pull down to refresh |
 | **Weather** | Chips for the cities — home and extra ones; now with the feels-like temperature, gusts, humidity and every tip, a 24-hour strip with a temperature curve, 7 days with range bars, sunrise and sunset |
-| **Calendar** | A week strip with dots and the week number, a day heading “Today · Tuesday, 29 September”, the month on a tap; classes, reminders and repeats per day, editing and deleting, a new reminder from a phrase or the fields |
+| **Calendar** | A week strip with dots and the week number, a day heading “Today · Tuesday, September 29”, the month on a tap; classes, reminders and repeats per day, editing and deleting, a new reminder from a phrase or the fields |
 | **Habits** | A list with the week's progress and marks that cycle ⬜ → ✅ → ❌ as in the bot. Each habit has its own screen: the streak, the record, the past year's percentage, a year map (a week opens its month), marks for past days, the goal, emoji and color; Share sends the card to any chat |
 | **Notes** | Search above the list, pinned notes on top, checklists with checkboxes and progress, links in the text open on a tap; an editor with a character counter, and leaving with unsaved text asks first |
 | **Money** | The month with arrows: what is spent and what is left for each day, a ring by category (a tap shows the category's entries), spending day by day and every entry — a tap edits, a swipe deletes. A new entry, budgets, your own categories with emoji, any Bank of Russia currency over 30 days and a converter |
@@ -183,13 +180,14 @@ Python 3.12 · aiogram 3 · FastAPI · SQLAlchemy 2 (async) · Alembic · SQLite
 
 ```bash
 uv sync
+cp .env.example .env                # put a test bot's token into BOT_TOKEN
 uv run alembic upgrade head
 uv run python -m assistant.bot      # the bot
 uv run python -m assistant.api      # the app's API, 127.0.0.1:8000
 cd webapp && npm ci && npm run dev  # the app in a browser
 ```
 
-Settings come from environment variables or a `.env` file, see [.env.example](.env.example). To open the app in an ordinary browser you need signed initData: `scripts/dev_init_data.py` prints it using a test bot's token. Checks: `uv run pytest`, `uv run ruff check .`, `uv run mypy`; for the app — `npm run lint`, `npm run typecheck`, `npm test`. Details in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (Russian).
+Settings come from environment variables or a `.env` file, see [.env.example](.env.example). To open the app in an ordinary browser you need signed initData: `scripts/dev_init_data.py` prints it using a test bot's token. Checks: `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy`; for the app — `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`. Details in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (Russian).
 
 ## Roadmap
 
@@ -203,6 +201,14 @@ Settings come from environment variables or a `.env` file, see [.env.example](.e
 - [x] **v2.6** — 7-day forecast, several cities, search and checklists in notes
 - [ ] **v2.7** — showcase: screenshots, a demo and a project cover
 
+## Documentation (in Russian)
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Development](docs/DEVELOPMENT.md)
+- [Deployment](docs/DEPLOY.md)
+- [User guide](docs/USER_GUIDE.md)
+- [Changelog](CHANGELOG.md)
+
 ## History
 
 Version 1.0 (September 2026) was a coursework project for the “Software Testing, Verification and Validation” course at RTU MIREA; its materials are in [docs/coursework](docs/coursework) and its code is tagged [v1.0.0](https://github.com/APELSINKos/personal-assistant-bot/tree/v1.0.0). Since 2.0 it is the author's personal project.
@@ -213,10 +219,10 @@ Aleksandr Kovalev — [@APELSINKos](https://github.com/APELSINKos)
 
 ## Data and licences
 
-- **Weather** — [Open-Meteo](https://open-meteo.com/), licence [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The bot and the app round the data and add tips to it; the line “Weather data: open-meteo.com” stands next to the weather in every message and on every screen that shows it.
+- **Weather** — [Open-Meteo](https://open-meteo.com/), licence [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The bot and the app round the data and add tips to it.
 - **City names** — [GeoNames](https://www.geonames.org/) through Open-Meteo's city search, licence [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 
-Both sources and the licence are in the bot itself too — in `/start` and `/help` — and in the app, under More → Data.
+The bot names both sources and the licence in `/start` and `/help`, and the app under More → Data.
 
 ## License
 

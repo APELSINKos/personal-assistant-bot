@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from assistant.core.models import Repeat
 from assistant.core.services.phrases import Parsed, dump, load, merge, parse
+from assistant.core.timeutil import local_to_utc
 
 NOW = datetime(2026, 9, 28, 15, 0)  # Monday, 15:00 local
 
@@ -236,6 +238,82 @@ def test_with_time_completes_a_phrase() -> None:
     assert parsed is not None and parsed.needs_time
     done = parsed.with_time("18:00")
     assert not done.needs_time and done.when(NOW) == datetime(2026, 9, 29, 18, 0)
+
+
+def test_a_chosen_time_replaces_a_relative_moment() -> None:
+    parsed = parse("через 20 минут чай", NOW)
+    assert parsed is not None
+    assert parsed.with_time("18:00").when(NOW) == datetime(2026, 9, 28, 18, 0)
+    assert parsed.with_time("09:00").when(NOW) == datetime(2026, 9, 29, 9, 0)
+    # «через 3 дня» names a day, not a moment: a chosen time keeps that day.
+    days = parse("через 3 дня позвонить бабушке", NOW)
+    assert days is not None
+    assert days.with_time("18:00").when(NOW) == datetime(2026, 10, 1, 18, 0)
+
+
+@pytest.mark.parametrize(
+    ("zone", "now_utc", "message", "wall", "fold"),
+    [
+        # Berlin, 25.10: at 03:00 CEST the clocks go back to 02:00 CET, and 02:00–03:00 repeats.
+        (
+            "Europe/Berlin",
+            datetime(2026, 10, 24, 23, 30, tzinfo=UTC),
+            "через 2 часа позвонить",
+            datetime(2026, 10, 25, 2, 30),
+            1,
+        ),
+        (
+            "Europe/Berlin",
+            datetime(2026, 10, 25, 0, 40, tzinfo=UTC),
+            "через 30 минут выключить",
+            datetime(2026, 10, 25, 2, 10),
+            1,
+        ),
+        (
+            "Europe/Berlin",
+            datetime(2026, 10, 24, 18, 0, tzinfo=UTC),
+            "через 12 часов таблетка",
+            datetime(2026, 10, 25, 7, 0),
+            0,
+        ),
+        # Berlin, 29.03: at 02:00 CET the clocks go forward to 03:00 CEST.
+        (
+            "Europe/Berlin",
+            datetime(2026, 3, 29, 0, 30, tzinfo=UTC),
+            "через 2 часа позвонить",
+            datetime(2026, 3, 29, 4, 30),
+            0,
+        ),
+        # New York, 1.11: at 02:00 EDT the clocks go back to 01:00 EST.
+        (
+            "America/New_York",
+            datetime(2026, 11, 1, 4, 30, tzinfo=UTC),
+            "in 3 hours call mom",
+            datetime(2026, 11, 1, 2, 30),
+            0,
+        ),
+        # Moscow keeps one offset all year.
+        (
+            "Europe/Moscow",
+            datetime(2026, 10, 24, 23, 30, tzinfo=UTC),
+            "через 2 часа позвонить",
+            datetime(2026, 10, 25, 4, 30),
+            0,
+        ),
+    ],
+    ids=["back", "inside-the-repeated-hour", "over-the-night", "forward", "new-york", "moscow"],
+)
+def test_a_span_across_a_change_of_clocks_is_real_time(
+    zone: str, now_utc: datetime, message: str, wall: datetime, fold: int
+) -> None:
+    now = now_utc.astimezone(ZoneInfo(zone))
+    parsed = parse(message, now)
+    assert parsed is not None and parsed.delta is not None
+    when = parsed.when(now)
+    assert when is not None
+    # Equal naive datetimes ignore fold, so the second pass of the repeated hour is checked apart.
+    assert (when, when.fold) == (wall, fold)
+    assert local_to_utc(when, zone) == now_utc + parsed.delta
 
 
 @pytest.mark.parametrize(

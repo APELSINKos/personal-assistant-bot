@@ -21,10 +21,13 @@ uv run python -m assistant.bot   # запустить
 | `DATABASE_URL` | `sqlite+aiosqlite:///./assistant.db` | база |
 | `WEBAPP_URL` | пусто | адрес Mini App (`https://…/`); пока пусто, кнопки приложения скрыты |
 | `LOG_LEVEL` | `INFO` | уровень журнала |
+| `HTTP_TIMEOUT` | `10` | таймаут и общий срок запросов бота к Open-Meteo и ЦБ, с |
+| `SCHEDULER_INTERVAL` | `20` | пауза между проходами планировщика, с |
 | `DEFAULT_CITY`, `DEFAULT_LAT`, `DEFAULT_LON`, `DEFAULT_TIMEZONE` | Москва | город новых пользователей |
 | `DEFAULT_MORNING_TIME` | `08:00` | время сводки новых пользователей |
 | `API_HOST`, `API_PORT` | `127.0.0.1`, `8000` | где слушает API |
 | `API_RATE_LIMIT` | `120` | запросов в минуту на пользователя (не меньше 1) |
+| `API_DOCS` | `false` | описание API на `/api/docs` и `/api/openapi.json` — для разработки; в `.env.example` включено |
 | `MIREA_DIRECTORY` | `true` | собирать справочник групп МИРЭА в фоне (полный обход — около 35 минут); в `.env.example` выключено |
 
 ## Mini App
@@ -37,7 +40,7 @@ echo "VITE_DEV_INIT_DATA=$(uv run python scripts/dev_init_data.py --user-id <id>
 cd webapp && npm ci && npm run dev                               # http://localhost:5173
 ```
 
-Подпись действует 24 часа. `webapp/.env.local` не попадает в git, а в production-сборку переменная не входит: приложение читает её только в режиме разработки и показывает плашку «Режим разработки». Сервер разработки перенаправляет `/api` на `127.0.0.1:8000`. Описание API — на `http://127.0.0.1:8000/api/docs`.
+Подпись действует 24 часа. `webapp/.env.local` не попадает в git, а в production-сборку переменная не входит: приложение читает её только в режиме разработки и показывает плашку «Режим разработки». Сервер разработки перенаправляет `/api` на `127.0.0.1:8000`. Описание API — на `http://127.0.0.1:8000/api/docs`, когда в `.env` стоит `API_DOCS=true` (как в `.env.example`); на сервере его нет.
 
 ## Проверки
 
@@ -46,6 +49,7 @@ uv run ruff format .
 uv run ruff check .
 uv run mypy
 uv run pytest
+uv run alembic upgrade head && uv run alembic check   # миграции совпадают с моделями
 ```
 
 ```bash
@@ -56,7 +60,9 @@ npm test
 npm run build
 ```
 
-CI запускает Python-проверки на 3.12 и 3.13, проверки приложения на Node.js 24 и сверяет миграции с моделями.
+CI запускает Python-проверки на 3.12 и 3.13, проверки приложения на Node.js 24 и сверяет миграции с моделями. Форматирование CI не правит, а проверяет — `uv run ruff format --check .`: неотформатированный файл делает CI красным. На 3.12 CI берёт системный Python Ubuntu 24.04 — тот же, что на сервере, — и проверяет, что у него SQLite 3.45: миграция, которую сервер не выполнит, падает в CI, а не при деплое.
+
+Зависимости CI ставит командой `uv sync --locked`: если `uv.lock` отстал от `pyproject.toml`, CI красный — после правки зависимостей запустите `uv lock` и закоммитьте оба файла.
 
 Тесты не ходят в сеть: календари лежат в `tests/fixtures/schedule` (вырезка настоящего календаря группы МИРЭА без имён, календарь другого вуза и календарь Outlook), загрузчик проверяется на подменённом транспорте httpx и подменённом разрешении имён, а ответы Open-Meteo строит `forecast_payload` из `tests/stubs.py` — секундами Unix, как настоящий.
 
@@ -87,7 +93,7 @@ uv run python scripts/money_report.py --lang en --out docs/images/money-report.e
 ## Миграции
 
 ```bash
-uv run alembic revision --autogenerate -m "short description"
+uv run alembic revision --autogenerate --rev-id 0007 -m "short description"   # номер — следующий за последним в migrations/versions
 uv run alembic upgrade head
 ```
 
@@ -100,7 +106,7 @@ uv run alembic upgrade head
 - новая такая таблица создаётся с `sqlite_autoincrement=True`;
 - пересоздание таблицы (`batch_alter_table`) получает `table_kwargs={"sqlite_autoincrement": True}`, иначе пропадёт сам AUTOINCREMENT. Оно сбрасывает счётчик до наибольшего id, поэтому строка `sqlite_sequence` запоминается до пересоздания и возвращается после (`_keep_reminders_sequence` в `0002`, `_keep_habits_sequence` в `0004`);
 - откат, который удаляет такую таблицу, запоминает её строку `sqlite_sequence` и возвращает после удаления (`_keep_sequences` в `0006`), чтобы после нового обновления id продолжились. Откаты `0001` (к пустой базе) и `0005` написаны раньше этого правила и счётчиков не берегут: после отката к `0004` и нового обновления id категорий и записей денег снова начнутся с 1;
-- колонка добавляется обычным `ALTER TABLE … ADD COLUMN`, а удаляется, если у неё нет индекса и ограничений, родным `ALTER TABLE … DROP COLUMN` (SQLite 3.35+; на сервере и в CI — 3.45): так таблица не пересоздаётся.
+- колонка добавляется обычным `ALTER TABLE … ADD COLUMN`, а удаляется, если у неё нет индекса и ограничений, родным `ALTER TABLE … DROP COLUMN` (SQLite 3.35+; на сервере — 3.45, на ней же идут проверки CI на Python 3.12): так таблица не пересоздаётся.
 
 Тест миграций берёт список таких таблиц из моделей и проверяет, что у каждой есть AUTOINCREMENT и что все счётчики `sqlite_sequence` переживают `upgrade head`.
 

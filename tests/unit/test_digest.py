@@ -25,7 +25,7 @@ class Meteo:
         self.fail = fail
         self.requests = 0
 
-    async def forecast(self, lat: float, lon: float) -> dict[str, Any]:
+    async def forecast(self, lat: float, lon: float, **_: Any) -> dict[str, Any]:
         self.requests += 1
         if self.fail:
             raise UpstreamUnavailable(service="open-meteo")
@@ -100,7 +100,7 @@ async def test_today_survives_a_forecast_it_cannot_read(session, make_user, capl
     # Weather is not what «Мой день» is about: an answer the parser trips over is logged, without
     # anything of the answer, and the day comes without weather.
     class Garbled:
-        async def forecast(self, lat: float, lon: float) -> dict[str, Any]:
+        async def forecast(self, lat: float, lon: float, **_: Any) -> dict[str, Any]:
             return {"timezone": "Secret/Place", "current": []}
 
     user = await make_user()

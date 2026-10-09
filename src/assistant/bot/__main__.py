@@ -20,6 +20,7 @@ from assistant.core.db import create_engine, make_sessionmaker
 from assistant.core.i18n import check_translations
 from assistant.core.logging import setup_logging
 from assistant.core.services import card_kit, schedule
+from assistant.core.watchdog import keep_alive
 
 log = logging.getLogger("assistant.bot")
 # Seconds the background work gets to finish on shutdown: the scheduler's current tick, the
@@ -57,9 +58,10 @@ async def main() -> None:
         calendar_client() as calendar_http,
     ):
         bot = create_bot(settings)
-        # A forecast call gets the HTTP timeout in all, the wait for a slot included.
+        # A forecast call gets the HTTP timeout in all, the wait for a slot included, and so
+        # does an exchange with the bank.
         meteo = OpenMeteoClient(http, deadline=settings.http_timeout)
-        cbr = CbrClient(http)
+        cbr = CbrClient(http, deadline=settings.http_timeout)
         calendars = CalendarFetcher(calendar_http)
         dp = build_dispatcher(
             sessionmaker,
@@ -78,6 +80,8 @@ async def main() -> None:
         if crawler is not None:
             background.append(asyncio.create_task(crawler.run(), name="mirea-directory"))
         profile = asyncio.create_task(configure_profile(bot, settings), name="bot-profile")
+        # Fed while the event loop runs and the scheduler still begins its ticks.
+        watchdog = asyncio.create_task(keep_alive(scheduler.alive), name="watchdog")
         try:
             # "Bot started" is logged by a startup handler (app.announce_start) inside
             # start_polling, right before polling begins. The bot's session outlives polling:
@@ -105,6 +109,7 @@ async def main() -> None:
                 # The profile's request in flight ends before the session it uses is closed.
                 # wait() does not raise the profile's cancellation, nor swallow one of main().
                 await asyncio.wait({profile})
+                watchdog.cancel()
                 await bot.session.close()
                 await engine.dispose()
 

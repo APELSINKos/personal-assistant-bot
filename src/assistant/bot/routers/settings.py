@@ -225,7 +225,7 @@ async def _searched(message: Message, ctx: Ctx) -> tuple[str, list[City]] | None
         await message.answer(ctx.t("city-bad-name", limit=LIMITS.city_length))
         return None
     try:
-        found = await ctx.meteo.search(name, ctx.lang)
+        found = await ctx.meteo.search(name, ctx.lang, user_id=ctx.user.id)
     except UpstreamUnavailable:
         await ctx.state.clear()
         await message.answer(ctx.t("city-unavailable"), reply_markup=main_menu(ctx.t))

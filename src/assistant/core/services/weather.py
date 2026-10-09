@@ -336,10 +336,13 @@ def _temperature_at(hours: list[Hour], hour: int) -> float | None:
     return next((item.temperature for item in hours if item.at.hour == hour), None)
 
 
-async def forecast(meteo: OpenMeteoClient, city: str, lat: float, lon: float) -> Forecast:
+async def forecast(
+    meteo: OpenMeteoClient, city: str, lat: float, lon: float, *, user_id: int | None = None
+) -> Forecast:
     """The forecast of the place named `city`: the one way in for the bot, the API and the
-    digest. UpstreamUnavailable as OpenMeteoClient.forecast."""
-    return parse(await meteo.forecast(lat, lon), city)
+    digest. UpstreamUnavailable as OpenMeteoClient.forecast, which spends the budget of the
+    user `user_id`."""
+    return parse(await meteo.forecast(lat, lon, user_id=user_id), city)
 
 
 async def current(meteo: OpenMeteoClient, city: str, lat: float, lon: float) -> WeatherNow:

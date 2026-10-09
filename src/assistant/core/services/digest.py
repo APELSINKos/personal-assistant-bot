@@ -97,7 +97,7 @@ async def home_forecast(meteo: OpenMeteoClient, user: User) -> Forecast | None:
     """The home city's forecast, or None: the day is shown without weather. The scheduler asks
     for it alone first while a morning digest may still wait for the weather."""
     try:
-        return await weather.forecast(meteo, user.city, user.lat, user.lon)
+        return await weather.forecast(meteo, user.city, user.lat, user.lon, user_id=user.id)
     except UpstreamUnavailable:
         return None
     except Exception as error:

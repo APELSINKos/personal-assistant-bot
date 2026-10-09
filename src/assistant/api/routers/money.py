@@ -119,6 +119,9 @@ async def change_entry(
         day=body.day,
         now=now,
     )
+    if body.category_id is not None and entry.note:
+        # A move teaches quick input, as the bot's «🗂 Категория» does.
+        await money.remember(db, user, entry.note, entry.category_id)
     return await _saved(db, user, entry, now)
 
 

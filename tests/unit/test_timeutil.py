@@ -25,6 +25,11 @@ def test_local_to_utc_ambiguous_takes_first_occurrence() -> None:
     assert result == datetime(2027, 10, 31, 0, 30, tzinfo=UTC)
 
 
+def test_local_to_utc_ambiguous_with_fold_takes_the_second_occurrence() -> None:
+    result = timeutil.local_to_utc(datetime(2027, 10, 31, 2, 30, fold=1), "Europe/Berlin")
+    assert result == datetime(2027, 10, 31, 1, 30, tzinfo=UTC)
+
+
 def test_local_to_utc_rejects_aware() -> None:
     with pytest.raises(ValueError):
         timeutil.local_to_utc(datetime(2026, 1, 1, tzinfo=UTC), "Europe/Moscow")

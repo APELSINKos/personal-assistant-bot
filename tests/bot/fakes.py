@@ -76,6 +76,21 @@ def tg_user(user_id: int = 1, lang: str = "ru") -> User:
     return User(id=user_id, is_bot=False, first_name="Alex", language_code=lang)
 
 
+# Telegram's own service messages in the chat with user 1, by the field that holds each: a pinned
+# message, the auto-delete timer, the chat's wallpaper and the leave to write given in the app.
+SERVICE_MESSAGES: dict[str, dict[str, Any]] = {
+    "pinned_message": {
+        "message_id": 7,
+        "date": datetime(2026, 9, 28, 9, 0, tzinfo=UTC),
+        "chat": {"id": 1, "type": "private"},
+        "text": "📌 Покупки",
+    },
+    "message_auto_delete_timer_changed": {"message_auto_delete_time": 86400},
+    "chat_background_set": {"type": {"type": "chat_theme", "theme_name": "🎄"}},
+    "write_access_allowed": {"from_request": True},
+}
+
+
 def message_update(
     text: str | None = None,
     *,
@@ -85,8 +100,12 @@ def message_update(
     sticker: bool = False,
     document: dict[str, Any] | None = None,
     entities: list[MessageEntity] | None = None,
+    service: str | None = None,
 ) -> Update:
+    """A message from the user: text, a sticker, a file or one of SERVICE_MESSAGES."""
     extra: dict[str, Any] = {}
+    if service is not None:
+        extra[service] = SERVICE_MESSAGES[service]
     if document is not None:
         extra["document"] = {"file_id": "doc", "file_unique_id": "doc-u", **document}
     if sticker:

@@ -5,6 +5,7 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+import httpx
 import pytest
 from aiogram.exceptions import (
     ClientDecodeError,
@@ -22,7 +23,7 @@ from assistant.bot.keyboards import FireCb, WeatherCb
 from assistant.bot.replies import NO_PREVIEW
 from assistant.bot.routers import weather as weather_router
 from assistant.bot.scheduler import Scheduler
-from assistant.core.clients.cbr import Rates
+from assistant.core.clients.cbr import CbrClient, Rates
 from assistant.core.models import FsmState, Habit, Reminder, ReminderStatus, Repeat, ShareCard
 from assistant.core.services import reminders
 from assistant.core.services.recurrence import Rule
@@ -36,6 +37,18 @@ METHOD = SendMessage(chat_id=1, text="x")
 @pytest.fixture
 def scheduler(bot, sessionmaker, meteo, cbr) -> Scheduler:
     return Scheduler(bot, sessionmaker, meteo, cbr, clock=lambda: NOW)
+
+
+@pytest.fixture
+def make_user(make_user):
+    """The shared factory, for users who came through the bot: the digest goes only to those
+    the bot may write to (test_no_digest_before_the_user_lets_the_bot_write)."""
+
+    async def factory(*args: Any, **fields: Any):
+        fields.setdefault("can_write", True)
+        return await make_user(*args, **fields)
+
+    return factory
 
 
 async def add_reminder(
@@ -137,6 +150,21 @@ async def test_blocked_user(scheduler, session, make_user, fake) -> None:
     assert len(fake.calls) == 1
 
 
+async def test_one_user_blocking_the_bot_leaves_the_others_reachable(
+    scheduler, session, make_user, fake
+) -> None:
+    first = await make_user(id=1, morning_enabled=False)
+    second = await make_user(id=2, morning_enabled=False)
+    await add_reminder(session, 1, ago=timedelta(minutes=2))  # the first of the batch
+    await add_reminder(session, 2, ago=timedelta(minutes=1))
+    fake.errors.append(
+        TelegramForbiddenError(method=METHOD, message="Forbidden: bot was blocked by the user")
+    )
+    assert await scheduler.deliver_reminders(NOW) == 1
+    assert (await reload(session, first)).bot_blocked
+    assert not (await reload(session, second)).bot_blocked
+
+
 async def test_bad_request_fails_without_blocking(scheduler, session, make_user, fake) -> None:
     user = await make_user(morning_enabled=False)
     reminder = await add_reminder(session)
@@ -195,6 +223,105 @@ async def test_unexpected_error_for_one_reminder_does_not_stop_the_batch(
     assert first.next_attempt_at == NOW + timedelta(seconds=reminders.BACKOFF[0])
 
 
+TOMORROW_1500 = datetime(2026, 9, 29, 12, 0, tzinfo=UTC)  # 15:00 in Moscow
+
+
+def change_while_sending(monkeypatch, scheduler, sessionmaker, change) -> None:
+    """The first message on its way waits for `change`, committed from a session of its own:
+    the app, or a button under a message Telegram has already delivered."""
+    send = scheduler._send
+
+    async def sending(*args, **kwargs):
+        monkeypatch.setattr(scheduler, "_send", send)
+        async with sessionmaker() as app:
+            await change(app)
+            await app.commit()
+        return await send(*args, **kwargs)
+
+    monkeypatch.setattr(scheduler, "_send", sending)
+
+
+def moved_to_tomorrow(user, reminder):
+    async def change(app) -> None:
+        when = datetime(2026, 9, 29, 15, 0)
+        await reminders.update_reminder(app, user, reminder.id, when_local=when, now=NOW)
+
+    return change
+
+
+async def test_a_reminder_moved_while_it_is_sent_fires_at_its_new_time(
+    scheduler, session, sessionmaker, make_user, fake, monkeypatch
+) -> None:
+    user = await make_user(morning_enabled=False)
+    reminder = await add_reminder(session)
+    change_while_sending(monkeypatch, scheduler, sessionmaker, moved_to_tomorrow(user, reminder))
+    assert await scheduler.deliver_reminders(NOW) == 1
+    reminder = await reload(session, reminder)
+    assert (reminder.status, reminder.due_at) == (ReminderStatus.PENDING, TOMORROW_1500)
+    assert await scheduler.deliver_reminders(TOMORROW_1500) == 1
+    assert (await reload(session, reminder)).status == ReminderStatus.SENT
+
+
+async def test_a_move_during_a_failed_send_keeps_the_new_time(
+    scheduler, session, sessionmaker, make_user, fake, monkeypatch
+) -> None:
+    user = await make_user(morning_enabled=False)
+    reminder = await add_reminder(session)
+    change_while_sending(monkeypatch, scheduler, sessionmaker, moved_to_tomorrow(user, reminder))
+    fake.errors.append(TelegramNetworkError(method=METHOD, message="timeout"))
+    assert await scheduler.deliver_reminders(NOW) == 0
+    reminder = await reload(session, reminder)
+    # Not a retry in 30 seconds: the failed send was of the old time.
+    assert (reminder.status, reminder.attempts) == (ReminderStatus.PENDING, 0)
+    assert reminder.next_attempt_at == TOMORROW_1500
+
+
+async def test_a_move_while_the_bot_gets_blocked_keeps_the_new_time(
+    scheduler, session, sessionmaker, make_user, fake, monkeypatch
+) -> None:
+    user = await make_user(morning_enabled=False)
+    reminder = await add_reminder(session)
+    change_while_sending(monkeypatch, scheduler, sessionmaker, moved_to_tomorrow(user, reminder))
+    fake.errors.append(
+        TelegramForbiddenError(method=METHOD, message="Forbidden: bot was blocked by the user")
+    )
+    assert await scheduler.deliver_reminders(NOW) == 0
+    reminder = await reload(session, reminder)
+    assert (reminder.status, reminder.due_at) == (ReminderStatus.PENDING, TOMORROW_1500)
+    assert (await reload(session, user)).bot_blocked
+
+
+async def test_a_snooze_pressed_while_it_is_sent_is_kept(
+    scheduler, session, sessionmaker, make_user, fake, monkeypatch
+) -> None:
+    user = await make_user(morning_enabled=False)
+    reminder = await add_reminder(session)
+    until = NOW + timedelta(minutes=10)
+
+    async def snoozed(app) -> None:
+        await reminders.snooze(app, user, reminder.id, until, NOW)
+
+    change_while_sending(monkeypatch, scheduler, sessionmaker, snoozed)
+    assert await scheduler.deliver_reminders(NOW) == 1
+    reminder = await reload(session, reminder)
+    assert (reminder.status, reminder.due_at) == (ReminderStatus.PENDING, until)
+
+
+async def test_a_reminder_deleted_while_it_is_sent_stays_deleted(
+    scheduler, session, sessionmaker, make_user, fake, monkeypatch
+) -> None:
+    user = await make_user(morning_enabled=False)
+    reminder = await add_reminder(session)
+
+    async def deleted(app) -> None:
+        assert await reminders.cancel(app, user.id, reminder.id)
+
+    change_while_sending(monkeypatch, scheduler, sessionmaker, deleted)
+    assert await scheduler.deliver_reminders(NOW) == 1
+    reminder = await reload(session, reminder)
+    assert (reminder.status, reminder.sent_at) == (ReminderStatus.CANCELLED, None)
+
+
 async def test_send_passes_the_link_preview_options(scheduler, fake) -> None:
     assert (await scheduler._send(1, "open-meteo.com", link_preview_options=NO_PREVIEW)).ok
     assert (await scheduler._send(1, "⏰ Напоминание: полить цветы")).ok
@@ -248,7 +375,7 @@ async def test_the_digest_brings_the_forecast_buttons_without_a_preview(
     assert digest.text.split("\n")[3:6] == [
         "🌤 Москва: +10°C, малооблачно · днём до +13°C",
         "🚲 Сегодня хороший день для велосипеда",
-        "Данные о погоде: open-meteo.com",
+        "",
     ]
     assert digest.link_preview_options.is_disabled
     assert buttons(digest) == [["🕐 По часам", "📅 Неделя"]]
@@ -270,11 +397,11 @@ async def test_the_digest_waits_ten_minutes_for_the_weather(
         assert await scheduler.send_digests(moment) == 0
     assert fake.calls == [] and (await reload(session, user)).last_morning_date is None
     assert "not delivered" not in caplog.text  # waiting is no failure
-    # Then the digest goes without the weather: neither its source nor its buttons.
+    # Then the digest goes without the weather and without its buttons.
     assert await scheduler.send_digests(AT_0800 + timedelta(minutes=10)) == 1
     [digest] = fake.of(SendMessage)
     assert digest.text.split("\n")[3:5] == [UNAVAILABLE, ""]
-    assert "open-meteo.com" not in digest.text and digest.reply_markup is None
+    assert digest.reply_markup is None
     assert digest.link_preview_options.is_disabled
     assert (await reload(session, user)).last_morning_date == date(2026, 9, 28)
 
@@ -342,11 +469,30 @@ async def test_a_waiting_digest_asks_for_nothing_but_the_weather(
     assert cbr.requests == 2
 
 
+async def test_a_hanging_bank_costs_a_digest_pass_one_timeout(
+    bot, sessionmaker, make_user, fake, meteo
+) -> None:
+    # The first digest waits out the mirror; the others go at once without the rates, so the
+    # reminders and lesson alerts of the next tick wait one timeout, not one per digest.
+    asked: list[str] = []
+
+    def hang(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.path)
+        raise httpx.ReadTimeout("no answer", request=request)
+
+    cbr = CbrClient(httpx.AsyncClient(transport=httpx.MockTransport(hang)))
+    scheduler = Scheduler(bot, sessionmaker, meteo, cbr, clock=lambda: NOW)
+    for user_id in (1, 2, 3):
+        await make_user(id=user_id)
+    assert await scheduler.send_digests(AT_0800) == 3
+    assert asked == ["/daily_json.js"]
+
+
 class OneForecast(StubMeteo):
     """One forecast, then failures: the kept forecast went stale and Open-Meteo is down."""
 
-    async def forecast(self, lat: float, lon: float) -> dict[str, Any]:
-        data = await super().forecast(lat, lon)
+    async def forecast(self, lat: float, lon: float, **options: Any) -> dict[str, Any]:
+        data = await super().forecast(lat, lon, **options)
         self.fail = True
         return data
 
@@ -370,6 +516,22 @@ async def test_digest_skips_disabled_blocked_and_out_of_window(
     await make_user(id=3, morning_time="08:00")
     assert await scheduler.send_digests(AT_2345) == 0
     assert fake.calls == []
+
+
+async def test_no_digest_before_the_user_lets_the_bot_write(
+    scheduler, session, make_user, fake
+) -> None:
+    # Someone who has only opened the app: Telegram refuses a first message to them, and the
+    # refusal would mark them as having blocked the bot.
+    user = await make_user(morning_time="23:30", can_write=False)
+    fake.errors.append(
+        TelegramForbiddenError(
+            method=METHOD, message="Forbidden: bot can't initiate conversation with a user"
+        )
+    )
+    assert await scheduler.send_digests(AT_2345) == 0
+    assert fake.calls == []
+    assert not (await reload(session, user)).bot_blocked
 
 
 async def test_digest_403_blocks_user(scheduler, session, make_user, fake) -> None:
@@ -477,6 +639,56 @@ async def test_cleanup_drops_expired_share_cards(scheduler, session, make_user) 
     assert [card.token for card in (await session.scalars(select(ShareCard))).all()] == ["b" * 43]
 
 
+async def test_cleanup_forgets_finished_reminders_nothing_can_reach(
+    scheduler, session, make_user
+) -> None:
+    await make_user(morning_enabled=False)
+    month_ago = NOW - timedelta(days=30)
+
+    def row(text: str, status: ReminderStatus, sent_at: datetime | None = None) -> Reminder:
+        return Reminder(
+            user_id=1,
+            text=text,
+            status=status,
+            due_at=month_ago,
+            next_attempt_at=month_ago,
+            sent_at=sent_at,
+        )
+
+    session.add_all(
+        [
+            row("cancelled", ReminderStatus.CANCELLED),
+            row("done", ReminderStatus.DONE),
+            row("failed", ReminderStatus.FAILED),
+            row("sent", ReminderStatus.SENT, NOW - timedelta(days=7, minutes=1)),
+            row("sent this week", ReminderStatus.SENT, NOW - timedelta(days=6)),
+            row("done this week", ReminderStatus.DONE, NOW - timedelta(days=1)),
+            # Pending stays however long ago it last fired: a monthly series, say.
+            row("pending", ReminderStatus.PENDING, month_ago),
+        ]
+    )
+    await session.commit()
+    assert await scheduler.cleanup(NOW) == 4
+    left = (await session.scalars(select(Reminder.text).order_by(Reminder.id))).all()
+    assert left == ["sent this week", "done this week", "pending"]
+
+
+async def test_a_snoozed_copy_outlives_its_forgotten_series(scheduler, session, make_user) -> None:
+    await make_user(morning_enabled=False)
+    series = await add_daily(session, time_local="14:59", occurrence=NOW - timedelta(days=8))
+    series.status, series.sent_at = ReminderStatus.CANCELLED, NOW - timedelta(days=8)
+    later = NOW + timedelta(minutes=10)
+    copy = Reminder(
+        user_id=1, text="таблетки", due_at=later, next_attempt_at=later, parent_id=series.id
+    )
+    session.add(copy)
+    await session.commit()
+    assert await scheduler.cleanup(NOW) == 1
+    assert (await session.scalars(select(Reminder.id))).all() == [copy.id]
+    copy = await reload(session, copy)
+    assert (copy.status, copy.parent_id) == (ReminderStatus.PENDING, None)
+
+
 async def test_english_reminder(scheduler, session, make_user, fake) -> None:
     await make_user(morning_enabled=False, language="en")
     await add_reminder(session, ago=timedelta(minutes=30), text="call mom")
@@ -522,6 +734,38 @@ async def test_stop_lets_the_current_tick_finish(
     scheduler.stop()  # in the middle of a tick
     await asyncio.wait_for(task, 1)
     assert finished == [True]
+
+
+def test_alive_until_a_tick_has_run_too_long(bot, sessionmaker, meteo, cbr) -> None:
+    now = [100.0]
+    scheduler = Scheduler(
+        bot, sessionmaker, meteo, cbr, clock=lambda: NOW, monotonic=lambda: now[0]
+    )
+    assert scheduler.alive()
+    now[0] += scheduler_module.STALL_AFTER - 1
+    assert scheduler.alive()
+    # Half an hour without a new tick: the tick hangs or run() has died. The watchdog stops being
+    # fed, and systemd restarts the bot.
+    now[0] += 2
+    assert not scheduler.alive()
+
+
+async def test_every_tick_vouches_for_the_scheduler_again(
+    bot, sessionmaker, meteo, cbr, monkeypatch
+) -> None:
+    now = [100.0]
+    scheduler = Scheduler(
+        bot, sessionmaker, meteo, cbr, clock=lambda: NOW, monotonic=lambda: now[0]
+    )
+    now[0] += scheduler_module.STALL_AFTER + 1
+    assert not scheduler.alive()
+
+    async def tick() -> None:
+        scheduler.stop()
+
+    monkeypatch.setattr(scheduler, "tick", tick)
+    await asyncio.wait_for(scheduler.run(), 1)
+    assert scheduler.alive()
 
 
 async def add_daily(session, *, time_local: str, occurrence: datetime, text: str = "таблетки"):

@@ -147,6 +147,7 @@ async def test_city_single_match(feed, fake, meteo, session) -> None:
     assert fake.sent_texts()[-1] == "Название города — текст до 50 символов. Попробуй ещё раз:"
     await feed(message_update("питер"))
     assert fake.sent_texts()[-1] == "✅ Город сохранён: Санкт-Петербург"
+    assert meteo.user_ids == [1]  # the search spent the budget of the user who searched
     user = await session.get(User, 1)
     assert (user.city, user.lat, user.timezone) == ("Санкт-Петербург", 59.94, "Europe/Moscow")
 

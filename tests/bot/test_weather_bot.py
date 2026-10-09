@@ -40,9 +40,7 @@ NOW_TEXT = (
     "Ощущается как +7°C, ветер 3 м/с\n"
     "Сегодня: +6…+13°C\n"
     "\n"
-    "🚲 Сегодня хороший день для велосипеда\n"
-    "\n"
-    "Данные о погоде: open-meteo.com"
+    "🚲 Сегодня хороший день для велосипеда"
 )
 UNAVAILABLE = "⚠️ Не удалось получить погоду. Попробуй чуть позже."
 GONE = "Этого города уже нет в списке"
@@ -57,9 +55,9 @@ class Places(StubMeteo):
         self.places: dict[tuple[float, float], dict[str, Any]] = {}
         self.asked: list[tuple[float, float]] = []
 
-    async def forecast(self, lat: float, lon: float) -> dict[str, Any]:
+    async def forecast(self, lat: float, lon: float, **options: Any) -> dict[str, Any]:
         self.asked.append((lat, lon))
-        anywhere = await super().forecast(lat, lon)  # fails as the stub does
+        anywhere = await super().forecast(lat, lon, **options)  # fails as the stub does
         return self.places.get((lat, lon), anywhere)
 
 
@@ -96,11 +94,12 @@ async def keep(session, make_user, *places: City) -> User:
     return user
 
 
-async def test_the_weather_now_with_its_buttons(feed, fake) -> None:
+async def test_the_weather_now_with_its_buttons(feed, fake, meteo) -> None:
     await feed(message_update("🌤 Погода"))
     [sent] = fake.of(SendMessage)
     assert sent.text == NOW_TEXT
-    assert sent.link_preview_options.is_disabled  # open-meteo.com without a preview card
+    assert meteo.user_ids == [1]  # the forecast spent the budget of the user who asked
+    assert sent.link_preview_options.is_disabled
     assert buttons(sent) == [["🕐 По часам", "📅 Неделя"], ["🏙 Города"]]
     assert packed(sent) == [
         [WeatherCb(view="hours").pack(), WeatherCb(view="week").pack()],
@@ -113,7 +112,7 @@ async def test_the_views_change_the_message_itself(feed, fake) -> None:
     hours = fake.of(EditMessageText)[-1]
     lines = hours.text.split("\n")
     assert lines[:3] == ["🕐 Москва — по часам", "", "11:00 🌤 +11°C"]  # from the next hour
-    assert lines[-3:] == ["22:00 🌙 +8°C", "", "Данные о погоде: open-meteo.com"]
+    assert lines[-1] == "22:00 🌙 +8°C"
     assert hours.link_preview_options.is_disabled
     assert buttons(hours) == [["🌤 Сейчас", "📅 Неделя"], ["🏙 Города"]]
     assert packed(hours)[0] == [WeatherCb(view="now").pack(), WeatherCb(view="week").pack()]
@@ -139,7 +138,7 @@ async def test_the_hours_start_after_the_clock_of_the_bot(feed, fake, now) -> No
 async def test_the_views_in_english(feed, fake) -> None:
     await feed(message_update("🌤 Weather", lang="en"))
     sent = fake.of(SendMessage)[-1]
-    assert sent.text.endswith("\n\nWeather data: open-meteo.com")
+    assert sent.text.endswith("\n\n🚲 A great day for a bike ride")
     assert buttons(sent) == [["🕐 Hourly", "📅 Week"], ["🏙 Cities"]]
     await feed(callback_update(WeatherCb(view="week").pack(), lang="en"))
     week = fake.of(EditMessageText)[-1]
@@ -174,7 +173,7 @@ async def test_a_city_button_shows_the_same_view_of_that_city(
     assert packed(hours)[1][2] == WeatherCb(view="hours", city=omsk.id).pack()  # keeps the view
     await feed(callback_update(packed(hours)[1][2]))
     view = fake.of(EditMessageText)[-1]
-    assert meteo.asked[-1] == (54.99, 73.37)
+    assert meteo.asked[-1] == (54.99, 73.37) and meteo.user_ids[-1] == 1
     assert view.text.split("\n")[:3] == ["🕐 Омск — по часам (местное время)", "", "14:00 🌤 +13°C"]
     assert packed(view)[0] == [
         WeatherCb(view="now", city=omsk.id).pack(),

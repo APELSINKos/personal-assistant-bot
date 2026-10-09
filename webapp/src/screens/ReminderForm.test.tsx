@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { keys } from "../api/queries";
 import type { Reminder } from "../api/types";
 import { Toasts } from "../components/Toasts";
 import { getCalendarDay } from "../lib/calendarDay";
@@ -8,6 +9,7 @@ import { installTelegram } from "../test/fakeTelegram";
 import { me, reminder } from "../test/fixtures";
 import { pressMainButton } from "../test/mainButton";
 import { mockApi } from "../test/mockApi";
+import { RATE_LIMITED, refresh } from "../test/refresh";
 import { renderWithApp } from "../test/render";
 import { ReminderForm } from "./ReminderForm";
 
@@ -454,12 +456,10 @@ describe("ReminderForm", () => {
     });
     const { client } = renderWithApp(<ReminderForm />, { path: "/calendar/4" });
     await ready(client);
-    // Unlike the calendar's agenda query, `useReminders()` has no `enabled` gate, so it starts
-    // fetching (and, on failure, retrying) on the very first render — before a `setQueryDefaults`
-    // call after `renderWithApp` could reach it. Outlasting the real retry backoff is simpler.
-    expect(await screen.findByRole("alert", {}, { timeout: 4000 })).toBeInTheDocument();
+    // After the app's two retries, which renderWithApp's client makes without waiting.
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.queryByText("Этого уже нет")).not.toBeInTheDocument();
-  }, 8000);
+  });
 
   it('shows "Этого уже нет" only when the id truly doesn\'t exist', async () => {
     at("2026-09-29T09:00:00Z");
@@ -470,6 +470,19 @@ describe("ReminderForm", () => {
     expect(await screen.findByText("Этого уже нет")).toBeInTheDocument();
   });
 
+  it("keeps the form and its draft when a refresh of the reminders fails", async () => {
+    at("2026-09-29T09:00:00Z");
+    installTelegram();
+    mockApi({ "GET /me": me, "GET /reminders": [reminder] });
+    const { client } = renderWithApp(<ReminderForm />, { path: "/calendar/3" });
+    await ready(client);
+    fireEvent.change(await screen.findByDisplayValue("Созвон"), { target: { value: "Созвон с Петей" } });
+    mockApi({ "GET /me": me, "GET /reminders": RATE_LIMITED });
+    await refresh(client, keys.reminders);
+    expect(screen.getByLabelText("О чём напомнить")).toHaveValue("Созвон с Петей");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("rolls the default date and time past midnight", async () => {
     at("2026-09-29T20:50:00Z"); // 23:50 in Moscow
     installTelegram();
@@ -477,7 +490,36 @@ describe("ReminderForm", () => {
     const { client } = renderWithApp(<ReminderForm />, { path: "/calendar/new" });
     await ready(client);
     expect(screen.getByLabelText("Дата")).toHaveValue("2026-09-30");
-    expect(screen.getByLabelText("Время")).toHaveValue("00:00");
+    expect(screen.getByLabelText("Время")).toHaveValue("01:00");
+  });
+
+  it("rolls past midnight when the calendar's «+» names today, too", async () => {
+    at("2026-09-29T20:50:00Z"); // 23:50 in Moscow
+    installTelegram();
+    mockApi({ "GET /me": me });
+    const { client } = renderWithApp(<ReminderForm />, { path: "/calendar/new/2026-09-29" });
+    await ready(client);
+    expect(screen.getByLabelText("Дата")).toHaveValue("2026-09-30");
+    expect(screen.getByLabelText("Время")).toHaveValue("01:00");
+  });
+
+  it("proposes an hour at least 15 minutes away", async () => {
+    at("2026-09-29T11:59:30Z"); // 14:59:30 in Moscow: 15:00 would be half a minute away
+    installTelegram();
+    mockApi({ "GET /me": me });
+    const { client } = renderWithApp(<ReminderForm />, { path: "/calendar/new/2026-09-29" });
+    await ready(client);
+    expect(screen.getByLabelText("Дата")).toHaveValue("2026-09-29");
+    expect(screen.getByLabelText("Время")).toHaveValue("16:00");
+  });
+
+  it("keeps another day the calendar's «+» names", async () => {
+    at("2026-09-29T20:50:00Z"); // 23:50 in Moscow
+    installTelegram();
+    mockApi({ "GET /me": me });
+    const { client } = renderWithApp(<ReminderForm />, { path: "/calendar/new/2026-10-02" });
+    await ready(client);
+    expect(screen.getByLabelText("Дата")).toHaveValue("2026-10-02");
   });
 
   it("shows its own message for a phrase that is too long", async () => {

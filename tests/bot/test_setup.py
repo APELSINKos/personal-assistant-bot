@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from typing import Any
 
+import httpx
 import pytest
 from aiogram import Bot
 from aiogram.exceptions import ClientDecodeError, TelegramNetworkError
@@ -28,6 +30,8 @@ from aiogram.types import (
 from assistant import __version__
 from assistant.bot import __main__ as entry
 from assistant.bot.setup import COMMANDS, REQUEST_TIMEOUT, configure
+from assistant.core.clients.cbr import CbrClient
+from assistant.core.clients.openmeteo import OpenMeteoClient
 from assistant.core.config import Settings
 from assistant.core.i18n import translator
 
@@ -107,6 +111,9 @@ class Idle:
 
     def stop(self) -> None:
         pass
+
+    def alive(self) -> bool:
+        return True
 
 
 class Hanging:
@@ -233,5 +240,71 @@ async def test_the_profile_ends_before_its_session_is_closed(
         assert main.done()
         await main
         assert profile_running == [False]  # closed once, by main(), after the profile ended
+    finally:
+        main.cancel()
+
+
+async def test_the_bot_gives_upstream_services_its_http_timeout_in_all(
+    polling, monkeypatch
+) -> None:
+    deadlines: list[float] = []
+    real_meteo, real_cbr = entry.OpenMeteoClient, entry.CbrClient
+
+    def recording_meteo(http: httpx.AsyncClient, *, deadline: float) -> OpenMeteoClient:
+        deadlines.append(deadline)
+        return real_meteo(http, deadline=deadline)
+
+    def recording_cbr(http: httpx.AsyncClient, *, deadline: float) -> CbrClient:
+        deadlines.append(deadline)
+        return real_cbr(http, deadline=deadline)
+
+    async def nothing(bot: Bot, settings: Settings) -> None:
+        pass
+
+    configured = entry.get_settings().model_copy(update={"http_timeout": 7.0})
+    monkeypatch.setattr(entry, "get_settings", lambda: configured)
+    monkeypatch.setattr(entry, "OpenMeteoClient", recording_meteo)
+    monkeypatch.setattr(entry, "CbrClient", recording_cbr)
+    monkeypatch.setattr(entry, "configure", nothing)
+    polling.stopped.set()  # the bot stops as soon as it has started
+    await asyncio.wait_for(entry.main(), 5)
+    # A forecast call and an exchange with the bank take the HTTP timeout in all: httpx's is
+    # per phase, and an answer that trickles in outlasts it.
+    assert deadlines == [7.0, 7.0]
+
+
+async def test_the_watchdog_is_fed_while_the_bot_runs(polling, monkeypatch) -> None:
+    started = asyncio.Event()
+    watchdogs: list[tuple[asyncio.Task[Any] | None, Callable[[], bool]]] = []
+
+    async def keep_alive(alive: Callable[[], bool]) -> None:
+        watchdogs.append((asyncio.current_task(), alive))
+        started.set()
+        await asyncio.Event().wait()
+
+    class Stuck(Idle):
+        def alive(self) -> bool:
+            return False
+
+    async def nothing(bot: Bot, settings: Settings) -> None:
+        pass
+
+    monkeypatch.setattr(entry, "keep_alive", keep_alive)
+    monkeypatch.setattr(entry, "Scheduler", Stuck)
+    monkeypatch.setattr(entry, "configure", nothing)
+    main = asyncio.create_task(entry.main())
+    try:
+        await asyncio.wait_for(asyncio.gather(polling.started.wait(), started.wait()), 5)
+        [(task, alive)] = watchdogs
+        assert task is not None and not task.done()
+        # The scheduler's own alive(), not keep_alive's default: a scheduler that no longer
+        # begins its ticks gets the bot restarted.
+        assert not alive()
+        polling.stopped.set()
+        await asyncio.wait({main}, timeout=5)
+        assert main.done()
+        await main
+        await asyncio.wait({task}, timeout=5)
+        assert task.cancelled()  # it stops with the bot
     finally:
         main.cancel()

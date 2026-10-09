@@ -117,7 +117,6 @@ weather-week-title = 📅 { $city } — 7 дней
 weather-day = { $label } { $emoji } { $range }
 weather-day-chance = { $label } { $emoji } { $range } 💧 { $chance } %
 weather-days-none = Прогноза на неделю сейчас нет.
-weather-credit = Данные о погоде: open-meteo.com
 
 ## My day and the morning digest
 today-title = { $part ->

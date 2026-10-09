@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.state import State, StatesGroup
@@ -16,7 +17,7 @@ from assistant.bot.replies import NO_PREVIEW
 from assistant.core.i18n import translator
 from assistant.core.models import User
 from assistant.core.services import users
-from tests.bot.fakes import callback_update, message_update
+from tests.bot.fakes import SERVICE_MESSAGES, callback_update, message_update
 
 
 class Demo(StatesGroup):
@@ -165,6 +166,26 @@ async def test_cancel_and_unknown(feed, fake) -> None:
         "Трату — так: «кофе 250».",
     ]
     assert fake.of(SendMessage)[-1].reply_markup == main_menu(translator("ru"))
+
+
+@pytest.mark.parametrize("service", list(SERVICE_MESSAGES))
+async def test_telegrams_service_messages_get_no_answer(feed, fake, service) -> None:
+    # A pin, the auto-delete timer, the chat's wallpaper, the leave to write: the user wrote
+    # nothing, so no «🤔 Не понял». In a dialog: tests/bot/test_habits_bot.py.
+    await feed(message_update(service=service))
+    assert fake.calls == []
+
+
+async def test_allowing_messages_in_the_app_unblocks_without_an_answer(
+    feed, fake, session, make_user
+) -> None:
+    # Telegram tells the bot of the app's «allow messages» dialog with a service message: like
+    # any message to the bot, it lifts the «blocked» mark left by a message Telegram refused.
+    user = await make_user(can_write=False, bot_blocked=True)
+    await feed(message_update(service="write_access_allowed"))
+    assert fake.calls == []
+    await session.refresh(user)
+    assert user.can_write and not user.bot_blocked
 
 
 async def test_unknown_button_is_answered(feed, fake) -> None:

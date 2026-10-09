@@ -1,6 +1,6 @@
 [project]
 name = "personal-assistant-bot"
-version = "2.6.0"
+version = "2.6.1"
 description = "Personal assistant Telegram bot"
 readme = "README.md"
 license = "MIT"

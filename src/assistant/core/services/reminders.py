@@ -6,7 +6,7 @@ import logging
 from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from assistant.core.config import LIMITS
@@ -15,7 +15,7 @@ from assistant.core.models import Reminder, ReminderStatus, Repeat, User
 from assistant.core.services import recurrence
 from assistant.core.services.phrases import Parsed
 from assistant.core.services.recurrence import Rule
-from assistant.core.timeutil import local_to_utc, local_today, to_local, utcnow
+from assistant.core.timeutil import SUPPORTED_YEARS, local_to_utc, local_today, to_local, utcnow
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +28,8 @@ _SNOOZE_DELAYS = {"10m": timedelta(minutes=10), "1h": timedelta(hours=1)}
 # Two presses of the same button a few seconds apart (a double tap, a retried callback)
 # target slightly different `until` moments; treat anything this close as the same snooze.
 _SAME_SNOOZE = timedelta(seconds=60)
+# The buttons under a delivered reminder work this long; a finished reminder is kept as long.
+FIRED_TTL = timedelta(days=7)
 
 
 def clean_text(text: str) -> str:
@@ -82,10 +84,11 @@ def _schedule(reminder: Reminder, moment: datetime) -> None:
 
 
 def _to_utc(when_local: datetime, tz: str) -> datetime:
-    try:
-        return local_to_utc(when_local, tz)
-    except OverflowError as error:  # the edges of the calendar: nothing to schedule there
-        raise InvalidInput(field="when", reason="invalid") from error
+    # Checked before any conversion: a moment by the calendar's edge overflows, if not here
+    # then later (on «+10 мин» or after a move east), and breaks every list that shows it.
+    if when_local.year not in SUPPORTED_YEARS:
+        raise InvalidInput(field="when", reason="invalid")
+    return local_to_utc(when_local, tz)
 
 
 def _biweekly_anchor(rule: Rule, tz: str, moment: datetime) -> Rule:
@@ -216,10 +219,12 @@ async def update_reminder(
         _schedule(reminder, first)
     elif when_local is not None:
         due_at = _to_utc(when_local, user.timezone)
-        # The form only speaks minutes: its own moment sent back unchanged (even an overdue
-        # one) is no reschedule and no past check.
-        unchanged = reminder.repeat is Repeat.NONE and due_at == reminder.due_at.replace(
-            second=0, microsecond=0
+        # The form speaks the wall the list shows, in minutes and without the fold that tells
+        # the two passes of an autumn hour apart: its own moment sent back unchanged (even an
+        # overdue one, or one in the second pass) is no reschedule and no past check.
+        shown = to_local(reminder.due_at, user.timezone)
+        unchanged = reminder.repeat is Repeat.NONE and when_local == shown.replace(
+            tzinfo=None, second=0, microsecond=0
         )
         if not unchanged and due_at <= moment:
             raise InvalidInput(field="when", reason="past")
@@ -446,6 +451,19 @@ async def expire_stale(
             _schedule(reminder, recurrence.next_after(rule, now, tz))
     await session.flush()
     return int(result.rowcount) + len(stale)  # type: ignore[attr-defined]
+
+
+async def forget_finished(session: AsyncSession, now: datetime) -> int:
+    """Delete the sent, done, failed or cancelled reminders nothing can reach any more: never
+    delivered, or delivered longer ago than the buttons under the message work. A snoozed copy
+    outlives its series (its parent_id becomes NULL)."""
+    result = await session.execute(
+        delete(Reminder).where(
+            Reminder.status != ReminderStatus.PENDING,
+            or_(Reminder.sent_at.is_(None), Reminder.sent_at < now - FIRED_TTL),
+        )
+    )
+    return int(result.rowcount)  # type: ignore[attr-defined]
 
 
 async def reschedule_repeating(

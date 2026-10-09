@@ -1,12 +1,15 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { keys } from "../api/queries";
 import type { City, Me, WeatherCity } from "../api/types";
 import { Toasts } from "../components/Toasts";
 import { GEONAMES_URL, LICENCE_URL, OPEN_METEO_URL } from "../lib/links";
+import type { TgWebApp } from "../telegram";
 import { installTelegram } from "../test/fakeTelegram";
 import { me, scheduleSource, tula } from "../test/fixtures";
 import { mockApi, type ApiCall } from "../test/mockApi";
+import { stubPointer } from "../test/pointer";
+import { RATE_LIMITED } from "../test/refresh";
 import { renderWithApp } from "../test/render";
 import { MoreScreen, REPO_URL } from "./More";
 
@@ -65,8 +68,8 @@ function extraCities(start: WeatherCity[]) {
   };
 }
 
-function showMore(routes: Record<string, unknown>) {
-  const app = installTelegram();
+function showMore(routes: Record<string, unknown>, telegram: Partial<TgWebApp> = {}) {
+  const app = installTelegram(telegram);
   const api = mockApi({ "GET /me": me, "GET /health": HEALTH, "GET /me/cities": [tula], ...routes });
   return { app, ...api, ...renderWithApp(<><MoreScreen /><Toasts /></>, { path: "/more" }) };
 }
@@ -212,14 +215,37 @@ describe("More → Cities", () => {
     expect(sent(calls, "POST")).toHaveLength(1);
   });
 
-  it("deletes an extra city without a question", async () => {
+  it("on a phone, deletes an extra city swiped away without a question", async () => {
+    stubPointer("touch");
     const { app, calls } = showMore(extraCities([tula, SOCHI]));
     const row = (await screen.findByText("Тула")).closest("li") as HTMLElement;
-    fireEvent.click(within(row).getByRole("button", { name: "Удалить город" }));
+    fireEvent.click(within(row).getByRole("button", { name: "Удалить город «Тула»" }));
     await waitFor(() => expect(screen.queryByText("Тула")).not.toBeInTheDocument());
     expect(sent(calls, "DELETE")).toEqual([{ method: "DELETE", path: "/me/cities/3", body: undefined }]);
     expect(screen.getByText("Сочи")).toBeInTheDocument();
     expect(app.showConfirm).not.toHaveBeenCalled();
+  });
+
+  it("with a mouse, asks before deleting a city and keeps it on «Отмена»", async () => {
+    stubPointer("mouse");
+    const { app, calls } = showMore(extraCities([tula, SOCHI]), {
+      showConfirm: vi.fn((_message: string, callback: (ok: boolean) => void) => callback(false)),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Удалить город «Тула»" }));
+    expect(app.showConfirm).toHaveBeenCalledWith("Удалить город «Тула»?", expect.any(Function));
+    // Time enough for a DELETE that should not be sent to go out and come back.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(sent(calls, "DELETE")).toEqual([]);
+    expect(screen.getByText("Тула")).toBeInTheDocument();
+  });
+
+  it("with a mouse, quotes the start of a long city name in its question", async () => {
+    stubPointer("mouse");
+    const { app } = showMore(extraCities([{ ...SOCHI, name: "Л".repeat(100) }]), {
+      showConfirm: vi.fn((_message: string, callback: (ok: boolean) => void) => callback(false)),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: `Удалить город «${"Л".repeat(100)}»` }));
+    expect(app.showConfirm).toHaveBeenCalledWith(`Удалить город «${"Л".repeat(59)}…»?`, expect.any(Function));
   });
 
   it("turns «Добавить город» off at four extra cities and says why under it", async () => {
@@ -289,11 +315,37 @@ describe("More → Cities", () => {
     expect(within(card).queryByRole("button", { name: "Повторить" })).not.toBeInTheDocument();
   });
 
-  it("says so when the city search is unavailable", async () => {
-    const { client } = showMore({ [SEARCH_KAZAN]: UNAVAILABLE });
-    client.setQueryDefaults(["cities"], { retry: false }); // the app retries a 503 twice first
+  it("says it is searching while the first answer is on the way, where the results are read out", async () => {
+    let answer: (reply: { body: unknown }) => void = () => undefined;
+    const { calls } = showMore({ [SEARCH_KAZAN]: () => new Promise((resolve) => (answer = resolve)) });
+    await search("Добавить город", "Каз");
+    const searching = await screen.findByText("Ищу…");
+    expect(searching.closest('[role="status"]')).toHaveAttribute("aria-live", "polite");
+    // «Ищу…» is drawn as the search starts, a moment before its request goes out (an effect sends
+    // it): the answer waits for the request, or it would answer nothing and the search would hang.
+    await waitFor(() => expect(calls.filter((call) => call.path.startsWith("/cities"))).toHaveLength(1));
+    expect(screen.getByText("Ищу…")).toBeInTheDocument();
+    act(() => answer({ body: [KAZAN] }));
+    expect(await screen.findByRole("button", { name: KAZAN_FOUND })).toBeInTheDocument();
+    expect(screen.queryByText("Ищу…")).not.toBeInTheDocument();
+  });
+
+  it("tries an unavailable city search once more, then says so", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { calls } = showMore({ [SEARCH_KAZAN]: UNAVAILABLE });
     await search("Сменить домашний", "Каз");
-    expect(await screen.findByText("Сервис временно недоступен")).toBeInTheDocument();
+    expect(await screen.findByText("Ищу…")).toBeInTheDocument();
+    await act(() => vi.advanceTimersByTimeAsync(5_000));
+    expect(screen.getByText("Сервис временно недоступен")).toBeInTheDocument();
+    expect(screen.queryByText("Ищу…")).not.toBeInTheDocument();
+    expect(calls.filter((call) => call.path.startsWith("/cities"))).toHaveLength(2);
+  });
+
+  it("says why a city search was refused in the refusal's own words, without asking again", async () => {
+    const { calls } = showMore({ [SEARCH_KAZAN]: RATE_LIMITED });
+    await search("Сменить домашний", "Каз");
+    expect(await screen.findByText("Слишком много запросов — подожди минуту")).toBeInTheDocument();
+    expect(calls.filter((call) => call.path.startsWith("/cities"))).toHaveLength(1);
   });
 
   it("reads out what each city search found, in a region that was there before it", async () => {
@@ -364,6 +416,16 @@ describe("More", () => {
     expect(calls).toContainEqual({ method: "PATCH", path: "/me", body: { language: "en" } });
   });
 
+  it("has each language named in its own words read in its own language", async () => {
+    installTelegram();
+    mockApi({ "GET /me": me, "GET /health": HEALTH });
+    renderWithApp(<MoreScreen />, { path: "/more" });
+    expect(await screen.findByRole("button", { name: "Русский" })).toHaveAttribute("lang", "ru");
+    expect(screen.getByRole("button", { name: "English" })).toHaveAttribute("lang", "en");
+    // «Авто» is a word of the app's own language, as the page is.
+    expect(screen.getByRole("button", { name: "Авто" })).not.toHaveAttribute("lang");
+  });
+
   it("flips the digest switch at once and puts it back when saving fails", async () => {
     installTelegram();
     const patch = heldPatches();
@@ -407,6 +469,8 @@ describe("More", () => {
   });
 
   it("saves the morning time once, with the final value", async () => {
+    // The field's 800 ms wait for more typing passes when the test says, not in real time.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     installTelegram();
     const { calls } = mockApi({
       "GET /me": me,
@@ -423,14 +487,15 @@ describe("More", () => {
       fireEvent.change(field, { target: { value } });
     }
     expect(field).toHaveValue("09:30");
-    await waitFor(() => expect(patches()).toEqual([{ morning_time: "09:30" }]), { timeout: 2000 });
+    await act(() => vi.advanceTimersByTimeAsync(800));
+    await waitFor(() => expect(patches()).toEqual([{ morning_time: "09:30" }]));
     fireEvent.blur(field); // the same time as the saved one: nothing to send
-    await new Promise((resolve) => setTimeout(resolve, 900));
+    await act(() => vi.advanceTimersByTimeAsync(900));
     expect(patches()).toHaveLength(1);
     fireEvent.change(field, { target: { value: "07:15" } });
-    fireEvent.blur(field); // leaving the field saves at once
-    await waitFor(() => expect(patches()).toHaveLength(2), { timeout: 300 });
-    expect(patches()[1]).toEqual({ morning_time: "07:15" });
+    fireEvent.blur(field); // leaving the field saves at once, before the 800 ms are up
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(patches()).toEqual([{ morning_time: "09:30" }, { morning_time: "07:15" }]);
   });
 
   it("changes the currency of the accounts, saying the amounts stay", async () => {
@@ -451,8 +516,9 @@ describe("More", () => {
     mockApi({ "GET /me": me, "GET /health": HEALTH });
     renderWithApp(<MoreScreen />, { path: "/more" });
     const card = (await screen.findByRole("heading", { name: "Данные" })).closest("section") as HTMLElement;
-    expect(card).toHaveTextContent(
-      "Погода — open-meteo.com, названия городов — geonames.org; лицензия CC BY 4.0 " +
+    // No line starts with a dash: each keeps the word before it with a no-break space.
+    expect(card.textContent).toContain(
+      "Погода\u00a0— open-meteo.com, названия городов\u00a0— geonames.org; лицензия CC\u00a0BY\u00a04.0 " +
         "(creativecommons.org/licenses/by/4.0), приложение округляет данные и добавляет советы.",
     );
     fireEvent.click(within(card).getByRole("button", { name: "open-meteo.com" }));
@@ -468,6 +534,7 @@ describe("More", () => {
     mockApi({ "GET /me": { ...me, language: "en" }, "GET /health": HEALTH, "GET /me/cities": [tula] });
     renderWithApp(<MoreScreen />, { path: "/more", lang: "en" });
     const card = (await screen.findByRole("heading", { name: "Data" })).closest("section") as HTMLElement;
+    expect(card.textContent).toContain("Weather\u00a0— open-meteo.com, city names\u00a0— geonames.org;");
     expect(card).toHaveTextContent("the app rounds the data and adds tips.");
     expect(screen.getByText("reminders and the morning digest follow its time")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Change home city" })).toBeInTheDocument();

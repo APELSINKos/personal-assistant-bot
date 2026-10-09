@@ -91,13 +91,6 @@ describe("opening an address", () => {
 });
 
 describe("credit lines", () => {
-  it("makes links of the sources the weather credit names", () => {
-    expect(creditParts(dict("ru").weather.credit)).toEqual([
-      { text: "Данные о погоде: ", url: null },
-      { text: "open-meteo.com", url: OPEN_METEO_URL },
-    ]);
-  });
-
   it.each(["ru", "en"] as const)("makes links of all three sources in more.credits (%s)", (lang) => {
     const text = dict(lang).more.credits;
     const parts = creditParts(text);
@@ -105,5 +98,12 @@ describe("credit lines", () => {
       OPEN_METEO_URL, GEONAMES_URL, LICENCE_URL,
     ]);
     expect(parts.map((part) => part.text).join("")).toBe(text);
+  });
+
+  it.each(["ru", "en"] as const)("starts no line with a dash in more.credits (%s)", (lang) => {
+    const text = dict(lang).more.credits;
+    // A no-break space before each dash: a line may break only after one.
+    expect(text.match(/—/g)).toHaveLength(2);
+    expect(text).not.toMatch(/[^\u00a0]—/);
   });
 });

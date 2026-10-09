@@ -26,7 +26,7 @@ from assistant.core.errors import InvalidInput, LimitReached, NotFound
 from assistant.core.habit_style import COLORS, DAILY, EMOJI
 from assistant.core.i18n import Translator, format_day, weekday_short
 from assistant.core.services import cards, habits
-from assistant.core.services.habits import HabitStats
+from assistant.core.services.habits import DONE, MISSED, UNMARKED, HabitStats
 from assistant.core.timeutil import local_today, utcnow
 
 # Replaced in tests to freeze time.
@@ -34,6 +34,9 @@ clock: Callable[[], datetime] = utcnow
 STRIP = {True: "🟩", False: "🟥", None: "⬜"}
 MARK = {True: "✅", False: "❌", None: "⬜"}
 NEXT_MARK: dict[bool | None, bool | None] = {None: True, True: False, False: None}
+# The mark a button sets, as its value names it: the alphabet of the year map.
+MARK_CODE: dict[bool | None, str] = {True: DONE, False: MISSED, None: UNMARKED}
+CODE_MARK = {code: mark for mark, code in MARK_CODE.items()}
 FIRE_FROM = 3  # a streak of this many days (or weeks) earns a 🔥
 DAYS_BACK = 7  # «📅 Прошлые дни» offers today and the six days before it
 ROW = 4  # buttons in a row of days and emoji
@@ -45,6 +48,26 @@ def _button(text: str, data: HabitCb) -> InlineKeyboardButton:
 
 def _rows(buttons: list[InlineKeyboardButton], width: int) -> list[list[InlineKeyboardButton]]:
     return [buttons[start : start + width] for start in range(0, len(buttons), width)]
+
+
+def _put_value(day: date, shown: bool | None) -> str:
+    """The value of a button that shows the mark `shown` on `day`: the day and the mark after
+    it, «2026-10-07~1». A tap sets that mark on that day, whatever the clock or the app did
+    since the button was drawn."""
+    return f"{day.isoformat()}~{MARK_CODE[NEXT_MARK[shown]]}"
+
+
+def _parse_put(value: str, today: date) -> tuple[date, bool | None] | None:
+    """The day and the mark of a button's value, or None for a forged one or a day out of
+    reach: only today and the DAYS_BACK - 1 days before it are marked from the chat."""
+    text, _, code = value.partition("~")
+    try:
+        day = date.fromisoformat(text)
+    except ValueError:
+        return None
+    if code not in CODE_MARK or not today - timedelta(days=DAYS_BACK - 1) <= day <= today:
+        return None
+    return day, CODE_MARK[code]
 
 
 def habits_view(items: list[HabitStats], t: Translator) -> tuple[str, InlineKeyboardMarkup]:
@@ -149,7 +172,7 @@ def days_view(stats: HabitStats, today: date, t: Translator) -> tuple[str, Inlin
     days = [
         _button(
             f"{weekday_short(day.weekday(), t.lang)} {day.day} {MARK[mark]}",
-            HabitCb(action="day", id=habit.id, value=day.isoformat()),
+            HabitCb(action="dput", id=habit.id, value=_put_value(day, mark)),
         )
         for day, mark in recent_days(stats, today)
     ]
@@ -216,9 +239,12 @@ def confirm_view(stats: HabitStats, t: Translator) -> tuple[str, InlineKeyboardM
 
 
 def mark_view(
-    items: list[HabitStats], day: date, t: Translator
+    items: list[HabitStats], day: date, today: date, t: Translator
 ) -> tuple[str, InlineKeyboardMarkup]:
-    done = sum(1 for stats in items if stats.done_today)
+    """Each habit's mark on `day`, one of the last DAYS_BACK days up to `today` (the day the
+    statistics are counted for): today's, or the one a view drawn before midnight showed."""
+    marks = [(stats, stats.last_days[-1 - (today - day).days]) for stats in items]
+    done = sum(1 for _, mark in marks if mark)
     text = "\n".join(
         [
             t("habits-mark-title", date=format_day(day, t.lang)),
@@ -230,11 +256,11 @@ def mark_view(
     rows = [
         [
             _button(
-                f"{MARK[stats.done_today]} {stats.habit.name}",
-                HabitCb(action="toggle", id=stats.habit.id),
+                f"{MARK[mark]} {stats.habit.name}",
+                HabitCb(action="put", id=stats.habit.id, value=_put_value(day, mark)),
             )
         ]
-        for stats in items
+        for stats, mark in marks
     ]
     rows.append([_button(t("button-back"), HabitCb(action="list"))])
     return text, InlineKeyboardMarkup(inline_keyboard=rows)
@@ -315,6 +341,7 @@ async def on_days(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: B
 
 
 async def on_day(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bot) -> None:
+    """A day of «📅 Прошлые дни» before 2.6.1, still in the chats: it switches the day's mark."""
     now = clock()
     today = local_today(ctx.user.timezone, now)
     try:
@@ -334,6 +361,26 @@ async def on_day(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bo
         stats = await habits.set_mark(
             ctx.session, ctx.user, stats.habit.id, day, NEXT_MARK[current], now=now
         )
+    except InvalidInput:  # a day before the habit began
+        await query.answer(ctx.t("stale-button"))
+        return
+    await replies.answer_quietly(query)
+    await replies.edit(bot, query, *days_view(stats, today, ctx.t))
+
+
+async def on_dput(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bot) -> None:
+    """A day of «📅 Прошлые дни»: the mark its button offers, on its day."""
+    now = clock()
+    today = local_today(ctx.user.timezone, now)
+    put = _parse_put(callback_data.value, today)
+    if put is None:
+        await query.answer(ctx.t("stale-button"))
+        return
+    try:
+        stats = await habits.set_mark(ctx.session, ctx.user, callback_data.id, *put, now=now)
+    except NotFound:
+        await _gone(query, ctx, bot, now)
+        return
     except InvalidInput:  # a day before the habit began
         await query.answer(ctx.t("stale-button"))
         return
@@ -455,10 +502,11 @@ async def on_mark(query: CallbackQuery, ctx: Ctx, bot: Bot) -> None:
         return
     await query.answer()
     today = local_today(ctx.user.timezone, now)
-    await replies.edit(bot, query, *mark_view(items, today, ctx.t))
+    await replies.edit(bot, query, *mark_view(items, today, today, ctx.t))
 
 
 async def on_toggle(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bot) -> None:
+    """The button of the views before 2.6.1, still in the chats: it switches today's mark."""
     now = clock()
     today = local_today(ctx.user.timezone, now)
     try:
@@ -476,7 +524,32 @@ async def on_toggle(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot:
         await replies.answer_quietly(query)
     items = await _items(ctx, now)
     if items:
-        await replies.edit(bot, query, *mark_view(items, today, ctx.t))
+        await replies.edit(bot, query, *mark_view(items, today, today, ctx.t))
+    else:
+        await replies.edit(bot, query, *habits_view(items, ctx.t))
+
+
+async def on_put(query: CallbackQuery, callback_data: HabitCb, ctx: Ctx, bot: Bot) -> None:
+    """A habit in the view of a day: the mark its button offers, on that day — a view drawn
+    before midnight still marks its own day, then shows that day again."""
+    now = clock()
+    today = local_today(ctx.user.timezone, now)
+    put = _parse_put(callback_data.value, today)
+    if put is None:
+        await query.answer(ctx.t("stale-button"))
+        return
+    day, done = put
+    try:
+        await habits.set_mark(ctx.session, ctx.user, callback_data.id, day, done, now=now)
+    except NotFound:
+        await query.answer(ctx.t("already-deleted"))
+    except InvalidInput:  # a day before the habit began
+        await query.answer(ctx.t("stale-button"))
+    else:
+        await replies.answer_quietly(query)
+    items = await _items(ctx, now)
+    if items:
+        await replies.edit(bot, query, *mark_view(items, day, today, ctx.t))
     else:
         await replies.edit(bot, query, *habits_view(items, ctx.t))
 
@@ -547,6 +620,7 @@ def create_router() -> Router:
         ("map", on_map),
         ("days", on_days),
         ("day", on_day),
+        ("dput", on_dput),
         ("goal", on_goal),
         ("setgoal", on_set_goal),
         ("style", on_style),
@@ -555,6 +629,7 @@ def create_router() -> Router:
         ("rename", on_rename),
         ("mark", on_mark),
         ("toggle", on_toggle),
+        ("put", on_put),
         ("delete", on_delete_menu),
         ("ask", on_ask),
         ("del", on_delete),

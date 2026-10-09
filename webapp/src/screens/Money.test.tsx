@@ -1,9 +1,10 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MoneyMonth } from "../api/types";
 import { installTelegram } from "../test/fakeTelegram";
 import { me, moneyMonth } from "../test/fixtures";
 import { mockApi } from "../test/mockApi";
+import { stubPointer } from "../test/pointer";
 import { renderWithApp } from "../test/render";
 import { MoneyScreen } from "./Money";
 
@@ -89,7 +90,9 @@ describe("Money", () => {
     expect(calls.map((call) => call.path)).toContain("/money?month=2026-08");
   });
 
-  it("deletes an entry swiped away", async () => {
+  it("on a phone, deletes an entry swiped away without a question", async () => {
+    stubPointer("touch");
+    const app = installTelegram();
     let month = moneyMonth;
     const { calls } = show({
       "GET /money?month=2026-09": () => ({ body: month }),
@@ -99,9 +102,64 @@ describe("Money", () => {
       },
     });
     const row = (await screen.findByText("кофе")).closest(".swipe") as HTMLElement;
-    fireEvent.click(within(row).getByRole("button", { name: "Удалить запись" }));
+    fireEvent.click(within(row).getByRole("button", { name: /^Удалить запись «кофе», 430,50\s₽$/ }));
     await waitFor(() => expect(screen.queryByText("кофе")).not.toBeInTheDocument());
     expect(calls).toContainEqual({ method: "DELETE", path: "/money/entries/24", body: undefined });
+    expect(app.showConfirm).not.toHaveBeenCalled();
+  });
+
+  it("with a mouse, asks before deleting an entry from the list and keeps it on «Отмена»", async () => {
+    stubPointer("mouse");
+    const app = installTelegram({
+      showConfirm: vi.fn((_message: string, callback: (ok: boolean) => void) => callback(false)),
+    });
+    const { calls } = show({ "DELETE /money/entries/23": { status: 204 } });
+    const link = await screen.findByRole("link", { name: /такси/ });
+    const button = screen.getByRole("button", { name: /^Удалить запись «такси», 300\s₽$/ });
+    expect(link.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(button);
+    expect(app.showConfirm).toHaveBeenCalledWith("Удалить запись?", expect.any(Function));
+    // Time enough for a DELETE that should not be sent to go out and come back.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(calls.some((call) => call.method === "DELETE")).toBe(false);
+    expect(screen.getByText("такси")).toBeInTheDocument();
+  });
+
+  it("with a mouse, asks once on a double click and deletes only that entry on «OK»", async () => {
+    stubPointer("mouse");
+    // As telegram-web-app.js: while its popup is open, another one is refused.
+    let open = false;
+    let answer!: (ok: boolean) => void;
+    const showConfirm = vi.fn((_message: string, callback: (ok: boolean) => void) => {
+      if (open) throw new Error("WebAppPopupOpened");
+      open = true;
+      answer = callback;
+    });
+    installTelegram({ showConfirm });
+    let month = moneyMonth;
+    const { calls } = show({
+      "GET /money?month=2026-09": () => ({ body: month }),
+      "DELETE /money/entries/23": () => {
+        month = { ...moneyMonth, entries: moneyMonth.entries.filter((entry) => entry.id !== 23) };
+        return { status: 204 };
+      },
+    });
+    const button = await screen.findByRole("button", { name: /^Удалить запись «такси», 300\s₽$/ });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(showConfirm).toHaveBeenCalledTimes(2); // the second popup refused, and taken for a no
+    act(() => answer(true));
+    await waitFor(() => expect(screen.queryByText("такси")).not.toBeInTheDocument());
+    expect(calls.filter((call) => call.method === "DELETE")).toEqual([
+      { method: "DELETE", path: "/money/entries/23", body: undefined },
+    ]);
+    expect(screen.getByText("кофе")).toBeInTheDocument();
+  });
+
+  it("names an entry without a note by its category, and an income with its plus, as the row shows them", async () => {
+    show();
+    expect(await screen.findByRole("button", { name: /^Удалить запись «Продукты», 1\s250\s₽$/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Удалить запись «Стипендия», \+3\s000\s₽$/ })).toBeInTheDocument();
   });
 
   it("offers a retry when the user or the month cannot be read", async () => {
@@ -121,6 +179,7 @@ describe("Money", () => {
     expect(screen.queryByText(/^of \$30,000/)).not.toBeInTheDocument();
     expect(screen.getByText("of $5,000 · $4,569.50 left")).toBeInTheDocument(); // the category's own
     expect(screen.getByRole("heading", { level: 3, name: "Fri, Sep 25" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete the entry “кофе”, $430.50" })).toBeInTheDocument();
   });
 });
 

@@ -1,10 +1,12 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { keys } from "../api/queries";
 import type { AgendaItem, LessonItem, ReminderItem } from "../api/types";
 import { addDaysIso, weekOf } from "../lib/format";
 import { installTelegram } from "../test/fakeTelegram";
 import { me } from "../test/fixtures";
 import { mockApi } from "../test/mockApi";
+import { RATE_LIMITED, refresh } from "../test/refresh";
 import { renderWithApp } from "../test/render";
 import { CalendarScreen } from "./Calendar";
 
@@ -179,6 +181,27 @@ describe("Calendar", () => {
     await waitFor(() => expect(calls).toContainEqual({ method: "DELETE", path: "/reminders/2", body: undefined }));
   });
 
+  it("asks about a repeat with a very long text too, quoting its start", async () => {
+    at("2026-09-29T09:00:00Z");
+    // As telegram-web-app.js: a popup's message over 256 UTF-16 units is refused.
+    const showConfirm = vi.fn((message: string, callback: (ok: boolean) => void) => {
+      if (message.trim().length > 256) throw new Error("WebAppPopupParamInvalid");
+      callback(true);
+    });
+    installTelegram({ showConfirm });
+    const { calls } = mockApi({
+      "GET /me": me,
+      "GET /agenda?from=2026-09-28&to=2026-10-04": week("2026-09-28", {
+        "2026-09-29": [{ ...PILLS, text: "а".repeat(300) }],
+      }),
+      "DELETE /reminders/2": () => ({ status: 204 }),
+    });
+    renderWithApp(<CalendarScreen />, { path: "/calendar" });
+    fireEvent.click(await screen.findByRole("button", { name: "Удалить напоминание" }));
+    expect(showConfirm).toHaveBeenCalledWith(`Удалить повтор «${"а".repeat(59)}…» целиком?`, expect.any(Function));
+    await waitFor(() => expect(calls).toContainEqual({ method: "DELETE", path: "/reminders/2", body: undefined }));
+  });
+
   it("deletes a one-off reminder after a plain confirmation", async () => {
     at("2026-09-29T09:00:00Z");
     const app = installTelegram();
@@ -227,6 +250,28 @@ describe("Calendar", () => {
     client.setQueryDefaults(["agenda"], { retry: false }); // the app retries a 5xx twice first
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.queryByText("Ничего не запланировано")).not.toBeInTheDocument();
+  });
+
+  it("keeps the day on screen when a refresh of the week or of the user fails", async () => {
+    at("2026-09-29T09:00:00Z");
+    installTelegram();
+    const days = week("2026-09-28", { "2026-09-29": [item(3, "09:00", "Врач")] });
+    mockApi({ "GET /me": me, "GET /agenda?from=2026-09-28&to=2026-10-04": days });
+    const { client } = renderWithApp(<CalendarScreen />, { path: "/calendar" });
+    expect(await screen.findByText("Врач")).toBeInTheDocument();
+    expect(screen.getByText("1 напоминание")).toBeInTheDocument();
+
+    mockApi({ "GET /me": me, "GET /agenda?from=2026-09-28&to=2026-10-04": RATE_LIMITED });
+    await refresh(client, ["agenda"]);
+    expect(screen.getByText("Врач")).toBeInTheDocument();
+    expect(screen.getByText("1 напоминание")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    mockApi({ "GET /me": RATE_LIMITED, "GET /agenda?from=2026-09-28&to=2026-10-04": days });
+    await refresh(client, keys.me);
+    expect(screen.getByRole("heading", { level: 1, name: /Календарь/ })).toBeInTheDocument();
+    expect(screen.getByText("Врач")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("ignores a mostly vertical drag but moves the week on a horizontal one", async () => {

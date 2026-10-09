@@ -36,7 +36,7 @@ async def get_weather(
     else:
         shown = ForecastCityOut(id=0, name=user.city, home=True)
         lat, lon = user.lat, user.lon
-    found = await weather.forecast(state.meteo, shown.name, lat, lon)
+    found = await weather.forecast(state.meteo, shown.name, lat, lon, user_id=user.id)
     return forecast_out(found, shown, state.clock(), user_translator(user))
 
 

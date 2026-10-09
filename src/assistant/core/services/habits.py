@@ -34,6 +34,7 @@ DONE, MISSED, UNMARKED, OUTSIDE = "1", "0", "-", "."
 @dataclass(frozen=True)
 class HabitStats:
     habit: Habit
+    today: date  # the user's day the statistics are counted for
     done_today: bool | None
     streak: int
     done_days: int
@@ -195,6 +196,7 @@ def _stats(habit: Habit, marks: Mapping[date, bool], today: date) -> HabitStats:
         record = _weekly_record(marks, goal, habit.created_on, today)
     return HabitStats(
         habit=habit,
+        today=today,
         done_today=marks.get(today),
         streak=streak,
         done_days=sum(1 for done in marks.values() if done),
@@ -221,9 +223,14 @@ async def _habits(session: AsyncSession, user_id: int) -> list[Habit]:
 async def _marks(session: AsyncSession, habit_ids: Sequence[int]) -> dict[int, dict[date, bool]]:
     marks: dict[int, dict[date, bool]] = {habit_id: {} for habit_id in habit_ids}
     if habit_ids:
-        result = await session.scalars(select(HabitMark).where(HabitMark.habit_id.in_(habit_ids)))
-        for mark in result.all():
-            marks[mark.habit_id][mark.day] = mark.done
+        # Plain columns, not HabitMark objects: years of marks load several times faster.
+        rows = await session.execute(
+            select(HabitMark.habit_id, HabitMark.day, HabitMark.done).where(
+                HabitMark.habit_id.in_(habit_ids)
+            )
+        )
+        for habit_id, day, done in rows:
+            marks[habit_id][day] = done
     return marks
 
 

@@ -152,11 +152,13 @@ a {
 }
 
 /* Today */
+/* The date is the screen's h1; its parts set their own fonts, so a heading's size and weight stay off. */
 .big-date {
   display: flex;
   align-items: flex-end;
   gap: 12px;
   margin: 6px 4px 16px;
+  font: inherit;
 }
 
 .big-date__day {
@@ -285,12 +287,6 @@ a {
   transform: scale(0.88);
 }
 
-.toggle:disabled {
-  opacity: 0.5;
-  cursor: default;
-  transform: none;
-}
-
 .toggle--done {
   border-color: var(--accent);
   background: var(--accent);
@@ -327,8 +323,11 @@ a {
   font-weight: 700;
 }
 
+/* The delete button follows the row's content in the DOM, so Tab reaches a row before its delete;
+   the content's z-index keeps it painted over the button, inside the row's own stacking context. */
 .swipe {
   position: relative;
+  isolation: isolate;
   margin-bottom: 8px;
   overflow: hidden;
   border-radius: var(--radius-card);
@@ -353,6 +352,7 @@ a {
 
 .swipe__content {
   position: relative;
+  z-index: 1;
   padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
@@ -403,6 +403,12 @@ a {
 /* A control that the keyboard brings into view stops above the fixed bar, not under it. */
 html {
   scroll-padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 16px);
+}
+
+/* On a screen with the floating «+», above the «+» too: it stands over the column of the rows' 🗑
+   (16px over the bar, 56px tall), and a row's 🗑 reached with Tab would stop under it. */
+html:has(.fab) {
+  scroll-padding-bottom: calc(var(--nav-height) + var(--safe-bottom) + 80px);
 }
 
 .tabs {
@@ -479,6 +485,13 @@ select.input {
 .input::placeholder {
   color: var(--hint);
   opacity: 1;
+}
+
+/* A field that is off looks off, as a button that is off does: the time of the morning digest is
+   off along with the digest, and `color: inherit` above leaves no grey of the browser's own. */
+.input:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .input:focus-visible,
@@ -645,7 +658,7 @@ a.button {
   border-radius: var(--radius-pill);
   background: var(--line);
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .switch::after {
@@ -657,7 +670,7 @@ a.button {
   height: 26px;
   border-radius: 50%;
   background: #fff;
-  transition: transform 0.2s ease;
+  transition: transform 0.2s ease, background 0.2s ease;
 }
 
 .switch:checked {
@@ -666,6 +679,19 @@ a.button {
 
 .switch:checked::after {
   transform: translateX(20px);
+}
+
+/* A switch that is off, in the light theme: --line is a faint grey there, and the track measured
+   1.16:1 on the card and the white knob 1.20:1 on the track (rendered pixels), under 3:1 for a
+   control's state. An edge and a knob in --hint measure at least 4.8:1 and 4.0:1, over the
+   brightest glow too. On keeps the accent with the white knob; in the dark theme the white knob is
+   over 11:1 on its track already. */
+[data-theme="light"] .switch:not(:checked) {
+  box-shadow: inset 0 0 0 2px var(--hint);
+}
+
+[data-theme="light"] .switch:not(:checked)::after {
+  background: var(--hint);
 }
 
 .results {
