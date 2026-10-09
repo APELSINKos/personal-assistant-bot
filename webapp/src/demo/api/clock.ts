@@ -24,3 +24,8 @@ export function moscowDay(moment: number): string {
 export function moscowHour(moment: number): number {
   return new Date(moment + MOSCOW).getUTCHours();
 }
+
+/** The time in Moscow as a clock shows it, «10:30». */
+export function moscowTime(moment: number): string {
+  return new Date(moment + MOSCOW).toISOString().slice(11, 16);
+}

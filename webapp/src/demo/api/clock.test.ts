@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { moscowDay, moscowHour, parseAt } from "./clock";
+import { moscowDay, moscowHour, moscowTime, parseAt } from "./clock";
 
 describe("the demo's clock", () => {
   it("reads ?at= as a moment on Moscow's clock", () => {
@@ -20,5 +20,11 @@ describe("the demo's clock", () => {
     expect(moscowDay(night)).toBe("2026-10-07");
     expect(moscowHour(night)).toBe(0);
     expect(moscowHour(Date.UTC(2026, 9, 7, 7, 30))).toBe(10);
+  });
+
+  it("tells the time in Moscow as a clock shows it", () => {
+    expect(moscowTime(Date.UTC(2026, 9, 7, 7, 30, 59))).toBe("10:30");
+    expect(moscowTime(Date.UTC(2026, 9, 6, 21, 5))).toBe("00:05");
+    expect(moscowTime(Date.UTC(2026, 0, 15, 20, 59))).toBe("23:59");
   });
 });

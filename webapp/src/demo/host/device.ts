@@ -1,9 +1,11 @@
 /**
- * The demo's device (spec §4.3): what Telegram draws around a Mini App, drawn by the host page
+ * The demo's device (spec §4.3, §6): what Telegram draws around a Mini App, drawn by the host page
  * around the app's frame — the header with «✕ Закрыть» or «‹ Назад» and the bot's name, the web
  * view with the app, the main button's bar under it, the dialogs and the chat picker inside the
- * screen, and the panel left when the app is closed. Nothing goes into the app's document: the host
- * only answers what the frame's bridge asks, without Telegram's logo or name.
+ * screen, and the panel left when the app is closed — and what a phone draws around that: the status
+ * bar and the strip at the bottom, shown only in a phone's frame and in shot mode. Nothing goes into
+ * the app's document: the host only answers what the frame's bridge asks, without Telegram's logo
+ * or name.
  */
 import type { Lang } from "../../i18n";
 import type { DemoFrame, DemoHost, MainButtonState } from "../bridge/contract";
@@ -33,10 +35,18 @@ export interface Device {
   element: HTMLElement;
   chrome: Chrome;
   dialogs: Dialogs;
+  /** Where the page puts its own parts: the header's right end, and the web view over the app. */
+  slots: { end: HTMLElement; view: HTMLElement };
   /** The frame of the app that runs now, as it connected; null while none does. */
   frame(): DemoFrame | null;
   /** Opens the app afresh on a route, in a new frame, as Telegram opens a Mini App. */
   open(route: string): void;
+  /** Takes the running app to a route, as a link would; opens the app there when it is closed. */
+  go(route: string): void;
+  /** Leaves the theme's own colours where the app painted its: a new theme, until it paints again. */
+  unpaint(): void;
+  /** The status bar's clock, «10:30». */
+  setTime(time: string): void;
   /** The route the app shows now, «/weather». */
   route(): string;
   /** Says everything again in the visitor's language now. */
@@ -48,8 +58,8 @@ const SENT_FOR = 3000;
 
 const NO_MAIN_BUTTON: MainButtonState = { text: "", visible: false, active: true, progress: false };
 
-/** The app's route in a frame's hash, «#/weather» → «/weather»; null for any other hash. */
-function routeOf(hash: string): string | null {
+/** The app's route in a hash, «#/weather» → «/weather»; null for any other hash. */
+export function routeOf(hash: string): string | null {
   return hash.startsWith("#/") ? hash.slice(1) : null;
 }
 
@@ -59,14 +69,23 @@ export function createDevice(options: DeviceOptions): Device {
   const back = h("button", { type: "button", class: "tg-header__back" });
   const name = h("span", { class: "tg-header__name" });
   const demo = h("span", { class: "tg-header__demo" });
+  const end = h("span", { class: "tg-header__end" });
   const header = h(
     "header",
     { class: "tg-header" },
     back,
     h("p", { class: "tg-header__title" }, name, demo),
-    h("span", { class: "tg-header__end" }),
+    end,
   );
-  const top = h("div", { class: "tg-top" }, header);
+  // The phone's own status bar: a picture of one, which screen readers skip.
+  const time = h("span", { class: "tg-status__time" });
+  const status = h(
+    "div",
+    { class: "tg-status", "aria-hidden": "true" },
+    time,
+    h("span", { class: "tg-status__icons" }, icon("signal"), icon("wifi"), icon("battery")),
+  );
+  const top = h("div", { class: "tg-top" }, status, header);
 
   const loadingText = h("span", { class: "visually-hidden" });
   const loading = h(
@@ -88,13 +107,14 @@ export function createDevice(options: DeviceOptions): Device {
   const mainText = h("span", { class: "tg-main__text" });
   const spinner = h("span", { class: "tg-main__spinner", "aria-hidden": "true", hidden: true });
   const main = h("button", { type: "button", class: "tg-main", hidden: true }, mainText, spinner);
-  const bottom = h("div", { class: "tg-bottom" }, main);
+  const bottom = h("div", { class: "tg-bottom" }, main, h("div", { class: "tg-home" }));
 
   const layer = h("div", { class: "tg-layer" });
   const screen = h("div", { class: "device__screen" }, top, view, bottom, layer);
   const element = h("div", { class: "device" }, screen);
 
   let iframe: HTMLIFrameElement | null = null;
+  let loaded = false;
   let opened = "/";
   let current: DemoFrame | null = null;
   let backShown = false;
@@ -156,6 +176,7 @@ export function createDevice(options: DeviceOptions): Device {
   function watch(frame: HTMLIFrameElement): void {
     const win = frame.contentWindow;
     if (!win || frame !== iframe) return;
+    loaded = true;
     const report = () => options.onRoute?.(routeOf(win.location.hash) ?? opened);
     win.addEventListener("hashchange", report);
     report();
@@ -166,6 +187,7 @@ export function createDevice(options: DeviceOptions): Device {
     const reopened = closed.contains(document.activeElement);
     forget();
     opened = route;
+    loaded = false;
     closed.hidden = true;
     back.hidden = false;
     loading.hidden = false;
@@ -208,6 +230,12 @@ export function createDevice(options: DeviceOptions): Device {
     if (mainState.active) current?.mainButtonClicked();
   });
   reopen.addEventListener("click", () => open("/"));
+
+  function go(route: string): void {
+    const win = iframe?.contentWindow;
+    if (loaded && win) win.location.hash = route;
+    else open(route);
+  }
 
   const painted = { header: top, background: view, bottom };
 
@@ -279,8 +307,16 @@ export function createDevice(options: DeviceOptions): Device {
     element,
     chrome,
     dialogs,
+    slots: { end, view },
     frame: () => current,
     open,
+    go,
+    unpaint: () => {
+      for (const part of Object.values(painted)) part.style.backgroundColor = "";
+    },
+    setTime: (text) => {
+      time.textContent = text;
+    },
     route: () => (iframe ? (routeOf(iframe.contentWindow?.location.hash ?? "") ?? opened) : opened),
     relocalize,
   };

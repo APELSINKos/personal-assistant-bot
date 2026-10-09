@@ -3,8 +3,26 @@ import type { Lang } from "../../i18n";
 /** The host page's own words (spec §23.3); the app's stay in its dictionaries. */
 export interface HostWords {
   title: string;
-  /** The bot's name, in the header. */
+  kicker: string;
+  /** The bot's name, in the header and over the pitch. */
   name: string;
+  /** The README's line about the bot. */
+  tagline: string;
+  tryIt: string;
+  /** Where the pitch's links take the phone. */
+  tries: { habit: string; expense: string; phrase: string; weather: string; shopping: string };
+  language: string;
+  theme: string;
+  dark: string;
+  light: string;
+  startOver: string;
+  /** What the demo's data are, and its clock. */
+  data: string;
+  /** The line a phone shows for a while on every load. */
+  hint: string;
+  menu: string;
+  about: string;
+  aboutText: string;
   /** Under the name: what this is. */
   demo: string;
   close: string;
@@ -32,7 +50,34 @@ export interface HostWords {
 export const WORDS: Record<Lang, HostWords> = {
   ru: {
     title: "Личный помощник — демо",
+    kicker: "Демо · приложение внутри Telegram",
     name: "Личный помощник",
+    tagline:
+      "Telegram-бот, который не просто скажет «+12°C», а напишет «🌧 Через 40 минут дождь — возьми зонт». "
+      + "Погода, напоминания, расписание пар, заметки, привычки и деньги — в чате и в приложении прямо внутри "
+      + "Telegram, а по утрам бот пишет первым.",
+    tryIt: "Попробовать:",
+    tries: {
+      habit: "Отметить привычку",
+      expense: "Записать трату",
+      phrase: "Напоминание фразой",
+      weather: "Погода на неделю",
+      shopping: "Список покупок",
+    },
+    language: "Язык:",
+    theme: "Тема:",
+    dark: "тёмная",
+    light: "светлая",
+    startOver: "Начать заново",
+    data:
+      "Данные выдуманные и живут только в этой вкладке: ничего не сохраняется и никуда не отправляется. "
+      + "Время — московское. Telegram и сервер не нужны.",
+    hint: "Это демо: данные выдуманные, ничего не сохраняется, время московское",
+    menu: "Меню демо",
+    about: "Об этом демо",
+    aboutText:
+      "Это то же приложение, что открывается в Telegram, без единой правки: вместо сервера ему отвечают "
+      + "выдуманные данные прямо в этой странице.",
     demo: "демо",
     close: "Закрыть",
     back: "Назад",
@@ -56,7 +101,34 @@ export const WORDS: Record<Lang, HostWords> = {
   },
   en: {
     title: "Personal Assistant — demo",
+    kicker: "Demo · an app inside Telegram",
     name: "Personal Assistant",
+    tagline:
+      "A Telegram bot that doesn't just say “+12°C” — it says “🌧 Rain in 40 min — take an umbrella”. "
+      + "Weather, reminders, class schedule, notes, habits and money — in the chat and in an app right inside "
+      + "Telegram, and in the morning the bot writes first.",
+    tryIt: "Try:",
+    tries: {
+      habit: "Mark a habit",
+      expense: "Add an expense",
+      phrase: "A reminder in plain words",
+      weather: "The week's weather",
+      shopping: "Shopping list",
+    },
+    language: "Language:",
+    theme: "Theme:",
+    dark: "dark",
+    light: "light",
+    startOver: "Start over",
+    data:
+      "The data are made up and live only in this tab: nothing is saved or sent anywhere. "
+      + "The clock shows Moscow time. No Telegram or server needed.",
+    hint: "This is a demo: the data are made up, nothing is saved, the clock shows Moscow time",
+    menu: "Demo menu",
+    about: "About this demo",
+    aboutText:
+      "It's the same app that opens in Telegram, unchanged: instead of a server, made-up data answer it "
+      + "right in this page.",
     demo: "demo",
     close: "Close",
     back: "Back",

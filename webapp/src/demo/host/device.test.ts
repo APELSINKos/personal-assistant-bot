@@ -238,6 +238,51 @@ describe("the demo's device", () => {
     expect(screen.queryByText("This is a demo — nothing was sent")).toBeNull();
   });
 
+  it("draws a phone's status bar and bottom strip, which screen readers skip", () => {
+    const { device } = stand();
+    device.setTime("10:30");
+    const status = document.querySelector(".tg-status") as HTMLElement;
+    expect(status).toHaveAttribute("aria-hidden", "true");
+    expect(status).toHaveTextContent("10:30");
+    expect(status.querySelectorAll("svg")).toHaveLength(3);
+    expect(document.querySelector(".tg-bottom .tg-home")).not.toBeNull();
+  });
+
+  it("leaves the theme's colours where the app painted its own", () => {
+    const { device } = stand();
+    device.chrome.paint("header", "#f7f5f2");
+    device.chrome.paint("bottom", "#f7f5f2");
+    device.unpaint();
+    expect((document.querySelector(".tg-top") as HTMLElement).style.backgroundColor).toBe("");
+    expect((document.querySelector(".tg-bottom") as HTMLElement).style.backgroundColor).toBe("");
+  });
+
+  it("reports the app's screen when the app loads and on each change", () => {
+    const onRoute = vi.fn();
+    const device = createDevice({ language: () => "ru", words: () => WORDS.ru, onRoute });
+    document.body.append(device.element);
+    device.open("/weather");
+    appFrame().dispatchEvent(new Event("load"));
+    expect(onRoute).toHaveBeenLastCalledWith("/weather");
+    const app = appFrame().contentWindow as Window;
+    app.location.hash = "#/notes";
+    app.dispatchEvent(new HashChangeEvent("hashchange"));
+    expect(onRoute).toHaveBeenLastCalledWith("/notes");
+    expect(device.route()).toBe("/notes");
+  });
+
+  it("takes the running app to a screen, and opens a closed one there", () => {
+    const { device } = stand();
+    const running = appFrame();
+    running.dispatchEvent(new Event("load"));
+    device.go("/habits");
+    expect(appFrame()).toBe(running);
+    expect(running.contentWindow?.location.hash).toBe("#/habits");
+    screen.getByRole("button", { name: "Закрыть" }).click();
+    device.go("/money/new");
+    expect(appFrame().getAttribute("src")).toBe("./app.html#/money/new");
+  });
+
   it("starts the app afresh in a new frame: Telegram's buttons go with the old one", () => {
     const { device } = stand();
     device.chrome.backButton(true);

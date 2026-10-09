@@ -77,9 +77,10 @@ export function createDialogs(layer: HTMLElement, outside: () => Element[], fall
     const labelId = `demo-dialog-${count}`;
     const label = spec.kind === "sheet" ? h("h2", { class: "dialog__title", id: labelId }, spec.label)
       : h("p", { class: "dialog__message", id: labelId }, spec.label);
-    const buttons = spec.choices.map((choice) =>
-      h("button", { type: "button", class: choice.primary ? "dialog__button dialog__button--primary" : "dialog__button" },
-        choice.text));
+    const buttons = spec.choices.map((choice) => {
+      const look = choice.primary ? "dialog__button dialog__button--primary" : "dialog__button";
+      return h("button", { type: "button", class: look }, choice.text);
+    });
     const box = h("div", {
       class: `dialog dialog--${spec.kind}`, role: "dialog", "aria-modal": "true", "aria-labelledby": labelId,
       tabindex: "-1",

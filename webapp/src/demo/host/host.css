@@ -1,5 +1,7 @@
 /* The demo's host page: Telegram's chrome around the app's frame, in the app's own palette
-   (tokens.css). On a phone the device is the whole screen, and only the app scrolls. */
+   (tokens.css). On a phone the device is the whole screen, and only the app scrolls; from 900 px by
+   640 px the pitch stands beside the device in a phone's frame; ?shot=1 shows the device's screen
+   alone, as a plain rectangle the picture generator frames itself. */
 
 :root,
 [data-theme="dark"] {
@@ -8,11 +10,17 @@
   --tg-button-text: #fff;
   --surface: #1c1a2a;
   --backdrop: rgba(0, 0, 0, 0.55);
+  --phone-body: #181720;
+  --phone-edge: #3a3848;
+  --phone-shadow: rgba(0, 0, 0, 0.55);
 }
 
 [data-theme="light"] {
   --surface: #fff;
   --backdrop: rgba(28, 24, 48, 0.45);
+  --phone-body: #e2e0e8;
+  --phone-edge: #c4c0ce;
+  --phone-shadow: rgba(40, 20, 80, 0.18);
 }
 
 *,
@@ -34,7 +42,11 @@ body {
 body {
   overflow: hidden;
   overscroll-behavior: none;
-  background: var(--bg-base);
+  background:
+    radial-gradient(120% 60% at 10% 0%, var(--glow-1) 0%, transparent 60%),
+    radial-gradient(90% 50% at 100% 40%, var(--glow-2) 0%, transparent 60%),
+    var(--bg-base);
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font-text);
   font-size: 15px;
@@ -84,17 +96,20 @@ a:focus-visible,
   background: var(--bg-base);
 }
 
+/* Above the lines over the app, so that the «⋯» menu opens over them. */
 .tg-top {
   position: relative;
-  z-index: 2;
+  z-index: 4;
   padding-top: env(safe-area-inset-top);
   background: var(--bg-base);
 }
 
-/* The title stays in the middle while both sides fit; a long one gives way with «…». */
+/* The title stays in the middle while both sides fit; the sides never give way, the title does,
+   with «…». */
 .tg-header {
   display: grid;
-  grid-template-columns: 1fr minmax(0, max-content) 1fr;
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, max-content) minmax(max-content, 1fr);
+  column-gap: 4px;
   align-items: center;
   min-height: 56px;
   padding: 0 6px;
@@ -148,6 +163,134 @@ a:focus-visible,
   grid-column: 3;
   justify-self: end;
   min-width: 44px;
+}
+
+.tg-header__menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  cursor: pointer;
+}
+
+/* The «⋯» menu, under the header at its right end. */
+.tg-menu {
+  position: absolute;
+  top: calc(100% - 4px);
+  right: 8px;
+  z-index: 3;
+  display: grid;
+  gap: 2px;
+  width: min(300px, calc(100% - 16px));
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.tg-menu .switches {
+  margin-bottom: 4px;
+  padding: 4px 4px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tg-menu__item {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.tg-menu__item:hover {
+  background: var(--glass);
+}
+
+/* The switches: the one in use is filled, the other only outlined. */
+.switches {
+  display: grid;
+  gap: 8px;
+}
+
+.switch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.switch__label {
+  min-width: 76px;
+  color: var(--hint);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.switch__option {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--hint);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.switch__option[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* The phone's status bar: only in a phone's frame and in shot mode. Its middle stays empty for the
+   camera. */
+.tg-status {
+  position: relative;
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  height: 34px;
+  padding: 0 26px 0 30px;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.tg-status__icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tg-status .icon--signal {
+  width: 17px;
+  height: 11px;
+}
+
+.tg-status .icon--wifi {
+  width: 15px;
+  height: 11px;
+}
+
+.tg-status .icon--battery {
+  width: 25px;
+  height: 12px;
 }
 
 .icon {
@@ -240,6 +383,31 @@ a:focus-visible,
   border: 0;
 }
 
+/* «Это демо…» on a phone, for a while after every load, under the header. */
+.demo-hint {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  left: 12px;
+  z-index: 3;
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-field);
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  pointer-events: none;
+}
+
+.demo-hint:empty {
+  padding: 0;
+  border: 0;
+}
+
 .host-button {
   display: inline-flex;
   align-items: center;
@@ -297,6 +465,25 @@ a:focus-visible,
   text-overflow: ellipsis;
 }
 
+/* The strip a phone keeps at the bottom of its screen: only in a phone's frame and in shot mode. */
+.tg-home {
+  position: relative;
+  display: none;
+  height: 22px;
+}
+
+.tg-home::after {
+  content: "";
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  width: 134px;
+  height: 5px;
+  margin-left: -67px;
+  border-radius: 3px;
+  background: var(--text);
+}
+
 .tg-main__spinner {
   flex: none;
   width: 18px;
@@ -346,6 +533,10 @@ a:focus-visible,
   font-size: 16px;
   white-space: pre-line;
   overflow-wrap: anywhere;
+}
+
+.dialog__text {
+  margin: 0 0 12px;
 }
 
 .dialog__title {
@@ -408,6 +599,206 @@ a:focus-visible,
   color: #fff;
   font-size: 13px;
   font-weight: 700;
+}
+
+/* The pitch: only on a wide screen. */
+.pitch {
+  display: none;
+}
+
+.pitch__kicker {
+  margin: 0 0 12px;
+  color: var(--accent-text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.pitch__title {
+  margin: 0 0 14px;
+  font-family: var(--font-display);
+  font-size: clamp(30px, 2.8vw, 40px);
+  line-height: 1.15;
+}
+
+.pitch__tagline {
+  margin: 0 0 20px;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.pitch__label {
+  margin: 0 0 8px;
+  font-weight: 700;
+}
+
+.pitch__tries {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.pitch__try {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--glass);
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.pitch__try:hover {
+  border-color: var(--accent);
+}
+
+/* On the page the two switches stand in a row. */
+.pitch .switches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin-bottom: 20px;
+}
+
+.pitch .switch__label {
+  min-width: 0;
+  margin-right: 4px;
+}
+
+.pitch__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.pitch__data {
+  margin: 0;
+  color: var(--hint);
+  font-size: 14px;
+}
+
+@media (min-width: 900px) and (min-height: 640px) {
+  body {
+    overflow: auto;
+  }
+
+  .demo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 64px;
+    min-height: 100vh;
+    min-height: 100dvh;
+    /* With the frame's 12 px on each side, the 64 px the screen leaves of the window's height. */
+    padding: 20px 32px;
+  }
+
+  .pitch {
+    display: block;
+    flex: 0 1 520px;
+    min-width: 0;
+  }
+
+  /* The device in a phone's frame: the shape the picture generator draws around a shot. */
+  .device {
+    position: relative;
+    inset: auto;
+    flex: none;
+    padding: 12px;
+    border-radius: 54px;
+    background: var(--phone-body);
+    box-shadow: 0 0 0 2px var(--phone-edge), 0 30px 80px var(--phone-shadow);
+  }
+
+  .device__screen {
+    flex: none;
+    width: 390px;
+    height: clamp(640px, 100dvh - 64px, 844px);
+    border-radius: 44px;
+  }
+
+  .tg-status {
+    display: flex;
+  }
+
+  /* The phone's camera, over the middle of the status bar. */
+  .tg-status::after {
+    content: "";
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    width: 14px;
+    height: 14px;
+    margin-left: -7px;
+    border-radius: 50%;
+    background: #000;
+  }
+
+  .tg-home {
+    display: block;
+  }
+
+  .tg-top {
+    padding-top: 0;
+  }
+
+  .tg-bottom {
+    padding-bottom: 0;
+  }
+
+  .demo-hint {
+    display: none;
+  }
+}
+
+/* Shot mode: the device's screen alone, a rectangle over the whole window, whatever its size. */
+.demo--shot .pitch,
+.demo--shot .demo-hint,
+.demo--shot .tg-status::after {
+  display: none;
+}
+
+.demo.demo--shot {
+  display: block;
+  min-height: 0;
+  padding: 0;
+}
+
+.demo--shot .device {
+  position: fixed;
+  inset: 0;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.demo--shot .device__screen {
+  width: 100%;
+  height: 100%;
+  border-radius: 0;
+}
+
+.demo--shot .tg-status {
+  display: flex;
+}
+
+.demo--shot .tg-home {
+  display: block;
+}
+
+.demo--shot .tg-top {
+  padding-top: 0;
+}
+
+.demo--shot .tg-bottom {
+  padding-bottom: 0;
 }
 
 @keyframes demo-shimmer {
