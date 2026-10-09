@@ -327,6 +327,32 @@ def test_the_move_to_2_6_1_installs_the_scripts_before_its_deploy_runs() -> None
     assert "systemctl show -p WatchdogUSec assistant-bot assistant-api" in block
 
 
+def test_the_runbook_shows_the_backups_own_line() -> None:
+    # `journalctl -u` also shows systemd's lines about the run, and they come last («Finished …»,
+    # and «Consumed …» after a second of CPU); `_SYSTEMD_UNIT=` shows only what the script wrote.
+    own_line = "journalctl _SYSTEMD_UNIT=assistant-backup.service -n 1 -o cat --no-pager"
+    setup = (DEPLOY / "server-setup.md").read_text(encoding="utf-8")
+    assert "journalctl -u assistant-backup" not in setup
+    for heading in ("## 4. Services and backups", "### Going from 2.6.0 to 2.6.1"):
+        assert own_line in runbook_section(heading), heading
+
+
+def test_a_new_caddy_validates_the_caddyfile_before_it_is_installed() -> None:
+    section = runbook_section("### Updating Caddy")
+    # The package restarts Caddy as it installs, so the new version checks the Caddyfile from a
+    # scratch folder first; dpkg keeps the project's Caddyfile, a configuration file of the
+    # package, without asking.
+    steps = [
+        section.index("apt-get download -qq caddy"),
+        section.index('dpkg-deb -x "$new"/caddy_*.deb "$new/root"'),
+        section.index('"$new/root/usr/bin/caddy" validate --config /etc/caddy/Caddyfile'),
+        section.index(
+            "apt-get install -y -qq --only-upgrade -o Dpkg::Options::=--force-confold caddy"
+        ),
+    ]
+    assert steps == sorted(steps)
+
+
 def test_timer_runs_nightly() -> None:
     timer = (DEPLOY / "assistant-backup.timer").read_text(encoding="utf-8")
     assert "OnCalendar=*-*-* 03:30:00 UTC" in timer and "Persistent=true" in timer

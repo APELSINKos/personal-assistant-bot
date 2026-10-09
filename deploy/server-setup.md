@@ -173,7 +173,8 @@ done
 systemctl daemon-reload
 systemctl enable --now assistant-backup.timer
 systemctl start assistant-backup.service
-journalctl -u assistant-backup -n 3 -o cat --no-pager
+# The script's own last line: `journalctl -u` ends with systemd's lines about the run.
+journalctl _SYSTEMD_UNIT=assistant-backup.service -n 1 -o cat --no-pager
 systemd-analyze security assistant-bot.service | tail -1
 systemd-analyze security assistant-api.service | tail -1
 systemd-analyze security assistant-backup.service | tail -1
@@ -253,10 +254,11 @@ ssh <server> 'sudo bash -c "set -a; . /etc/caddy/assistant.env; set +a; caddy va
 
 Caddy comes from its own apt repository, which unattended-upgrades leaves
 alone (it takes only Ubuntu's own pockets), and it is kept that way on
-purpose: a Caddy release may read a configuration differently, so a new
-version is validated by hand before it serves the site. Update it whenever a
-release brings work on the server (as 2.6.1 does), and soon after Caddy
-publishes a fix in its
+purpose: a Caddy release may read a configuration differently, and the
+package restarts Caddy as it installs. So this step unpacks the new version
+in a scratch folder and validates the Caddyfile with it before anything is
+installed. Update it whenever a release brings work on the server (as 2.6.1
+does), and soon after Caddy publishes a fix in its
 [security advisories](https://github.com/caddyserver/caddy/security/advisories):
 
 ```bash
@@ -264,23 +266,34 @@ ssh <server> 'sudo bash -s' <<'EOF'
 set -euo pipefail
 caddy version
 apt-get update -qq
-apt-get install -y -qq --only-upgrade caddy
-caddy version
+new=$(mktemp -d)
+trap 'rm -rf "$new"' EXIT
+# apt downloads as its own user, _apt.
+chown _apt "$new"
+(cd "$new" && apt-get download -qq caddy)
+dpkg-deb -x "$new"/caddy_*.deb "$new/root"
+"$new/root/usr/bin/caddy" version
 set -a; . /etc/caddy/assistant.env; set +a
-caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-systemctl restart caddy
+"$new/root/usr/bin/caddy" validate --config /etc/caddy/Caddyfile --adapter caddyfile
+# /etc/caddy/Caddyfile belongs to the package: should a release change the default, dpkg keeps
+# ours instead of asking, since the question would take the rest of this script as its answer.
+apt-get install -y -qq --only-upgrade -o Dpkg::Options::=--force-confold caddy
+caddy version
 sleep 5
 curl -sSI "https://$SITE_HOST/" | grep -iE "^(strict-transport|content-security|x-content-type|referrer|permissions|server|alt-svc)" || true
 curl -sS "https://$SITE_HOST/api/health"; echo
 EOF
 ```
 
-Expected: the old and the new version, `Valid configuration`, the five
-security headers without `Server` or `Alt-Svc`, and the health JSON. If the
-validation fails, put back the version that was installed
-(`apt-cache policy caddy` lists them) with
-`apt-get install -y --allow-downgrades caddy=<version>`, and read Caddy's
-release notes before trying again.
+Expected: the installed version; the version the update brings (the same one
+when Caddy is up to date), `Valid configuration`, and that version again, now
+installed; the five security headers without `Server` or `Alt-Svc`, and the
+health JSON. If the validation fails, the step stops before anything is
+installed and Caddy goes on serving with the version it has: read Caddy's
+release notes before trying again. If the site does not answer after the
+install, put back the version that was installed (`apt-cache policy caddy`
+lists them) with
+`apt-get install -y --allow-downgrades -o Dpkg::Options::=--force-confold caddy=<version>`.
 
 ## 5. Deploy user
 
@@ -723,7 +736,7 @@ mv /etc/caddy/Caddyfile.new /etc/caddy/Caddyfile
 systemctl reload caddy
 chmod 0640 /var/lib/assistant/assistant.db* /var/backups/assistant/*.db
 systemctl start assistant-backup.service
-journalctl -u assistant-backup -n 1 -o cat --no-pager
+journalctl _SYSTEMD_UNIT=assistant-backup.service -n 1 -o cat --no-pager
 systemd-analyze security assistant-backup.service | tail -1
 sleep 20
 journalctl -u assistant-bot -n 20 -o cat --no-pager | grep -iE "started|watchdog|error|exception" || true
