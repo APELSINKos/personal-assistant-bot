@@ -41,5 +41,6 @@ COLORS: dict[str, Colour] = {
 
 
 def emoji_file(emoji: str) -> str:
-    """The bundled PNG of an emoji, named as in googlefonts/noto-emoji: emoji_u1f4aa.png."""
-    return "emoji_u" + "_".join(f"{ord(char):x}" for char in emoji) + ".png"
+    """The bundled PNG of an emoji, named as in googlefonts/noto-emoji: emoji_u1f4aa.png. The
+    names leave out the variation selector U+FE0F, which the weather writes after ☀ and ☁."""
+    return "emoji_u" + "_".join(f"{ord(char):x}" for char in emoji if char != "\ufe0f") + ".png"

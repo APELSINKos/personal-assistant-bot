@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from assistant.core.habit_style import COLORS, DAILY
 from assistant.core.i18n import Translator, format_day
@@ -79,19 +79,6 @@ def caption(card: Card, t: Translator) -> str:
     )
 
 
-def _name_lines(
-    draw: ImageDraw.ImageDraw, name: str, width: float
-) -> tuple[ImageFont.FreeTypeFont, list[str]]:
-    for size in (64, 56, 48):
-        font = kit.font("Manrope", size, 800)
-        lines = kit.wrap(draw, name, font, width, 2)
-        if lines is not None:
-            return font, lines
-    font = kit.font("Manrope", 48, 800)
-    lines = kit.wrap(draw, name, font, width, 99) or [name]
-    return font, [lines[0], kit.shorten(draw, " ".join(lines[1:]), font, width)]
-
-
 def subtitle(weekly_goal: int, created_on: date, today: date, t: Translator) -> str:
     """«Каждый день · с 2 июня»: the goal and the first day — with its year unless it is this one,
     or a habit begun last June would seem to have begun this June."""
@@ -122,11 +109,11 @@ def render(card: Card, t: Translator) -> bytes:
     # Header: the emoji, the name in up to two lines, the goal and the first day.
     overlay.alpha_composite(kit.emoji_image(card.emoji, 112), (LEFT, 104))
     text_left = LEFT + 140
-    name_font, lines = _name_lines(draw, kit.drawable(card.name), RIGHT - text_left)
+    name_size, lines = kit.title_lines(draw, kit.drawable(card.name), RIGHT - text_left)
     y = 100
-    step = round(name_font.size * 1.18)
+    step = round(name_size * 1.18)
     for line in lines:
-        draw.text((text_left, y), line, font=name_font, fill=TEXT)
+        kit.write(draw, (text_left, y), line, "Manrope", name_size, 800, TEXT)
         y += step
     about = subtitle(card.weekly_goal, card.created_on, card.today, t)
     subtitle_font = kit.fit(draw, about, "Manrope", 500, range(30, 21, -1), RIGHT - text_left)

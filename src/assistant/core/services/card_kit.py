@@ -2,7 +2,8 @@
 the dark «Вечерний» backdrop and glass, the bundled fonts and emoji, and one drawing thread.
 
 Everything is drawn from assistant/assets only (see SOURCES.md), with Pillow's BASIC layout, so the
-same input gives the same bytes on any machine.
+same input gives the same bytes on any machine. A line of user text is drawn in pieces: a letter its
+font lacks comes from the fallback font, on the same baseline.
 """
 
 from __future__ import annotations
@@ -35,6 +36,9 @@ HINT = (163, 159, 192)
 GLASS = (255, 255, 255, 16)
 GLASS_LINE = (255, 255, 255, 30)
 MISSING = "\ue000"  # a private-use character: no font has it, so it shows the «missing» glyph
+# Draws the letters Manrope lacks: the Kazakh Ә Ғ Қ Ң Ұ, the other Cyrillic letters of the CIS
+# countries, ʼ and ʻ.
+FALLBACK = "Onest"
 QUALITY = 90
 CARDS_PER_MINUTE = 6
 
@@ -73,35 +77,107 @@ def rgb(hex_colour: str) -> tuple[int, int, int]:
     return (int(hex_colour[1:3], 16), int(hex_colour[3:5], 16), int(hex_colour[5:7], 16))
 
 
+@lru_cache(maxsize=4096)
+def has(char: str, family: str) -> bool:
+    """Whether the font `family` draws `char`: its pixels differ from the «missing» glyph's."""
+    face = font(family, 48, 700)
+
+    def pixels(text: str) -> bytes:
+        box = [round(edge) for edge in face.getbbox(text)]
+        image = Image.new("L", (max(box[2], 1), max(box[3], 1)))
+        ImageDraw.Draw(image).text((0, 0), text, font=face, fill=255)
+        return image.tobytes()
+
+    return pixels(char) != pixels(MISSING)
+
+
+def runs(text: str, family: str) -> list[tuple[str, str]]:
+    """`text` in pieces of one font each: a character goes to `family` when it draws it, else to
+    the fallback; one that neither draws is left out, so no box is ever drawn. A space stays in
+    the piece before it."""
+    pieces: list[tuple[str, str]] = []
+    for char in text:
+        if char == " " and pieces:
+            owner = pieces[-1][1]
+        elif has(char, family):
+            owner = family
+        elif has(char, FALLBACK):
+            owner = FALLBACK
+        else:
+            continue
+        if pieces and pieces[-1][1] == owner:
+            pieces[-1] = (pieces[-1][0] + char, owner)
+        else:
+            pieces.append((char, owner))
+    return pieces
+
+
+def length(draw: ImageDraw.ImageDraw, text: str, family: str, size: int, weight: int) -> float:
+    """The width of `text` as `write` draws it: the widths of its pieces together."""
+    return sum(
+        draw.textlength(piece, font=font(owner, size, weight))
+        for piece, owner in runs(text, family)
+    )
+
+
+def write(
+    draw: ImageDraw.ImageDraw,
+    xy: tuple[float, float],
+    text: str,
+    family: str,
+    size: int,
+    weight: int,
+    fill: tuple[int, ...],
+) -> None:
+    """Draw `text` where draw.text puts it, by its top left corner: piece after piece, each in its
+    own font of the same size and weight, all on the baseline of `family`. Without a letter of
+    the fallback, these are the very pixels of draw.text."""
+    x, y = xy
+    baseline = y + font(family, size, weight).getmetrics()[0]
+    for piece, owner in runs(text, family):
+        face = font(owner, size, weight)
+        draw.text((x, baseline), piece, font=face, fill=fill, anchor="ls")
+        x += draw.textlength(piece, font=face)
+
+
 def fit(
     draw: ImageDraw.ImageDraw, text: str, name: str, weight: int, sizes: range, width: float
 ) -> ImageFont.FreeTypeFont:
     """The largest size of `sizes` (largest first) at which `text` fits in `width`."""
     for size in sizes:
-        face = font(name, size, weight)
-        if draw.textlength(text, font=face) <= width:
-            return face
+        if length(draw, text, name, size, weight) <= width:
+            return font(name, size, weight)
     return font(name, sizes[-1], weight)
 
 
 def wrap(
-    draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, width: float, lines: int
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    family: str,
+    size: int,
+    weight: int,
+    width: float,
+    lines: int,
 ) -> list[str] | None:
     """Break `text` into at most `lines` lines of `width` — between words when it can, inside
     a word when it must. None when it does not fit."""
+
+    def fits(line: str) -> bool:
+        return length(draw, line, family, size, weight) <= width
+
     result: list[str] = []
     line = ""
     for word in text.split():
         candidate = f"{line} {word}" if line else word
-        if draw.textlength(candidate, font=font) <= width:
+        if fits(candidate):
             line = candidate
             continue
         if line:
             result.append(line)
             line = ""
-        while draw.textlength(word, font=font) > width:  # a word longer than a line
+        while not fits(word):  # a word longer than a line
             cut = len(word)
-            while cut > 1 and draw.textlength(word[:cut], font=font) > width:
+            while cut > 1 and not fits(word[:cut]):
                 cut -= 1
             result.append(word[:cut])
             word = word[cut:]
@@ -112,28 +188,33 @@ def wrap(
 
 
 def shorten(
-    draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, width: float
+    draw: ImageDraw.ImageDraw, text: str, family: str, size: int, weight: int, width: float
 ) -> str:
-    while text and draw.textlength(text + "…", font=font) > width:
+    while text and length(draw, text + "…", family, size, weight) > width:
         text = text[:-1].rstrip()
     return text + "…"
 
 
-@lru_cache(maxsize=1024)
-def glyph(char: str) -> bytes:
-    """`char` as the name font draws it, in raw pixels."""
-    face = font("Manrope", 48, 800)
-    box = [round(edge) for edge in face.getbbox(char)]
-    image = Image.new("L", (max(box[2], 1), max(box[3], 1)))
-    ImageDraw.Draw(image).text((0, 0), char, font=face, fill=255)
-    return image.tobytes()
+def title_lines(draw: ImageDraw.ImageDraw, text: str, width: float) -> tuple[int, list[str]]:
+    """A title such as a habit's name, in Manrope 800 at 64, 56 or 48 px: the largest at which it
+    fits in two lines of `width`; when even 48 needs more, the second line ends in «…». The size
+    and the lines."""
+    for size in (64, 56, 48):
+        lines = wrap(draw, text, "Manrope", size, 800, width, 2)
+        if lines is not None:
+            return size, lines
+    lines = wrap(draw, text, "Manrope", 48, 800, width, 99) or [text]
+    return 48, [lines[0], shorten(draw, " ".join(lines[1:]), "Manrope", 48, 800, width)]
 
 
 def drawable(text: str) -> str:
-    """`text` without the characters the name font lacks: an emoji or another script would come
-    out as boxes, and the habit's own emoji stands beside the name anyway."""
+    """`text` without the characters that neither the name font nor the fallback has: an emoji or
+    another script would come out as boxes, and the name's own emoji stands beside it anyway.
+    Every space becomes a plain one."""
     composed = unicodedata.normalize("NFC", text)  # a decomposed «й» would lose its breve
-    kept = "".join(char for char in composed if char.isspace() or glyph(char) != glyph(MISSING))
+    kept = "".join(
+        char for char in composed if char.isspace() or has(char, "Manrope") or has(char, FALLBACK)
+    )
     return " ".join(kept.split())
 
 
