@@ -100,11 +100,11 @@ function CitySearch({
 
 /**
  * The cities of the weather: the home one, whose clock everything keeps, and up to four more,
- * each deleted by a swipe without a question (it is easy to add again). The search is there only
- * when a button asks for it, and the same button hides it again: «Сменить домашний» puts the
- * city found in place of the home one, «Добавить город» adds it to the others. A city saved
- * closes the search, and the focus goes back to the button; one refused leaves it open, for
- * another choice.
+ * each deleted without a question by a swipe on a phone (it is easy to add again), and after one
+ * with a mouse or the keyboard. The search is there only when a button asks for it, and the same
+ * button hides it again: «Сменить домашний» puts the city found in place of the home one,
+ * «Добавить город» adds it to the others. A city saved closes the search, and the focus goes back
+ * to the button; one refused leaves it open, for another choice.
  */
 function CitiesCard({ home, list, index }: { home: string; list: UseQueryResult<WeatherCity[]>; index: number }) {
   const t = useT();
