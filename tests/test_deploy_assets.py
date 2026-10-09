@@ -465,3 +465,18 @@ def test_ci_runs_the_servers_sqlite_and_checks_the_lock() -> None:
     assert "uv sync --locked" in text and "uv sync --frozen" not in text
     # A hung test stops the run after 15 minutes, not GitHub's 6 hours.
     assert text.count("timeout-minutes: 15") == 2
+
+
+def test_ci_builds_and_checks_the_demo() -> None:
+    text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    webapp = text[text.index("\n  webapp:") :]
+    # After the build for Telegram: none of the demo's code in it, then the demo is built and
+    # checked, so a pull request that breaks the demo or leaks an address into it fails.
+    steps = [
+        "- run: npm run build\n",
+        "run: test -d dist && ! grep -rq __demoHost dist\n",
+        "- run: npm run build:demo\n",
+        "- run: node scripts/check-demo.mjs dist-demo\n",
+    ]
+    assert all(step in webapp for step in steps)
+    assert [webapp.index(step) for step in steps] == sorted(webapp.index(step) for step in steps)
