@@ -50,9 +50,14 @@ function* localDays(rule: RepeatRule, start: string, end: string): Generator<str
   }
 }
 
-/** The first firing strictly after a moment; repeat_invalid for a rule that never fires. */
+/**
+ * The first firing strictly after a moment; repeat_invalid for a rule that never fires. As
+ * local_days, the walk goes HORIZON days from the day before the moment's, or from the anchor if
+ * that is later: a series that starts more than a year ahead is still found.
+ */
 export function nextAfter(rule: RepeatRule, after: number, zone: string): number {
-  const start = addDaysIso(localDay(zone, after), -1);
+  const before = addDaysIso(localDay(zone, after), -1);
+  const start = before > rule.anchor_date ? before : rule.anchor_date;
   for (const day of localDays(rule, start, addDaysIso(start, HORIZON))) {
     const moment = momentOn(rule, day, zone);
     if (moment > after) return moment;

@@ -86,6 +86,14 @@ describe("the reminders (routers/reminders.py, services/reminders.py)", () => {
       .toEqual(problem(422, "validation_error", { field: "due_local", reason: "schedule" }));
   });
 
+  it("POST /reminders: a repeat whose first day is more than a year ahead, as recurrence.local_days walks it", () => {
+    // The walk for the next firing starts at the later of the day and the anchor, as on the server.
+    const far = demoApi().read<Reminder>("POST /reminders", {
+      text: "Продлить визу", rule: { repeat: "weekly", time_local: "18:00", weekdays: 2, interval_weeks: 2, anchor_date: "2027-11-15" },
+    });
+    expect(far).toMatchObject({ due_local: "2027-11-16T18:00", rule: { anchor_date: "2027-11-16" } });
+  });
+
   it("POST /reminders: up to 20 pending", () => {
     const { call } = demoApi();
     for (let count = 5; count <= 20; count += 1) {

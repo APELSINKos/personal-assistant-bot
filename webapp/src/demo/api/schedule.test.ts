@@ -63,6 +63,14 @@ describe("the timetable (routers/schedule.py, services/schedule.py)", () => {
     expect(upload(demo, `${"x".repeat(252)}.ics`)).toEqual(problem(422, "validation_error", { field: "name", limit: 255 }));
   });
 
+  it("POST /schedule/file: a long name cut at 100 characters, an emoji whole", () => {
+    const demo = demoApi();
+    // schedule._store cuts the title in code points: never half of an emoji's surrogate pair.
+    expect(upload(demo, `a${"📅".repeat(100)}.ics`)).toMatchObject({
+      status: 200, body: { source: { title: `a${"📅".repeat(99)}` } },
+    });
+  });
+
   it("POST /schedule/refresh: fetched again now; 404 without a timetable", () => {
     const { read, call, setNow } = demoApi();
     setNow(MORNING + HOUR);

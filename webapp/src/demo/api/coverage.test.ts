@@ -98,8 +98,8 @@ function literals(source: string, from: number, to: number): Literal[] {
   return found;
 }
 
-/** The arguments of the call whose "(" is at `open`, as their spans. */
-function argumentsOf(source: string, open: number): [number, number][] {
+/** What the bracket at `open` holds, split at its own commas: a call's arguments, an object's properties. */
+function partsOf(source: string, open: number): [number, number][] {
   const close = closing(source, open);
   const spans: [number, number][] = [];
   let start = open + 1;
@@ -147,12 +147,40 @@ function callsOf(source: string, name: string): number[] {
   });
 }
 
-/** The calls of api() in the code. */
-function apiCalls(source: string): Call[] {
+/**
+ * The method of the call of api() whose "(" is at `open`: GET without one. Its options must be an
+ * object that names it with one string literal, or not at all; a method the test cannot read — a
+ * variable, a choice, a spread, options passed whole — is refused with the call's place and text.
+ */
+function methodOf(source: string, open: number, file: string): string {
+  const [, options] = partsOf(source, open);
+  if (!options) return "GET";
+  const refuse = () => {
+    const line = source.slice(0, open).split("\n").length;
+    const call = `api${source.slice(open, closing(source, open) + 1)}`.replace(/\s+/g, " ");
+    return new Error(`${file}:${line}: the method of ${call} is not one string literal`);
+  };
+  // The options are one object literal, with nothing before or after it.
+  const text = source.slice(...options);
+  const brace = options[0] + text.length - text.trimStart().length;
+  if (source[brace] !== "{" || closing(source, brace) !== options[0] + text.trimEnd().length - 1) throw refuse();
+  let method = "GET";
+  for (const part of partsOf(source, brace).map((span) => source.slice(...span).trim())) {
+    if (part.startsWith("...") || part.startsWith("[")) throw refuse();
+    const named = /^(["']?)method\1\s*(?::([\s\S]*))?$/.exec(part);
+    if (!named) continue;
+    const literal = /^\s*(["'])(\w+)\1\s*$/.exec(named[2] ?? "");
+    if (!literal?.[2]) throw refuse();
+    method = literal[2];
+  }
+  return method;
+}
+
+/** The calls of api() in the code of a file. */
+function apiCalls(source: string, file = "the code"): Call[] {
   return callsOf(source, "api").map((open) => {
-    const [path, options] = argumentsOf(source, open);
-    const method = options ? /\bmethod:\s*"(\w+)"/.exec(source.slice(...options))?.[1] : undefined;
-    return { open, method: method ?? "GET", paths: path ? literals(source, ...path).filter(isPath) : [] };
+    const [path] = partsOf(source, open);
+    return { open, method: methodOf(source, open, file), paths: path ? literals(source, ...path).filter(isPath) : [] };
   });
 }
 
@@ -192,7 +220,7 @@ function appPairs(): { pairs: Set<string>; unplaced: string[] } {
     return !known?.has(method);
   };
   for (const [file, source] of Object.entries(CALLERS)) {
-    for (const call of apiCalls(source)) {
+    for (const call of apiCalls(source, file)) {
       if (call.paths.length) place(file, call.method, call.paths);
       else wrap(enclosing(source, call.open), call.method);
     }
@@ -254,5 +282,19 @@ describe("the demo's API and the app's calls", () => {
     expect(apiCalls(source).map((call) => [call.method, ...call.paths.map((path) => shape(path.text))])).toEqual([
       ["GET", "/me"], ["DELETE", "/notes/{}/items"], ["GET", "/weather", "/weather"],
     ]);
+  });
+
+  it("refuses a call whose method is not one string literal, naming the call", () => {
+    // Read as GET, such a call would let a new POST or PUT of the app go without a route in the demo.
+    for (const options of [
+      "{ method, body: note }", '{ method: isNew ? "POST" : "PUT" }', "options", "{ ...options, signal }",
+      '{ "method": verb }', '{ [key]: "PUT" }',
+    ]) {
+      const source = `\nconst save = (note: Note) =>\n  api<Note>("/notes", ${options});`;
+      expect(() => apiCalls(source, "/src/api/probe.ts"), options).toThrow(
+        `/src/api/probe.ts:3: the method of api("/notes", ${options}) is not one string literal`,
+      );
+    }
+    expect(apiCalls('api<Note>("/notes", { "method": "PUT", body })')[0]?.method).toBe("PUT");
   });
 });

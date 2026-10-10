@@ -116,12 +116,10 @@ function calendarLink(raw: string): { url: string; host: string } {
   return { url: text, host: link.hostname };
 }
 
-/** The source connected now: the reminder before a lesson stays as it was. */
+/** The source connected now, its title cut in code points: the reminder before a lesson stays as it was. */
 function connect(visit: Visit, source: Omit<StoredSource, "fetched" | "minutes">): ScheduleState {
-  visit.data.source = {
-    ...source, title: (source.title ?? "").trim().slice(0, TITLE_LENGTH) || null, fetched: visit.now(),
-    minutes: visit.data.source?.minutes ?? null,
-  };
+  const title = Array.from((source.title ?? "").trim()).slice(0, TITLE_LENGTH).join("");
+  visit.data.source = { ...source, title: title || null, fetched: visit.now(), minutes: visit.data.source?.minutes ?? null };
   return state(visit);
 }
 
