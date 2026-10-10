@@ -2,7 +2,7 @@
  * The demo's data at the start of a visit (spec §5.2, §5.3): the made-up user «Саша» / «Alex» in
  * Moscow, in the language the demo was opened in. What a day holds — the marks of the habits, the
  * money spent — comes from a hash of the date, so a past day stays as it was from one visit to the
- * next and the same moment gives the same data; reminders are laid out from now.
+ * next and the same minute gives the same data; reminders are laid out from that minute.
  */
 import type { MoneyEntry, NoteItem, WeatherCity } from "../../api/types";
 import type { Lang } from "../../i18n";
@@ -151,7 +151,10 @@ function shownAlerts(data: Data, today: string): Set<string> {
   return shown;
 }
 
-export function seed(language: Lang, now: number): Data {
+export function seed(language: Lang, moment: number): Data {
+  // The minute of the moment: the host seeds a few milliseconds after ?at=, and they must not move
+  // what is laid out from now (at 10:30 the parcel is at 12:00, a millisecond later it would be 12:30).
+  const now = Math.floor(moment / MINUTE) * MINUTE;
   const words = SEED_WORDS[language];
   const today = localDay(ZONE, now);
   let item = 0;

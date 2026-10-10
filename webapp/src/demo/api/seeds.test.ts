@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addDaysIso } from "../../lib/format";
 import { seed } from "./seeds";
-import { DAY } from "./time";
+import { DAY, MINUTE } from "./time";
 
 // Wednesday 7 October 2026, 10:30 in Moscow.
 const MORNING = Date.UTC(2026, 9, 7, 7, 30);
@@ -10,6 +10,18 @@ describe("the demo's data", () => {
   it("are the same for the same moment: one ?at=, one picture", () => {
     expect(seed("ru", MORNING)).toEqual(seed("ru", MORNING));
     expect(seed("en", MORNING)).toEqual(seed("en", MORNING));
+  });
+
+  it("are the same all through the minute of ?at=: the host seeds a moment after it", () => {
+    for (const language of ["ru", "en"] as const) {
+      const first = seed(language, MORNING);
+      expect(seed(language, MORNING + 1), language).toEqual(first);
+      expect(seed(language, MORNING + 59_999), language).toEqual(first);
+    }
+    // The parcel: the first :00 or :30 at least an hour and a half ahead of the minute.
+    const parcel = (moment: number) => seed("ru", moment).reminders.find((reminder) => reminder.id === 1)?.due;
+    expect(parcel(MORNING + 1)).toBe(Date.UTC(2026, 9, 7, 9, 0));
+    expect(parcel(MORNING + MINUTE)).toBe(Date.UTC(2026, 9, 7, 9, 30));
   });
 
   it("keep a past day as it was and give each new day its own", () => {
