@@ -135,7 +135,10 @@ export interface SeedWords {
   /** The timetable's week label: «5 неделя», as MIREA's calendar names its weeks. */
   week: (number: number) => string;
   group: string;
-  /** The eight notes; the shopping list's title is WORDS.shopping, which the host page looks for. */
+  /**
+   * The eight notes; the shopping list's title is WORDS.shopping, which the host page looks for. A no-break space
+   * ties each «—» and a date's day to the word before it, so a card's line never starts with a dash or splits a date.
+   */
   notes: {
     shoppingItems: readonly string[];
     packing: string;
@@ -170,10 +173,10 @@ export const SEED_WORDS: Record<Lang, SeedWords> = {
       packing: "Собрать в поездку",
       packingItems: ["паспорт", "зарядка", "наушники", "зонт", "свитер", "зубная щётка", "книга", "билеты"],
       door: "Код домофона: 45В7",
-      gifts: "Идеи подарков: маме — плед, брату — настольная игра, бабушке — фотоальбом",
+      gifts: "Идеи подарков: маме\u00a0— плед, брату\u00a0— настольная игра, бабушке\u00a0— фотоальбом",
       reading: "Почитать осенью: что-нибудь о космосе, сборник рассказов, книгу о дизайне интерфейсов",
       pancakes: "Блины: 2 яйца, 500 мл молока, 200 г муки, щепотка соли, ложка сахара",
-      coursework: "Курсовая: план до 20 октября, источники — https://example.com/library",
+      coursework: "Курсовая: план до 20 октября, источники\u00a0— https://example.com/library",
       debt: "Вернуть Диме 1 500 ₽ до пятницы",
     },
     reminders: {
@@ -213,7 +216,7 @@ export const SEED_WORDS: Record<Lang, SeedWords> = {
       gifts: "Gift ideas: a blanket for Mum, a board game for my brother, a photo album for Grandma",
       reading: "To read this autumn: something about space, a short story collection, a book on interface design",
       pancakes: "Pancakes: 2 eggs, 500 ml of milk, 200 g of flour, a pinch of salt, a spoonful of sugar",
-      coursework: "Coursework: the outline by October 20, sources — https://example.com/library",
+      coursework: "Coursework: the outline by October\u00a020, sources\u00a0— https://example.com/library",
       debt: "Pay Dima back 1,500 ₽ by Friday",
     },
     reminders: {
