@@ -112,6 +112,8 @@ describe("the demo's device", () => {
     const answer = device.chrome.confirm("Удалить заметку?");
     const dialog = screen.getByRole("dialog", { name: "Удалить заметку?" });
     expect(dialog).toHaveAttribute("aria-modal", "true");
+    // A question is all in its name: nothing under it to describe.
+    expect(dialog).not.toHaveAttribute("aria-describedby");
     expect(within(dialog).getByRole("button", { name: "Отмена" })).toHaveFocus();
     for (const part of [".tg-top", ".tg-view", ".tg-bottom"]) {
       expect(document.querySelector(part)).toHaveAttribute("inert");
@@ -211,6 +213,8 @@ describe("the demo's device", () => {
     const { device } = stand();
     const sent = device.chrome.share("demo-habit-7-1");
     const sheet = screen.getByRole("dialog", { name: "В Telegram здесь откроется выбор чата" });
+    // A screen reader says what the sheet shows as it opens, with focus already on «Отправить».
+    expect(sheet).toHaveAccessibleDescription("Пример: карточка привычки");
     const picture = within(sheet).getByRole("img", { name: "Пример: карточка привычки" });
     expect(picture.getAttribute("src")).toMatch(/habit-card\.jpg/);
     expect(within(sheet).getByText("пример")).toBeInTheDocument();
@@ -228,6 +232,7 @@ describe("the demo's device", () => {
     const { device } = stand("en");
     const cancelled = device.chrome.share("demo-forecast-0-1");
     const sheet = screen.getByRole("dialog", { name: "In Telegram, the chat picker opens here" });
+    expect(sheet).toHaveAccessibleDescription("Example: the week's forecast");
     const picture = within(sheet).getByRole("img", { name: "Example: the week's forecast" });
     expect(picture.getAttribute("src")).toMatch(/forecast-card\.en\.jpg/);
     within(sheet).getByRole("button", { name: "Cancel" }).click();

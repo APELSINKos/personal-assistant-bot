@@ -18,7 +18,7 @@ export interface DialogSpec<T> {
   kind: "question" | "sheet";
   /** The question itself, or the sheet's heading: the dialog's name for screen readers. */
   label: string;
-  /** What the dialog shows under its label. */
+  /** What the dialog shows under its label: its description for screen readers. */
   content?: Node[];
   choices: Choice<T>[];
   /** What Esc and a tap outside the dialog answer. */
@@ -81,10 +81,12 @@ export function createDialogs(layer: HTMLElement, outside: () => Element[], fall
       const look = choice.primary ? "dialog__button dialog__button--primary" : "dialog__button";
       return h("button", { type: "button", class: look }, choice.text);
     });
+    // Focus lands on a button, so a screen reader says what the dialog shows only as its description.
+    const content = spec.content?.length ? h("div", { id: `${labelId}-content` }, ...spec.content) : null;
     const box = h("div", {
       class: `dialog dialog--${spec.kind}`, role: "dialog", "aria-modal": "true", "aria-labelledby": labelId,
-      tabindex: "-1",
-    }, label, ...(spec.content ?? []), h("div", { class: "dialog__choices" }, ...buttons));
+      "aria-describedby": content?.id, tabindex: "-1",
+    }, label, ...(content ? [content] : []), h("div", { class: "dialog__choices" }, ...buttons));
 
     const back = rememberFocus();
     const inert = outside();

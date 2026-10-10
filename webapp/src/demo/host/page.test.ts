@@ -4,6 +4,7 @@ import type { Note } from "../../api/types";
 import { createApi, type ApiOptions, type DemoApi } from "../api";
 import type { DemoFrame, HostWindow } from "../bridge/contract";
 import { pageAddress, startDemo, type DemoOptions } from "./page";
+import { WORDS } from "./words";
 
 // Wednesday 7 October 2026, 10:30 in Moscow.
 const MORNING = Date.UTC(2026, 9, 7, 7, 30);
@@ -305,7 +306,10 @@ describe("the demo's menu", () => {
     open();
     fireEvent.click(menuButton());
     fireEvent.click(screen.getByRole("button", { name: "Об этом демо" }));
-    const about = within(screen.getByRole("dialog", { name: "Об этом демо" }));
+    const dialog = screen.getByRole("dialog", { name: "Об этом демо" });
+    // Focus starts on «Закрыть», at the end: a screen reader says the sheet's text as it opens.
+    expect(dialog).toHaveAccessibleDescription([WORDS.ru.tagline, WORDS.ru.data, WORDS.ru.aboutText].join(" "));
+    const about = within(dialog);
     expect(about.getByText(/^Telegram-бот, который не просто скажет/)).toBeInTheDocument();
     expect(about.getByText(/^Данные выдуманные и живут только в этой вкладке/)).toBeInTheDocument();
     expect(
