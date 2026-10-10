@@ -35,5 +35,6 @@ __pycache__/
 htmlcov/
 node_modules/
 webapp/dist/
+webapp/dist-demo/
 webapp/dist.previous/
 webapp/.env.local

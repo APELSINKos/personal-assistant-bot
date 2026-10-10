@@ -234,7 +234,7 @@ export function ReminderForm() {
   return (
     <>
       <h1 className="screen__title">{id === null ? t.reminderForm.newTitle : t.reminderForm.editTitle}</h1>
-      {write.refused && <WriteRefusedCard />}
+      {write.refused && <WriteRefusedCard card={write.card} text={t.reminderForm.writeText} />}
       <div className="row field reminder-phrase">
         <input
           className="input"

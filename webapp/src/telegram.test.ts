@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { installTelegram, oldHeaderColor } from "./test/fakeTelegram";
+import { installTelegram, oldHeaderColor, shareFails, subscribers } from "./test/fakeTelegram";
 import {
   confirmAction, haptic, initData, normalizeLaunchHash, paintTelegram,
-  requestWriteAccess, startTelegram, webApp,
+  requestWriteAccess, shareMessage, startTelegram, webApp,
 } from "./telegram";
 
 describe("telegram", () => {
@@ -110,6 +110,57 @@ describe("telegram", () => {
       const app = installTelegram({ requestWriteAccess: vi.fn() }, "6.5");
       await expect(requestWriteAccess()).resolves.toBe(false);
       expect(app.requestWriteAccess).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("shareMessage", () => {
+    it("is unsupported before 8.0 and without the method", async () => {
+      const app = installTelegram({}, "7.10");
+      await expect(shareMessage("prepared-1")).resolves.toBe("unsupported");
+      expect(app.shareMessage).not.toHaveBeenCalled();
+      installTelegram({ shareMessage: undefined });
+      await expect(shareMessage("prepared-1")).resolves.toBe("unsupported");
+    });
+
+    it("is sent when Telegram says so, and stops listening", async () => {
+      const app = installTelegram();
+      await expect(shareMessage("prepared-1")).resolves.toBe("sent");
+      expect(app.shareMessage).toHaveBeenCalledWith("prepared-1", expect.any(Function));
+      expect(app.onEvent).toHaveBeenCalledWith("shareMessageFailed", expect.any(Function));
+      expect(subscribers("shareMessageFailed")).toEqual([]);
+    });
+
+    // The callback says only «not sent»; the reason comes in shareMessageFailed right after it.
+    it.each([
+      ["USER_DECLINED", "declined"],
+      [undefined, "declined"],
+      ["SOMETHING_NEW", "declined"],
+      ["UNSUPPORTED", "unsupported"],
+      ["MESSAGE_EXPIRED", "failed"],
+      ["MESSAGE_SEND_FAILED", "failed"],
+      ["UNKNOWN_ERROR", "failed"],
+    ] as const)("reads the reason %s given after the callback as %s", async (reason, outcome) => {
+      installTelegram({ shareMessage: shareFails(reason) });
+      await expect(shareMessage("prepared-1")).resolves.toBe(outcome);
+      expect(subscribers("shareMessageFailed")).toEqual([]);
+    });
+
+    it("takes a «not sent» with no event at all for a closed picker", async () => {
+      installTelegram({ shareMessage: vi.fn((_id: string, callback?: (sent: boolean) => void) => callback?.(false)) });
+      await expect(shareMessage("prepared-1")).resolves.toBe("declined");
+      expect(subscribers("shareMessageFailed")).toEqual([]);
+    });
+
+    it.each([
+      ["WebAppShareMessageOpened", "declined"],
+      ["WebAppMethodUnsupported", "unsupported"],
+    ] as const)("takes %s thrown for %s", async (name, outcome) => {
+      const refuse = () => {
+        throw new Error(name);
+      };
+      installTelegram({ shareMessage: vi.fn(refuse) });
+      await expect(shareMessage("prepared-1")).resolves.toBe(outcome);
+      expect(subscribers("shareMessageFailed")).toEqual([]);
     });
   });
 });

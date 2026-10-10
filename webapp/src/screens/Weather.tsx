@@ -1,18 +1,22 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, type CSSProperties } from "react";
 import { useLocation, useRoute } from "wouter";
-import { isGone, keys, useForecast, useMe, useWeatherCities } from "../api/queries";
+import { isGone, keys, useForecast, useMe, useShareForecast, useWeatherCities } from "../api/queries";
 import type { Forecast, ForecastDay, WeatherCity } from "../api/types";
 import { Card } from "../components/Card";
 import { PullToRefresh } from "../components/PullToRefresh";
 import { ErrorState, Loader } from "../components/States";
 import { toast } from "../components/toastStore";
+import { WriteRefusedCard } from "../components/WriteRefusedCard";
 import { useLang, useT } from "../i18n";
 import { capitalize, formatTemp, shownChance } from "../lib/format";
+import { useWriteAccess } from "../lib/useWriteAccess";
 import {
   asEmoji, CELL_WIDTH, CURVE_HEIGHT, rangeBar, stripCells, temperatureCurve, weekDayLabel, weekDayName, windWords,
 } from "../lib/weather";
 import { haptic } from "../telegram";
+
+type WriteAccess = ReturnType<typeof useWriteAccess>;
 
 /**
  * The city an address names: 0 for the home city (`/weather`), an extra city's id (`/weather/3`),
@@ -60,6 +64,8 @@ function CityWeather({ id }: { id: number }) {
   const me = useMe();
   const cities = useWeatherCities();
   const forecast = useForecast(id);
+  // The screen's own: a refusal to let the bot write stays said when a chip shows another city.
+  const write = useWriteAccess(me.data?.can_write);
   if (id !== 0 && isGone(forecast.error)) return <CityGone />;
   const home = me.data?.city.name;
   const extra = cities.data ?? [];
@@ -74,7 +80,7 @@ function CityWeather({ id }: { id: number }) {
         <ErrorState text={t.weather.unavailable} onRetry={() => void forecast.refetch()} />
       ) : (
         // A city of its own: the strip of another city starts again at «Сейчас».
-        <ForecastView key={id} forecast={forecast.data} />
+        <ForecastView key={id} forecast={forecast.data} write={write} />
       )}
     </PullToRefresh>
   );
@@ -131,13 +137,44 @@ function CityChips({ home, cities, current }: { home: string; cities: WeatherCit
   );
 }
 
-function ForecastView({ forecast }: { forecast: Forecast }) {
+function ForecastView({ forecast, write }: { forecast: Forecast; write: WriteAccess }) {
   return (
     <>
       <NowCard forecast={forecast} />
       <HoursStrip forecast={forecast} />
       <WeekCard days={forecast.days} />
       <Sun forecast={forecast} />
+      {forecast.days.length > 0 && <ShareForecast city={forecast.city.id} write={write} />}
+    </>
+  );
+}
+
+/**
+ * «Поделиться прогнозом»: the city's week as a picture, to the chat the user picks in Telegram, or
+ * to the chat with the bot where Telegram cannot share from the app. Under it, after the user
+ * declined to let the bot write, the card that asks again.
+ */
+function ShareForecast({ city, write }: { city: number; write: WriteAccess }) {
+  const t = useT();
+  const share = useShareForecast(city, write.ensure);
+  const onShare = () =>
+    share.mutate(undefined, {
+      onSuccess: (result) => {
+        if (result === "sent") toast({ kind: "success", text: t.weather.cardSent });
+      },
+    });
+  return (
+    <>
+      <button
+        type="button"
+        className="button weather-share"
+        style={{ "--i": 4 } as CSSProperties}
+        disabled={share.isPending}
+        onClick={onShare}
+      >
+        {t.weather.share}
+      </button>
+      {write.refused && <WriteRefusedCard card={write.card} text={t.weather.writeText} />}
     </>
   );
 }

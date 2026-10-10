@@ -58,6 +58,11 @@ def format_day(day: date, lang: str, *, year: bool = False) -> str:
     return str(format_date(day, pattern, locale=lang))
 
 
+def format_day_month(day: date, lang: str) -> str:
+    """«3 сент.» / «Sep 3»: a date in short, as the pictures write it."""
+    return str(format_date(day, "d MMM" if lang == "ru" else "MMM d", locale=lang))
+
+
 def format_weekday(day: date, lang: str) -> str:
     return str(format_date(day, "EEEE", locale=lang))
 

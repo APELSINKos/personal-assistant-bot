@@ -12,6 +12,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 DEPLOY = ROOT / "deploy"
+WORKFLOWS = ROOT / ".github" / "workflows"
 IPV4 = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 WILDCARD_HOST = re.compile(r"\d{1,3}(?:-\d{1,3}){3}\.(?:sslip|nip)\.io")
 # Spec 10.1, verbatim.
@@ -434,7 +435,7 @@ def test_deploy_rejects_strange_branch_names(branch: str) -> None:
 
 
 def test_no_addresses_or_secrets_in_deploy_files() -> None:
-    files = [*DEPLOY.iterdir(), ROOT / ".github" / "workflows" / "deploy.yml"]
+    files = [*DEPLOY.iterdir(), *sorted(WORKFLOWS.glob("*.yml"))]
     for path in files:
         text = path.read_text(encoding="utf-8")
         # Loopback is fine (the API listens there), and so are the private ranges the units deny
@@ -465,3 +466,98 @@ def test_ci_runs_the_servers_sqlite_and_checks_the_lock() -> None:
     assert "uv sync --locked" in text and "uv sync --frozen" not in text
     # A hung test stops the run after 15 minutes, not GitHub's 6 hours.
     assert text.count("timeout-minutes: 15") == 2
+
+
+def test_ci_builds_and_checks_the_demo() -> None:
+    text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    webapp = text[text.index("\n  webapp:") :]
+    # After the build for Telegram: none of the demo's code in it, then the demo is built and
+    # checked, so a pull request that breaks the demo or leaks an address into it fails.
+    steps = [
+        "- run: npm run build\n",
+        "run: test -d dist && ! grep -rq __demoHost dist\n",
+        "- run: npm run build:demo\n",
+        "- run: node scripts/check-demo.mjs dist-demo\n",
+    ]
+    assert all(step in webapp for step in steps)
+    assert [webapp.index(step) for step in steps] == sorted(webapp.index(step) for step in steps)
+
+
+def pages_jobs() -> dict[str, str]:
+    """The jobs of pages.yml by name, each with its lines up to the next job."""
+    text = (WORKFLOWS / "pages.yml").read_text(encoding="utf-8")
+    parts = re.split(r"^  ([\w-]+):\n", text[text.index("\njobs:\n") :], flags=re.MULTILINE)
+    return dict(zip(parts[1::2], parts[2::2], strict=True))
+
+
+def permissions(text: str) -> list[dict[str, str]]:
+    """Every block of permissions in a workflow's text, in order, as {scope: access}."""
+    blocks = re.finditer(r"^( *)permissions:\n((?:\1  [\w-]+: [\w-]+\n)+)", text, re.MULTILINE)
+    return [dict(re.findall(r"([\w-]+): ([\w-]+)", block[2])) for block in blocks]
+
+
+def test_pages_builds_only_green_pushes_to_main_of_this_repository() -> None:
+    text = (WORKFLOWS / "pages.yml").read_text(encoding="utf-8")
+    assert "workflows: [CI]" in text and "types: [completed]" in text
+    assert "branches: [main]" in text and "\n  workflow_dispatch:\n" in text
+    assert "group: pages\n  cancel-in-progress: false\n" in text
+    build = pages_jobs()["build"]
+    guard = re.search(r"^    if: >-\n((?:      .+\n)+)", build, re.MULTILINE)
+    assert guard is not None
+    # By hand, or after a green CI of a push to main here; never after a pull request's CI, since
+    # a fork's branch may be called main too.
+    assert " ".join(guard[1].split()) == (
+        "github.event_name == 'workflow_dispatch' || "
+        "(github.event.workflow_run.conclusion == 'success' && "
+        "github.event.workflow_run.event == 'push' && "
+        "github.event.workflow_run.head_repository.full_name == github.repository)"
+    )
+    # The commit CI tested, and no token left in the checkout.
+    assert "ref: ${{ github.event.workflow_run.head_sha || github.sha }}\n" in build
+    assert "persist-credentials: false\n" in build
+
+
+def test_pages_publishes_only_the_current_main() -> None:
+    jobs = pages_jobs()
+    # Each finished CI starts a run. One for an older commit (a CI that finished late, or an old
+    # one run again) stops at the gate, so the demo never goes back to an older main.
+    checkout, gate, *work = jobs["build"].split("\n      - ")[1:]
+    assert checkout.startswith("uses: actions/checkout@v7\n")
+    assert "id: newest" in gate and "git ls-remote --exit-code origin refs/heads/main" in gate
+    assert "newest: ${{ steps.newest.outputs.newest }}\n" in jobs["build"]
+    gated = "if: steps.newest.outputs.newest == 'true'"
+    assert work and all(gated in map(str.strip, step.splitlines()) for step in work)
+    assert "\n    if: needs.build.outputs.newest == 'true'\n" in jobs["deploy"]
+
+
+def test_pages_checks_the_demo_before_it_uploads() -> None:
+    build = pages_jobs()["build"]
+    # The same check as CI's: a demo with a stray address or a broken page is never published.
+    steps = [
+        "- run: npm ci --ignore-scripts\n",
+        "- run: npm run build:demo\n",
+        "- run: node scripts/check-demo.mjs dist-demo\n",
+        "- uses: actions/upload-pages-artifact@v5\n",
+    ]
+    assert all(step in build for step in steps)
+    assert [build.index(step) for step in steps] == sorted(build.index(step) for step in steps)
+    assert "path: webapp/dist-demo\n" in build
+
+
+def test_pages_lets_only_its_deploy_job_publish() -> None:
+    text = (WORKFLOWS / "pages.yml").read_text(encoding="utf-8")
+    deploy = pages_jobs()["deploy"]
+    # The workflow only reads the repository. The deploy job alone may publish, with the token
+    # that proves where a deployment came from, and it may do nothing else.
+    assert text.count("permissions:") == 2
+    assert permissions(text) == [{"contents": "read"}, {"pages": "write", "id-token": "write"}]
+    assert permissions(deploy) == [{"pages": "write", "id-token": "write"}]
+    assert "\n      name: github-pages\n" in deploy
+    assert "- id: deployment\n        uses: actions/deploy-pages@v5\n" in deploy
+
+
+def test_pages_names_no_secret() -> None:
+    text = (WORKFLOWS / "pages.yml").read_text(encoding="utf-8")
+    # The deploy secrets belong to the production environment, which no job here names.
+    assert "secrets" not in text
+    assert "production" not in text

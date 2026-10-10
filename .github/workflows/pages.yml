@@ -1,0 +1,93 @@
+name: Pages
+
+# The app's demo on GitHub Pages, built from main after a green CI and checked as CI checks it.
+# Apart from Deploy: a Pages outage never holds up a deploy to the server, and the right to publish
+# a site stays away from everything a deploy to the server can read.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  # The first run, once Pages is on: gh workflow run pages.yml --ref main
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # By hand, or after a green CI of a push to main in this repository; never after a pull
+    # request's CI, since a fork's branch may be called main too.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      newest: ${{ steps.newest.outputs.newest }}
+    defaults:
+      run:
+        working-directory: webapp
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      # Each finished CI starts a run here, and concurrency only queues them: a CI that finished
+      # late, or an old one run again, would publish an older main over a newer one. A run for a
+      # commit main has moved past stops here and publishes nothing. The repository is public, so
+      # asking where main is needs no token.
+      - name: Only the current main
+        id: newest
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          newest=true
+          if [ "$GITHUB_EVENT_NAME" = workflow_run ]; then
+            main=$(git ls-remote --exit-code origin refs/heads/main)
+            if [ "${main%%[[:space:]]*}" != "$SHA" ]; then
+              newest=false
+              echo "::notice::main has moved past $SHA: the demo waits for a green CI of a newer commit"
+            fi
+          fi
+          echo "newest=$newest" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v7
+        if: steps.newest.outputs.newest == 'true'
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: webapp/package-lock.json
+      - run: npm ci --ignore-scripts
+        if: steps.newest.outputs.newest == 'true'
+      - run: npm run build:demo
+        if: steps.newest.outputs.newest == 'true'
+      # The check prints the file and the rule, never what it found: the logs of Actions are public.
+      - run: node scripts/check-demo.mjs dist-demo
+        if: steps.newest.outputs.newest == 'true'
+      - uses: actions/upload-pages-artifact@v5
+        if: steps.newest.outputs.newest == 'true'
+        with:
+          # From the repository's root: working-directory is for run steps only.
+          path: webapp/dist-demo
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.newest == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # The only job that may publish: a Pages deployment, and the token that proves where it came from.
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

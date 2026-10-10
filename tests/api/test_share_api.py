@@ -49,6 +49,24 @@ async def test_sharing_prepares_a_message_with_a_link_to_the_card(
     assert gone.status_code == 404
 
 
+async def test_the_forecast_outlives_the_habits_and_a_card_goes_with_its_habit(
+    client, auth, telegram
+) -> None:
+    habit_id = await _habit(client, auth)
+    assert (await client.post(f"/api/habits/{habit_id}/share", headers=auth())).status_code == 200
+    assert (await client.post("/api/weather/share", headers=auth())).status_code == 200
+    card, forecast = (
+        prepared.result.photo_url.removeprefix("https://app.example")
+        for prepared in telegram.of(SavePreparedInlineMessage)
+    )
+    assert (await client.get(card)).status_code == (await client.get(forecast)).status_code == 200
+    assert (await client.delete(f"/api/habits/{habit_id}", headers=auth())).status_code == 204
+    assert (await client.get(card)).status_code == 404
+    picture = await client.get(forecast)  # no habit to go with
+    assert picture.status_code == 200 and picture.content[:2] == b"\xff\xd8"
+    assert picture.headers["content-type"] == "image/jpeg"
+
+
 async def test_a_wrong_token_finds_no_card(client) -> None:
     for path in ("/api/share/nope.jpg", f"/api/share/{'a' * 43}.jpg", "/api/share/..%2F..%2Fx.jpg"):
         assert (await client.get(path)).status_code == 404
@@ -130,6 +148,8 @@ async def test_without_the_site_or_the_bot_sharing_is_off(app, client, auth) -> 
         assert (
             await client.post(f"/api/habits/{habit_id}/{path}", headers=auth())
         ).status_code == 503
+    # None took a place among the six pictures a minute.
+    assert [app.state.assistant.cards.check(1) for _ in range(6)] == [None] * 6
 
 
 async def test_the_card_can_be_sent_to_the_bot_chat(client, auth, telegram) -> None:

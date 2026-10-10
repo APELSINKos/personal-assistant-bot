@@ -20,7 +20,7 @@ async def _habit(session, make_user, user_id: int = 1) -> Habit:
 
 async def test_a_saved_card_is_served_by_its_token(session, make_user) -> None:
     habit = await _habit(session, make_user)
-    token = await sharing.save(session, habit.user_id, habit.id, b"jpeg", NOW)
+    token = await sharing.save(session, habit.user_id, b"jpeg", NOW, habit_id=habit.id)
     assert sharing.is_token(token)
     assert await sharing.image(session, token, NOW) == b"jpeg"
     assert await sharing.image(session, "x" * 43, NOW) is None  # well-formed but unknown
@@ -30,7 +30,7 @@ async def test_a_saved_card_is_served_by_its_token(session, make_user) -> None:
 
 async def test_a_card_lives_until_its_message_expires_and_an_hour_more(session, make_user) -> None:
     habit = await _habit(session, make_user)
-    token = await sharing.save(session, habit.user_id, habit.id, b"jpeg", NOW)
+    token = await sharing.save(session, habit.user_id, b"jpeg", NOW, habit_id=habit.id)
     await sharing.keep_until(session, token, NOW + timedelta(hours=24), NOW)
     assert await sharing.image(session, token, NOW + timedelta(hours=25) - timedelta(seconds=1))
     assert await sharing.image(session, token, NOW + timedelta(hours=25)) is None
@@ -40,7 +40,7 @@ async def test_a_card_lives_until_its_message_expires_and_an_hour_more(session, 
 
 async def test_a_card_is_never_kept_longer_than_a_week(session, make_user) -> None:
     habit = await _habit(session, make_user)
-    token = await sharing.save(session, habit.user_id, habit.id, b"jpeg", NOW)
+    token = await sharing.save(session, habit.user_id, b"jpeg", NOW, habit_id=habit.id)
     assert await sharing.image(session, token, NOW + timedelta(days=7)) is None  # no answer yet
     await sharing.keep_until(session, token, NOW + timedelta(days=30), NOW)
     card = await session.get(ShareCard, token)
@@ -51,17 +51,35 @@ async def test_a_card_is_never_kept_longer_than_a_week(session, make_user) -> No
 async def test_a_user_keeps_only_the_newest_cards(session, make_user) -> None:
     habit = await _habit(session, make_user)
     other = await _habit(session, make_user, user_id=2)
-    theirs = await sharing.save(session, other.user_id, other.id, b"theirs", NOW)
+    theirs = await sharing.save(session, other.user_id, b"theirs", NOW, habit_id=other.id)
     tokens = [
-        await sharing.save(session, habit.user_id, habit.id, b"%d" % n, NOW + timedelta(minutes=n))
+        await sharing.save(
+            session, habit.user_id, b"%d" % n, NOW + timedelta(minutes=n), habit_id=habit.id
+        )
         for n in range(sharing.PER_USER + 2)
     ]
     kept = set((await session.scalars(select(ShareCard.token))).all())
     assert kept == {theirs, *tokens[2:]}
 
 
+async def test_a_picture_of_no_habit_is_kept_the_same_way(session, make_user) -> None:
+    # The week's forecast: served by its token and counted among the user's newest pictures.
+    habit = await _habit(session, make_user)
+    forecast = await sharing.save(session, habit.user_id, b"week", NOW)
+    assert await sharing.image(session, forecast, NOW) == b"week"
+    assert (await session.get(ShareCard, forecast)).habit_id is None
+    cards = [
+        await sharing.save(
+            session, habit.user_id, b"%d" % n, NOW + timedelta(minutes=n + 1), habit_id=habit.id
+        )
+        for n in range(sharing.PER_USER)
+    ]
+    kept = set((await session.scalars(select(ShareCard.token))).all())
+    assert kept == set(cards)  # the forecast was the oldest of eleven
+
+
 async def test_forget_removes_a_card(session, make_user) -> None:
     habit = await _habit(session, make_user)
-    token = await sharing.save(session, habit.user_id, habit.id, b"jpeg", NOW)
+    token = await sharing.save(session, habit.user_id, b"jpeg", NOW, habit_id=habit.id)
     await sharing.forget(session, token)
     assert await sharing.image(session, token, NOW) is None

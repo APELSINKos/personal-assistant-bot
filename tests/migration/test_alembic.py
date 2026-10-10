@@ -51,7 +51,7 @@ from __future__ import annotations
 from alembic import op
 
 revision = "test_extra"
-down_revision = "0006"
+down_revision = "0007"
 branch_labels = None
 depends_on = None
 
@@ -100,6 +100,31 @@ def _fill(db: Path, script: str = FILL) -> None:
 def _counts(db: Path, tables: Sequence[str] = CHILDREN) -> dict[str, int]:
     with closing(sqlite3.connect(db)) as conn:
         return {t: conn.execute(f"SELECT count(*) FROM {t}").fetchone()[0] for t in tables}
+
+
+def _share_card(conn: sqlite3.Connection, letter: str, habit_id: int | None) -> None:
+    """A picture of user 1 under the token of 43 `letter`s; no habit: the week's forecast."""
+    conn.execute(
+        "INSERT INTO share_cards (token, user_id, habit_id, image, created_at, expires_at) "
+        "VALUES (?, 1, ?, x'ffd8', ?, ?)",
+        (letter * 43, habit_id, STAMP, STAMP),
+    )
+
+
+def _share_cards_shape(db: Path) -> tuple[set[tuple[str, str, str]], dict[str, list[str]], str]:
+    """The foreign keys of `share_cards` (column, table, ON DELETE), its indexes with their
+    columns and its SQL: a rebuild of the table must keep them all."""
+    with closing(sqlite3.connect(db)) as conn:
+        keys = {
+            (row[3], row[2], row[6]) for row in conn.execute("PRAGMA foreign_key_list(share_cards)")
+        }
+        indexes = {
+            row[1]: [column[2] for column in conn.execute(f"PRAGMA index_info({row[1]})")]
+            for row in conn.execute("PRAGMA index_list(share_cards)").fetchall()
+            if row[3] == "c"  # made by CREATE INDEX, not the primary key's own
+        }
+        sql = conn.execute("SELECT sql FROM sqlite_master WHERE name = 'share_cards'").fetchone()[0]
+    return keys, indexes, sql
 
 
 def test_upgrade_creates_schema_and_matches_models(tmp_path: Path) -> None:
@@ -469,3 +494,66 @@ def test_0006_adds_pins_items_and_cities_and_a_round_trip_keeps_their_counters(
         conn.commit()
     assert item_ids == [3] and city_ids == [3]
     assert _counts(db, CHILDREN_26) == dict.fromkeys(CHILDREN_26, 0)
+
+
+SHARE_CARDS_KEYS = {("habit_id", "habits", "CASCADE"), ("user_id", "users", "CASCADE")}
+SHARE_CARDS_INDEXES = {
+    "ix_share_cards_user": ["user_id", "created_at"],
+    "ix_share_cards_expires": ["expires_at"],
+}
+
+
+def test_0007_keeps_pictures_without_a_habit_and_indexes_snoozed_copies(tmp_path: Path) -> None:
+    db = tmp_path / "old.db"
+    cfg = _config(db)
+    command.upgrade(cfg, "0001")
+    _fill(db)
+    command.upgrade(cfg, "0006")
+    _fill(db, FILL_26)
+    with closing(sqlite3.connect(db)) as conn:
+        _share_card(conn, "h", 1)  # the habit's card, shared in 2.6
+        # Every counter above max(id) of its table: a rebuild would bring it down to max(id).
+        conn.execute("UPDATE sqlite_sequence SET seq = seq + 1000")
+        conn.commit()
+        counters = dict(conn.execute("SELECT name, seq FROM sqlite_sequence"))
+
+    command.upgrade(cfg, "head")
+    with closing(sqlite3.connect(db)) as conn:
+        _share_card(conn, "f", None)  # the week's forecast: a picture of no habit
+        conn.commit()
+        cards = conn.execute("SELECT token, habit_id FROM share_cards ORDER BY token").fetchall()
+        parent = [row[2] for row in conn.execute("PRAGMA index_info(ix_reminders_parent)")]
+        kept = dict(conn.execute("SELECT name, seq FROM sqlite_sequence"))
+    assert cards == [("f" * 43, None), ("h" * 43, 1)]
+    # ON DELETE SET NULL of a snoozed copy's parent_id no longer reads the whole table, and the
+    # index came without a rebuild of `reminders`: no counter came down to max(id).
+    assert parent == ["parent_id"]
+    assert kept == counters
+    keys, indexes, sql = _share_cards_shape(db)
+    assert (keys, indexes) == (SHARE_CARDS_KEYS, SHARE_CARDS_INDEXES)
+    assert "fk_share_cards_habit_id_habits" in sql and "fk_share_cards_user_id_users" in sql
+
+    command.downgrade(cfg, "0006")
+    with closing(sqlite3.connect(db)) as conn:
+        cards = conn.execute("SELECT token, habit_id FROM share_cards").fetchall()
+        names = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
+        kept = dict(conn.execute("SELECT name, seq FROM sqlite_sequence"))
+        broken = conn.execute("PRAGMA foreign_key_check").fetchall()
+    assert cards == [("h" * 43, 1)]  # only the forecast went: 2.6 knows no picture without a habit
+    assert "ix_reminders_parent" not in names
+    assert kept == counters
+    assert broken == []
+    assert _share_cards_shape(db)[:2] == (SHARE_CARDS_KEYS, SHARE_CARDS_INDEXES)
+    with closing(sqlite3.connect(db)) as conn, pytest.raises(sqlite3.IntegrityError):
+        _share_card(conn, "f", None)
+
+    command.upgrade(cfg, "head")  # and up again
+    with closing(sqlite3.connect(db)) as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
+        _share_card(conn, "f", None)
+        conn.execute("DELETE FROM habits")  # takes the habit's card along, not the forecast
+        left = [row[0] for row in conn.execute("SELECT token FROM share_cards")]
+        conn.execute("DELETE FROM users")  # takes the forecast along: the rebuilt table cascades
+        conn.commit()
+    assert left == ["f" * 43]
+    assert _counts(db, ("share_cards",)) == {"share_cards": 0}

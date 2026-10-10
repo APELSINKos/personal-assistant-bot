@@ -130,6 +130,14 @@ class WeatherCb(CallbackData, prefix="w"):
     new: int = 0  # 1 under the digest and «Мой день»: the view comes as a message of its own
 
 
+class WeatherCardCb(CallbackData, prefix="wc"):
+    """«🖼 Картинка» under the week: the week of the city shown as a picture. Apart from
+    WeatherCb, since a picture is not a view: the city buttons, which carry the view shown, would
+    turn into picture buttons under it."""
+
+    city: Id = 0  # an extra city; 0 is the home city
+
+
 class RatesCb(CallbackData, prefix="x"):
     source: str
     target: str

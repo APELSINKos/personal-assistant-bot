@@ -175,6 +175,8 @@ class Reminder(Base):
     __table_args__ = (
         Index("ix_reminders_queue", "status", "next_attempt_at"),
         Index("ix_reminders_user", "user_id", "status", "due_at"),
+        # A deleted reminder's copies: ON DELETE SET NULL looks them up by parent_id.
+        Index("ix_reminders_parent", "parent_id"),
         {"sqlite_autoincrement": True},
     )
 
@@ -343,8 +345,9 @@ class JobRun(Base):
 
 
 class ShareCard(Base):
-    """A habit card picture Telegram downloads by its token when the user shares the card from
-    the Mini App (services/sharing). Kept until the shared message can no longer be sent."""
+    """A picture Telegram downloads by its token when the user shares it from the Mini App: a
+    habit's card or the week's forecast, which has no habit (services/sharing). Kept until the
+    shared message can no longer be sent; a habit's card goes with its habit."""
 
     __tablename__ = "share_cards"
     __table_args__ = (
@@ -354,7 +357,7 @@ class ShareCard(Base):
 
     token: Mapped[str] = mapped_column(String(43), primary_key=True)
     user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"))
-    habit_id: Mapped[int] = mapped_column(ForeignKey("habits.id", ondelete="CASCADE"))
+    habit_id: Mapped[int | None] = mapped_column(ForeignKey("habits.id", ondelete="CASCADE"))
     image: Mapped[bytes] = mapped_column(LargeBinary)  # JPEG
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime)

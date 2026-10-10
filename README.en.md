@@ -120,6 +120,10 @@ Bot: ✅ ☕ Eating out — 250 ₽ · coffee
   <img src="docs/images/money-report.en.jpg" width="360" alt="The report for October 2026: 23,600 ₽ spent — 79% of a 30,000 ₽ budget, 6,400 ₽ left — 800 ₽ a day, a ring by category and spending day by day">
 </p>
 
+<p align="center">
+  <img src="docs/images/forecast-card.en.jpg" width="360" alt="The week's forecast for Moscow: now +6°, overcast; for each day an icon, the low, a range bar and the high, from −1° to +13°">
+</p>
+
 ## Mini App
 
 The Open button next to the message field opens the app right inside Telegram — the same account and the same data as the chat: what you add in the app shows up in the bot at once, and the other way round.

@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramNetworkError
+from aiogram.methods import GetMe
+from sqlalchemy import select
+
+from assistant.core.models import User
+
 
 async def test_habit_lifecycle_and_marks(client, auth) -> None:
     created = await client.post("/api/habits", json={"name": "Спорт"}, headers=auth())
@@ -48,3 +54,25 @@ async def test_habit_rules(client, auth) -> None:
             f"/api/habits/{habit_id}/marks/{day}", json={"done": True}, headers=auth()
         )
         assert response.status_code == 422 and response.json()["reason"] == "out_of_range"
+
+
+async def test_the_card_in_the_chat_says_when_the_bot_may_not_write(
+    client, auth, telegram, session
+) -> None:
+    created = await client.post("/api/habits", json={"name": "Спорт"}, headers=auth())
+    path = f"/api/habits/{created.json()['id']}/card"
+    assert (await client.post(path, headers=auth())).status_code == 204  # the bot's name is kept
+    blocked = "Forbidden: bot was blocked by the user"
+    telegram.errors.append(TelegramForbiddenError(method=GetMe(), message=blocked))
+    refused = await client.post(path, headers=auth())
+    assert (refused.status_code, refused.json()["code"]) == (403, "write_forbidden")
+    # The flag is the bot's own: the API never sets it.
+    assert await session.scalar(select(User.bot_blocked).where(User.id == 1)) is False
+    for error in (
+        TelegramBadRequest(method=GetMe(), message="Bad Request: wrong file"),
+        TelegramNetworkError(method=GetMe(), message="timeout"),
+    ):
+        telegram.errors.append(error)
+        failed = await client.post(path, headers=auth())
+        assert (failed.status_code, failed.json()["code"]) == (503, "upstream_unavailable")
+        assert failed.json()["service"] == "telegram"

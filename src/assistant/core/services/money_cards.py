@@ -6,14 +6,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from functools import lru_cache
 
 from babel.dates import format_date
 from PIL import Image, ImageDraw
 
 from assistant.core.clients.cbr import Point
 from assistant.core.habit_style import COLORS
-from assistant.core.i18n import Translator, format_day, format_number
+from assistant.core.i18n import Translator, format_day, format_day_month, format_number
 from assistant.core.money_style import CURRENCIES
 from assistant.core.services import card_kit as kit
 from assistant.core.services.card_kit import HEIGHT, HINT, LEFT, PANEL, RIGHT, TEXT, WIDTH
@@ -83,33 +82,16 @@ def report_for(month: Month, names: dict[int, str], currency: str, bot: str) -> 
     )
 
 
-@lru_cache(maxsize=256)
-def _has(char: str, family: str) -> bool:
-    face = kit.font(family, 48, 700)
-
-    def pixels(text: str) -> bytes:
-        box = [round(edge) for edge in face.getbbox(text)]
-        image = Image.new("L", (max(box[2], 1), max(box[3], 1)))
-        ImageDraw.Draw(image).text((0, 0), text, font=face, fill=255)
-        return image.tobytes()
-
-    return pixels(char) != pixels(kit.MISSING)
-
-
 def sign_for(currency: str) -> str:
-    """The currency's sign when both fonts can draw it, else its code: «₽», but «AMD»."""
+    """The currency's sign when both fonts can draw it, else its code: «₽», but «AMD». Not from
+    the fallback font: its thin «₸» would look foreign among the figures of Unbounded."""
     sign = CURRENCIES[currency].sign if currency in CURRENCIES else currency
     fonts = ("Manrope", "Unbounded")
-    return sign if all(_has(char, family) for char in sign for family in fonts) else currency
+    return sign if all(kit.has(char, family) for char in sign for family in fonts) else currency
 
 
 def _money(hundredths: int, report: Report, lang: str) -> str:
     return format_amount(hundredths, report.currency, lang, sign=sign_for(report.currency))
-
-
-def _day_month(day: date, lang: str) -> str:
-    """«3 сент.» / «Sep 3»."""
-    return str(format_date(day, "d MMM" if lang == "ru" else "MMM d", locale=lang))
 
 
 def month_title(first: date, lang: str) -> str:
@@ -230,7 +212,6 @@ def render_report(report: Report, t: Translator) -> bytes:
 
         legend_left = LEFT + 2 * radius + 56
         row = 60
-        name_font = kit.font("Manrope", 28, 600)
         amount_font = kit.font("Manrope", 28, 700)
         share_font = kit.font("Manrope", 24, 600)
         y = ring_top + (2 * radius - len(report.slices) * row) // 2
@@ -246,9 +227,10 @@ def render_report(report: Report, t: Translator) -> bytes:
             value_left = RIGHT - draw.textlength(value, font=amount_font)
             percent_left = value_left - 18 - draw.textlength(percent, font=share_font)
             name = kit.drawable(item.name) if item.emoji is not None else t("money-report-rest")
-            if draw.textlength(name, font=name_font) > percent_left - 16 - name_left:
-                name = kit.shorten(draw, name, name_font, percent_left - 16 - name_left)
-            draw.text((name_left, y + 4), name, font=name_font, fill=TEXT)
+            room = percent_left - 16 - name_left
+            if kit.length(draw, name, "Manrope", 28, 600) > room:
+                name = kit.shorten(draw, name, "Manrope", 28, 600, room)
+            kit.write(draw, (name_left, y + 4), name, "Manrope", 28, 600, TEXT)
             draw.text((percent_left, y + 8), percent, font=share_font, fill=HINT)
             draw.text((value_left, y + 4), value, font=amount_font, fill=TEXT)
             y += row
@@ -376,7 +358,9 @@ def render_rates(card: RatesCard, t: Translator) -> bytes:
             font=tiny,
             fill=HINT,
         )
-        draw.text((chart[0], chart[3] + 6), _day_month(points[0].day, lang), font=tiny, fill=HINT)
+        draw.text(
+            (chart[0], chart[3] + 6), format_day_month(points[0].day, lang), font=tiny, fill=HINT
+        )
     kit.footer(draw, card.bot, card.today, t)
     return kit.jpeg(picture, overlay)
 

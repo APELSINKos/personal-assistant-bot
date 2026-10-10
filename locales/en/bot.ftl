@@ -97,6 +97,7 @@ weather-city-gone = This city is no longer on your list
 button-weather-now = 🌤 Now
 button-hours = 🕐 Hourly
 button-week = 📅 Week
+button-weather-card = 🖼 Picture
 button-city-home = 🏠 { $city }
 weather-hours-title = 🕐 { $city } — hourly
 weather-hours-title-local = 🕐 { $city } — hourly (local time)
@@ -108,6 +109,12 @@ weather-week-title = 📅 { $city } — 7 days
 weather-day = { $label } { $emoji } { $range }
 weather-day-chance = { $label } { $emoji } { $range } 💧 { $chance }%
 weather-days-none = No forecast for the week right now.
+forecast-card-period = { $count }-day forecast · { $dates }
+forecast-card-feels = Feels like { $temp }
+forecast-card-wind = Wind { $speed } m/s
+forecast-card-now = now { $time }
+forecast-card-chance = { $chance }%
+forecast-card-caption = { $emoji } { $city }: the week's weather
 
 ## My day and the morning digest
 today-title = { $part ->
@@ -486,7 +493,7 @@ habit-emoji-ask = 🎨 Pick an emoji for “{ $name }”:
 habit-color-ask = 🎨 And a color — for the card and the app:
 habit-rename-ask = ✍️ A new name for “{ $name }” (up to { $limit } characters):
 habit-renamed = ✅ Done: “{ $name }”.
-habit-cards-wait = ⏳ Too many cards in a row — try again in { $seconds } s.
+habit-cards-wait = ⏳ Too many pictures in a row — try again in { $seconds } s.
 
 ## Money
 money-cat-groceries = Groceries

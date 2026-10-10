@@ -1,8 +1,9 @@
-"""Share cards: the pictures Telegram downloads by token when a user shares a habit card.
+"""Shared pictures: the ones Telegram downloads by token when a user shares a habit's card or the
+week's forecast from the Mini App.
 
 Sharing from the Mini App goes through a prepared inline message whose photo is a link, so the
 picture must stay reachable without the user's signature until that message can no longer be
-sent. The link carries a 256-bit token; a user keeps only their newest few pictures.
+sent. The link carries a 256-bit token; a user keeps only their newest few pictures of both kinds.
 """
 
 from __future__ import annotations
@@ -27,10 +28,11 @@ def is_token(value: str) -> bool:
 
 
 async def save(
-    session: AsyncSession, user_id: int, habit_id: int, image: bytes, now: datetime
+    session: AsyncSession, user_id: int, image: bytes, now: datetime, *, habit_id: int | None = None
 ) -> str:
-    """Store a card for the longest time allowed; `keep_until` shortens it once Telegram says
-    when the prepared message expires. The user's older cards beyond PER_USER go."""
+    """Store a picture for the longest time allowed; `keep_until` shortens it once Telegram says
+    when the prepared message expires. A habit's card names its habit and goes with it; the
+    forecast names none. The user's older pictures beyond PER_USER go."""
     token = secrets.token_urlsafe(32)
     session.add(
         ShareCard(

@@ -3,19 +3,23 @@ import { fireEvent, render, renderHook, screen, waitFor } from "@testing-library
 import type { ReactNode } from "react";
 import { act } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SearchProgress } from "../components/SearchStatus";
 import { Toasts } from "../components/Toasts";
 import { LangProvider, type Lang } from "../i18n";
+import { useWriteAccess } from "../lib/useWriteAccess";
 import { checklist, forecast, habit, me, note, scheduleSource, today, tula } from "../test/fixtures";
-import { installTelegram } from "../test/fakeTelegram";
+import { installTelegram, shareFails } from "../test/fakeTelegram";
 import { mockApi } from "../test/mockApi";
+import { renderWithApp } from "../test/render";
 import { ApiError } from "./client";
 import type { Agenda, City, Habit, HabitDetail, Me, Note, ScheduleState, Today, WeatherCity } from "./types";
 import {
-  CITY_QUERY_MAX, createQueryClient, errorCode, GROUP_QUERY_MAX, keys, searchable, useAddCity, useAddingItems, useAddItem,
-  useClearDone, useCreateHabit, useCreateNote, useDeleteCity, useDeleteHabit, useDeleteItem, useDeleteNote,
-  useDeleteReminder, useDisconnectSchedule, useForecast, useHabit, useHabits, useMarkDay, useNotes, usePinNote,
-  useRefreshSchedule, useScheduleAlerts, useSetCity, useSetItem, useSetMark, useShareHabit, useUpdateHabit,
-  useUpdateMe, useUpdateNote, useUploadSchedule, useWeatherCities,
+  CITY_QUERY_MAX, createQueryClient, errorCode, GROUP_QUERY_MAX, keys, searchable, ShareFailed, useAddCity,
+  useAddingItems, useAddItem, useCities, useClearDone, useCreateHabit, useCreateNote, useDeleteCity, useDeleteHabit,
+  useDeleteItem, useDeleteNote, useDeleteReminder, useDisconnectSchedule, useForecast, useHabit, useHabits,
+  useMarkDay, useNotes, usePinNote, useRefreshSchedule, useScheduleAlerts, useSetCity, useSetItem, useSetMark,
+  useShareForecast, useShareHabit, useUpdateHabit, useUpdateMe, useUpdateNote, useUploadSchedule, useWeatherCities,
+  WeatherUnavailable,
 } from "./queries";
 
 // Every mutation goes through `api()`, which needs a session (`initData()` non-null) before it
@@ -729,43 +733,94 @@ describe("a refused mark with later taps queued behind it", () => {
   });
 });
 
-describe("useShareHabit", () => {
-  it("shares through a prepared message in Telegram 8.0", async () => {
-    const telegram = installTelegram();
+type EnsureWrite = () => Promise<boolean>;
+
+const useHabitCard = (ensureWrite: EnsureWrite) => useShareHabit(7, ensureWrite);
+const useWeekPicture = (ensureWrite: EnsureWrite) => useShareForecast(3, ensureWrite);
+
+/**
+ * A screen's «Поделиться»: the share hook with the permission to write as the screen holds it
+ * (`canWrite`, what the profile says), and the toasts on screen.
+ */
+function sharing(share: (ensureWrite: EnsureWrite) => ReturnType<typeof useShareHabit>, canWrite = true) {
+  return renderHook(
+    () => {
+      const write = useWriteAccess(canWrite);
+      return { write, share: share(write.ensure) };
+    },
+    { wrapper: withToasts(createQueryClient()) },
+  );
+}
+
+/** The toasts on screen: the region they are read out from. */
+const toasts = () => screen.getByRole("status");
+
+/** Telegram's dialog that asks to let the bot write, answered «no». */
+const refuseWrite = () => vi.fn((callback?: (allowed: boolean) => void) => callback?.(false));
+
+const TELEGRAM_DOWN = { status: 503, body: { status: 503, code: "upstream_unavailable", service: "telegram" } };
+const OPEN_METEO_DOWN = { status: 503, body: { status: 503, code: "upstream_unavailable", service: "open-meteo" } };
+
+describe("sharing a picture", () => {
+  it("shares a habit's card through a prepared message in Telegram 8.0, with a vibration", async () => {
+    const app = installTelegram();
     const { calls } = mockApi({ "POST /habits/7/share": { prepared_id: "prepared-1" } });
-    const { result } = renderHook(() => useShareHabit(), { wrapper: wrapperFor(createQueryClient()) });
-    act(() => result.current.mutate(7));
-    await waitFor(() => expect(result.current.data).toBe("shared"));
-    expect(telegram.shareMessage).toHaveBeenCalledWith("prepared-1", expect.any(Function));
+    const { result } = sharing(useHabitCard);
+    act(() => result.current.share.mutate());
+    await waitFor(() => expect(result.current.share.data).toBe("shared"));
+    expect(app.shareMessage).toHaveBeenCalledWith("prepared-1", expect.any(Function));
+    expect(calls.map((call) => call.path)).toEqual(["/habits/7/share"]);
+    expect(app.HapticFeedback?.notificationOccurred).toHaveBeenCalledWith("success");
+  });
+
+  it("says nothing, and does not vibrate, when the user closes the chat picker", async () => {
+    const app = installTelegram({ shareMessage: shareFails("USER_DECLINED") });
+    const { calls } = mockApi({ "POST /habits/7/share": { prepared_id: "prepared-1" } });
+    const { result } = sharing(useHabitCard);
+    act(() => result.current.share.mutate());
+    await waitFor(() => expect(result.current.share.data).toBe("cancelled"));
+    expect(calls.map((call) => call.path)).toEqual(["/habits/7/share"]);
+    expect(app.HapticFeedback?.notificationOccurred).not.toHaveBeenCalled();
+    expect(toasts()).toBeEmptyDOMElement();
+  });
+
+  it("says so when Telegram could not send the message, and goes to no other chat", async () => {
+    installTelegram({ shareMessage: shareFails("MESSAGE_SEND_FAILED") });
+    const { calls } = mockApi({ "POST /habits/7/share": { prepared_id: "prepared-1" }, "POST /habits/7/card": { status: 204 } });
+    const { result } = sharing(useHabitCard);
+    act(() => result.current.share.mutate());
+    expect(
+      await screen.findByText("Не получилось отправить картинку — попробуй ещё раз или выбери другой чат"),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(result.current.share.isError).toBe(true));
     expect(calls.map((call) => call.path)).toEqual(["/habits/7/share"]);
   });
 
-  it("says when the user closed the chat picker", async () => {
-    installTelegram({ shareMessage: vi.fn((_id: string, callback?: (sent: boolean) => void) => callback?.(false)) });
-    mockApi({ "POST /habits/7/share": { prepared_id: "prepared-1" } });
-    const { result } = renderHook(() => useShareHabit(), { wrapper: wrapperFor(createQueryClient()) });
-    act(() => result.current.mutate(7));
-    await waitFor(() => expect(result.current.data).toBe("cancelled"));
+  it("has the bot send the card on an older Telegram, with a vibration", async () => {
+    const app = installTelegram({}, "7.10");
+    const { calls } = mockApi({ "POST /habits/7/card": { status: 204 } });
+    const { result } = sharing(useHabitCard);
+    act(() => result.current.share.mutate());
+    await waitFor(() => expect(result.current.share.data).toBe("sent"));
+    expect(app.shareMessage).not.toHaveBeenCalled();
+    expect(calls.map((call) => call.path)).toEqual(["/habits/7/card"]);
+    expect(app.HapticFeedback?.notificationOccurred).toHaveBeenCalledWith("success");
   });
 
-  it("has the bot send the card on an older Telegram", async () => {
-    const telegram = installTelegram({}, "7.10");
-    const { calls } = mockApi({ "POST /habits/7/card": { status: 204 } });
-    const { result } = renderHook(() => useShareHabit(), { wrapper: wrapperFor(createQueryClient()) });
-    act(() => result.current.mutate(7));
-    await waitFor(() => expect(result.current.data).toBe("sent"));
-    expect(telegram.shareMessage).not.toHaveBeenCalled();
-    expect(calls.map((call) => call.path)).toEqual(["/habits/7/card"]);
+  it("has the bot send the card when the picker finds Telegram cannot share it", async () => {
+    installTelegram({ shareMessage: shareFails("UNSUPPORTED") });
+    const { calls } = mockApi({ "POST /habits/7/share": { prepared_id: "prepared-1" }, "POST /habits/7/card": { status: 204 } });
+    const { result } = sharing(useHabitCard);
+    act(() => result.current.share.mutate());
+    await waitFor(() => expect(result.current.share.data).toBe("sent"));
+    expect(calls.map((call) => call.path)).toEqual(["/habits/7/share", "/habits/7/card"]);
   });
 
   it("has the bot send the card when the server cannot prepare messages", async () => {
-    const { calls } = mockApi({
-      "POST /habits/7/share": { status: 503, body: { status: 503, code: "upstream_unavailable" } },
-      "POST /habits/7/card": { status: 204 },
-    });
-    const { result } = renderHook(() => useShareHabit(), { wrapper: wrapperFor(createQueryClient()) });
-    act(() => result.current.mutate(7));
-    await waitFor(() => expect(result.current.data).toBe("sent"));
+    const { calls } = mockApi({ "POST /habits/7/share": TELEGRAM_DOWN, "POST /habits/7/card": { status: 204 } });
+    const { result } = sharing(useHabitCard);
+    act(() => result.current.share.mutate());
+    await waitFor(() => expect(result.current.share.data).toBe("sent"));
     expect(calls.map((call) => call.path)).toEqual(["/habits/7/share", "/habits/7/card"]);
   });
 
@@ -773,12 +828,112 @@ describe("useShareHabit", () => {
     const { calls } = mockApi({
       "POST /habits/7/share": { status: 429, body: { status: 429, code: "rate_limited" } },
     });
-    const { result } = renderHook(() => useShareHabit(), { wrapper: wrapperFor(createQueryClient()) });
-    act(() => result.current.mutate(7));
-    await waitFor(() => expect(result.current.isError).toBe(true));
+    const { result } = sharing(useHabitCard);
+    act(() => result.current.share.mutate());
+    await waitFor(() => expect(result.current.share.isError).toBe(true));
     expect(calls.map((call) => call.path)).toEqual(["/habits/7/share"]);
   });
+
+  it("asks for the permission to write before the bot sends the card", async () => {
+    const app = installTelegram({}, "7.10");
+    const { calls } = mockApi({
+      "POST /me/write-access": { ...me, can_write: true },
+      "POST /habits/7/card": { status: 204 },
+    });
+    const { result } = sharing(useHabitCard, false);
+    act(() => result.current.share.mutate());
+    await waitFor(() => expect(result.current.share.data).toBe("sent"));
+    expect(app.requestWriteAccess).toHaveBeenCalled();
+    expect(calls.map((call) => call.path)).toEqual(["/me/write-access", "/habits/7/card"]);
+  });
+
+  it("stops without a word or a vibration when the user does not let the bot write", async () => {
+    const app = installTelegram({ requestWriteAccess: refuseWrite() }, "7.10");
+    const { calls } = mockApi({ "POST /habits/7/card": { status: 204 } });
+    const { result } = sharing(useHabitCard, false);
+    act(() => result.current.share.mutate());
+    await waitFor(() => expect(result.current.share.data).toBe("stopped"));
+    expect(result.current.write.refused).toBe(true); // the screen's card says why
+    expect(calls).toEqual([]);
+    expect(app.HapticFeedback?.notificationOccurred).not.toHaveBeenCalled();
+    expect(toasts()).toBeEmptyDOMElement();
+  });
+
+  it("stops with the one toast of a permission the server did not take", async () => {
+    const app = installTelegram({}, "7.10");
+    const { calls } = mockApi({
+      "POST /me/write-access": { status: 500, body: { status: 500, code: "generic", title: "x" } },
+      "POST /habits/7/card": { status: 204 },
+    });
+    const { result } = sharing(useHabitCard, false);
+    act(() => result.current.share.mutate());
+    await waitFor(() => expect(result.current.share.data).toBe("stopped"));
+    expect(toasts().childElementCount).toBe(1);
+    expect(toasts()).toHaveTextContent("Что-то пошло не так. Попробуй ещё раз.");
+    expect(result.current.write.refused).toBe(false);
+    expect(calls.map((call) => call.path)).toEqual(["/me/write-access"]);
+    expect(app.HapticFeedback?.notificationOccurred).not.toHaveBeenCalledWith("success");
+  });
+
+  it("says the bot may not write to the user when Telegram does not let it send the card", async () => {
+    installTelegram({}, "7.10");
+    mockApi({
+      "POST /habits/7/card": {
+        status: 403, body: { status: 403, code: "write_forbidden", title: "The bot may not write to the user" },
+      },
+    });
+    const { result } = sharing(useHabitCard);
+    act(() => result.current.share.mutate());
+    expect(
+      await screen.findByText("Бот пока не может тебе написать — открой чат с ботом и нажми «Запустить»"),
+    ).toBeInTheDocument();
+  });
+
+  it("shares the week of the city it is given, or has the bot send it", async () => {
+    const app = installTelegram();
+    const shared = mockApi({ "POST /weather/share?city=3": { prepared_id: "prepared-2" } });
+    const first = sharing(useWeekPicture);
+    act(() => first.result.current.share.mutate());
+    await waitFor(() => expect(first.result.current.share.data).toBe("shared"));
+    expect(app.shareMessage).toHaveBeenCalledWith("prepared-2", expect.any(Function));
+    expect(shared.calls.map((call) => call.path)).toEqual(["/weather/share?city=3"]);
+    first.unmount();
+
+    installTelegram({}, "7.10");
+    const sent = mockApi({ "POST /weather/card?city=3": { status: 204 } });
+    const second = sharing(useWeekPicture);
+    act(() => second.result.current.share.mutate());
+    await waitFor(() => expect(second.result.current.share.data).toBe("sent"));
+    expect(sent.calls.map((call) => call.path)).toEqual(["/weather/card?city=3"]);
+  });
+
+  it("says the weather is unavailable when Open-Meteo is, and goes to no chat", async () => {
+    const { calls } = mockApi({ "POST /weather/share?city=3": OPEN_METEO_DOWN, "POST /weather/card?city=3": { status: 204 } });
+    const { result } = sharing(useWeekPicture);
+    act(() => result.current.share.mutate());
+    expect(await screen.findByText("Погода временно недоступна")).toBeInTheDocument();
+    expect(calls.map((call) => call.path)).toEqual(["/weather/share?city=3"]);
+  });
+
+  it("says the weather is unavailable when the bot cannot draw the week for its chat either", async () => {
+    installTelegram({}, "7.10");
+    mockApi({ "POST /weather/card?city=3": OPEN_METEO_DOWN });
+    const { result } = sharing(useWeekPicture);
+    act(() => result.current.share.mutate());
+    expect(await screen.findByText("Погода временно недоступна")).toBeInTheDocument();
+  });
+
+  it("leaves the city search its own words for the same answer", async () => {
+    mockApi({ "GET /cities": OPEN_METEO_DOWN });
+    renderWithApp(<CitySearch />);
+    expect(await screen.findByText("Сервис временно недоступен")).toBeInTheDocument();
+  });
 });
+
+/** The city search's notice under its field, for «Тула». */
+function CitySearch() {
+  return <SearchProgress search={useCities("Тула")} />;
+}
 
 describe("searchable", () => {
   it("counts a search in characters as the server does: from two, up to its limit", () => {
@@ -811,6 +966,15 @@ describe("errorCode", () => {
     expect(errorCode(refused("city", "duplicate"))).toBe("duplicate_city");
     expect(errorCode(refused("name", "duplicate"))).toBe("duplicate");
     expect(errorCode(refused("city", "invalid"))).toBe("validation_error");
+  });
+
+  it("words a share's own failures, and a 503 by its code alone", () => {
+    expect(errorCode(new ShareFailed())).toBe("share_failed");
+    expect(errorCode(new WeatherUnavailable())).toBe("weather_unavailable");
+    expect(errorCode(new ApiError(403, "write_forbidden", "The bot may not write to the user"))).toBe("write_forbidden");
+    // Which service is down is the share's to tell: elsewhere it is the service's text.
+    const meteo = new ApiError(503, "upstream_unavailable", "Upstream service unavailable", { service: "open-meteo" });
+    expect(errorCode(meteo)).toBe("upstream_unavailable");
   });
 });
 

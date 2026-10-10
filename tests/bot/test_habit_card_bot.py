@@ -306,7 +306,7 @@ async def test_six_cards_a_minute(feed, fake, session, make_user, monotonic) -> 
     assert len(fake.of(SendPhoto)) == 6
     refused = last_answer(fake)
     assert refused.show_alert
-    assert refused.text == "⏳ Слишком много карточек подряд — попробуй через 60 с."
+    assert refused.text == "⏳ Слишком много картинок подряд — попробуй через 60 с."
     monotonic[0] += 60
     await feed(press("map", habit.id))
     assert len(fake.of(SendPhoto)) == 7
