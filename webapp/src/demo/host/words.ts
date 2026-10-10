@@ -53,8 +53,8 @@ export const WORDS: Record<Lang, HostWords> = {
     kicker: "Демо · приложение внутри Telegram",
     name: "Личный помощник",
     tagline:
-      "Telegram-бот, который не просто скажет «+12°C», а напишет «🌧 Через 40 минут дождь — возьми зонт». "
-      + "Погода, напоминания, расписание пар, заметки, привычки и деньги — в чате и в приложении прямо внутри "
+      "Telegram-бот, который не просто скажет «+12°C», а напишет «🌧\u00a0Через 40 минут дождь\u00a0— возьми зонт». "
+      + "Погода, напоминания, расписание пар, заметки, привычки и деньги\u00a0— в чате и в приложении прямо внутри "
       + "Telegram, а по утрам бот пишет первым.",
     tryIt: "Попробовать:",
     tries: {
@@ -71,7 +71,7 @@ export const WORDS: Record<Lang, HostWords> = {
     startOver: "Начать заново",
     data:
       "Данные выдуманные и живут только в этой вкладке: ничего не сохраняется и никуда не отправляется. "
-      + "Время — московское. Telegram и сервер не нужны.",
+      + "Время\u00a0— московское. Telegram и сервер не нужны.",
     hint: "Это демо: данные выдуманные, ничего не сохраняется, время московское",
     menu: "Меню демо",
     about: "Об этом демо",
@@ -95,7 +95,7 @@ export const WORDS: Record<Lang, HostWords> = {
     example: "пример",
     send: "Отправить",
     sample: { habit: "Пример: карточка привычки", forecast: "Пример: прогноз на неделю" },
-    sent: "Это демо — ничего не отправлено",
+    sent: "Это демо\u00a0— ничего не отправлено",
     loading: "Приложение загружается",
     frame: "Приложение «Личный помощник»",
   },
@@ -104,8 +104,8 @@ export const WORDS: Record<Lang, HostWords> = {
     kicker: "Demo · an app inside Telegram",
     name: "Personal Assistant",
     tagline:
-      "A Telegram bot that doesn't just say “+12°C” — it says “🌧 Rain in 40 min — take an umbrella”. "
-      + "Weather, reminders, class schedule, notes, habits and money — in the chat and in an app right inside "
+      "A Telegram bot that doesn't just say “+12°C”\u00a0— it says “🌧\u00a0Rain in 40 min\u00a0— take an umbrella”. "
+      + "Weather, reminders, class schedule, notes, habits and money\u00a0— in the chat and in an app right inside "
       + "Telegram, and in the morning the bot writes first.",
     tryIt: "Try:",
     tries: {
@@ -146,7 +146,7 @@ export const WORDS: Record<Lang, HostWords> = {
     example: "example",
     send: "Send",
     sample: { habit: "Example: a habit card", forecast: "Example: the week's forecast" },
-    sent: "This is a demo — nothing was sent",
+    sent: "This is a demo\u00a0— nothing was sent",
     loading: "The app is loading",
     frame: "The Personal Assistant app",
   },
