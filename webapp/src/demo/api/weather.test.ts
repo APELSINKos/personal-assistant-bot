@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { City, Forecast, SharedCard, WeatherCity } from "../../api/types";
+import { PLACES, placeOut } from "./places";
 import { demoApi, problem } from "./testApi";
 
 const WORDS_RU = ["ясно", "малооблачно", "пасмурно", "туман", "морось", "дождь", "снег", "ливень", "снегопад", "гроза"];
@@ -59,6 +60,29 @@ describe("the weather (routers/weather.py)", () => {
     expect(sky(read<Forecast>("GET /weather"))).toEqual(sky(yerevan));
     const added = read<WeatherCity>("POST /me/cities", read<City[]>("GET /cities?q=москва")[0]);
     expect(sky(read<Forecast>(`GET /weather?city=${added.id}`))).toEqual(sky(moscow));
+  });
+
+  it("gives any other place of the search weather of its own, not a copy of a city on the list", () => {
+    // What a place's pattern of days decides: the wind, the gusts, the humidity, the week's chances.
+    const ofPattern = (forecast: Forecast) => JSON.stringify([
+      forecast.now.wind, forecast.now.gusts, forecast.now.humidity, forecast.days.map((day) => day.precip_chance),
+    ]);
+    const { read } = demoApi();
+    const seeded = ["GET /weather", "GET /weather?city=1", "GET /weather?city=2", "GET /weather?city=3"]
+      .map((request) => read<Forecast>(request));
+    const story = seeded.map((forecast) => forecast.city.name);
+    const others = PLACES.filter((place) => !story.includes(place.ru[0]));
+    expect(others).toHaveLength(PLACES.length - 4);
+    // Each one added as the fourth city: the seeded three leave room for one more.
+    const repeats = others.flatMap((place) => {
+      const fourth = demoApi();
+      const added = fourth.read<WeatherCity>("POST /me/cities", placeOut(place, "ru"));
+      const own = ofPattern(fourth.read<Forecast>(`GET /weather?city=${added.id}`));
+      return seeded
+        .filter((forecast) => ofPattern(forecast) === own)
+        .map((forecast) => `${place.ru[0]} = ${forecast.city.name}`);
+    });
+    expect(repeats).toEqual([]);
   });
 
   it("holds together: the same moment gives the same weather, in the user's words", () => {

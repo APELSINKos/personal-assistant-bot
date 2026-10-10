@@ -10,7 +10,7 @@ import { addDaysIso, daysBetween } from "../../lib/format";
 import type { Place, Visit } from "./data";
 import { json, noContent, notFound, route, writeForbidden, type Route } from "./http";
 import { preparedId } from "./prepared";
-import { chance } from "./random";
+import { chance, draws } from "./random";
 import { clockOf, dayOf, HOUR, localClock, MINUTE, momentOf, wall, type Wall } from "./time";
 import { ID_MAX, queryInt } from "./validate";
 import { TEXTS, type WeatherWord } from "./words";
@@ -37,7 +37,7 @@ const PATTERNS: readonly Pattern[] = [
     bands: [[7, 10, 45, "drizzle"], [17, 26, 90, "rain"], [31, 35, 60, "drizzle"], [82, 92, 70, "showers"], [120, 143, 100, "rain"]],
     base: 5, fog: [[53, 56]], wind: 10.2, gusts: 17.8, humidity: 81,
   },
-  // Тула, Петропавловск-Камчатский, Ереван, and one more; any other place draws one of the five.
+  // Тула, Петропавловск-Камчатский, Ереван, and one more; any other place makes one of the five its own.
   { bands: [[13, 22, 65, "showers"], [48, 71, 40, "rain"]], base: 10, wind: 4.1, gusts: 7.9, humidity: 74 },
   { bands: [[5, 14, 80, "drizzle"], [24, 47, 50, "drizzle"], [96, 130, 95, "rain"]], base: 25, wind: 6.3, gusts: 11, humidity: 92 },
   { bands: [[111, 114, 25, "showers"]], base: 0, clear: true, wind: 2.1, gusts: 4.5, humidity: 38 },
@@ -61,14 +61,30 @@ const CLIMATES: readonly (readonly [number, number, number, number, number, numb
 const climateOf = (place: Place) =>
   CLIMATES.find(([lat, lon]) => Math.abs(lat - place.lat) < 0.5 && Math.abs(lon - place.lon) < 0.5);
 
+const round1 = (value: number) => Math.round(value * 10) / 10;
+
 /**
  * The pattern of a place's days, by the place alone: home or not, wherever it stands in the list. A
- * place of the story has its own; any other gets one drawn from where it is.
+ * place of the story has its own. Any other draws one from where it is and makes it its own, not a
+ * copy of a city of the story: its rain and fog come 1–7 hours later (not 8: the wobble repeats every
+ * 8 hours, so the chances would come back the same), its wind and gusts are 0.7–1.3 times as strong,
+ * its humidity up to 8 points higher or lower, within 30–97 %.
  */
 function patternOf(place: Place): Pattern {
   const known = climateOf(place);
-  const draw = chance(place.lat.toFixed(2), place.lon.toFixed(2), "pattern");
-  return PATTERNS[known ? known[5] : Math.floor(draw * PATTERNS.length)] ?? (PATTERNS[0] as Pattern);
+  if (known) return PATTERNS[known[5]] ?? (PATTERNS[0] as Pattern);
+  const draw = draws(place.lat.toFixed(2), place.lon.toFixed(2), "pattern");
+  const pattern = PATTERNS[Math.floor(draw() * PATTERNS.length)] ?? (PATTERNS[0] as Pattern);
+  const later = 1 + Math.floor(draw() * 7);
+  const air = 0.7 + draw() * 0.6;
+  return {
+    ...pattern,
+    bands: pattern.bands.map(([from, to, peak, kind]) => [from + later, to + later, peak, kind] as const),
+    fog: pattern.fog?.map(([from, to]) => [from + later, to + later] as const),
+    wind: round1(pattern.wind * air),
+    gusts: round1(pattern.gusts * air),
+    humidity: Math.max(30, Math.min(97, Math.round(pattern.humidity + (draw() - 0.5) * 16))),
+  };
 }
 
 /** weather.py's codes: the icon and the words of a WMO code, the moon instead of a clear sky at night. */
@@ -78,7 +94,6 @@ const CODES: readonly (readonly [number, number, string, WeatherWord])[] = [
   [85, 86, "🌨", "snowfall"], [95, 99, "⛈", "storm"],
 ];
 
-const round1 = (value: number) => Math.round(value * 10) / 10;
 const pad = (value: number) => String(value).padStart(2, "0");
 
 function describe(code: number, lang: Visit["language"], isDay = true): [string, string] {
