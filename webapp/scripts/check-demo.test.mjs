@@ -12,7 +12,7 @@ const CHECK = join(SCRIPTS, "check-demo.mjs");
 const COVER = join(SCRIPTS, "..", "..", "docs", "images", "cover.jpg");
 
 // What a leak would carry: the check must name the file and the rule, and never this.
-const SECRETS = ["secret-host", "10.20.30.40", "10-20-30-40"];
+const SECRETS = ["secret-host", "10.20.30.40", "10-20-30-40", "2001:db8", "сервер"];
 
 const POLICY = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
   + "font-src 'self'; connect-src 'none'; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'";
@@ -34,7 +34,9 @@ function artifact(changes = {}) {
     "index.html": page({ head: '    <link rel="canonical" href="https://apelsinkos.github.io/personal-assistant-bot/" />\n' }),
     "app.html": page({ head: '    <meta name="robots" content="noindex" />\n' }),
     "assets/index.js": 'const ns="http://www.w3.org/2000/svg",bot="https://t.me/ikbo63_24_bot",v="19.3.0",'
-      + 'docs="https://react.dev/errors/",r=/^https?:\\/\\/t\\.me\\//,named=/(?<word>x)(?=y)/,u=`https://${host}`;',
+      + 'docs="https://react.dev/errors/",r=/^https?:\\/\\/t\\.me\\//,named=/(?<word>x)(?=y)/,u=`https://${host}`,'
+      + 'ical=`https://${n.slice(9)}`,hint=`https://…`,scheme="https://",port="https://t.me:443/x",'
+      + 'run="1.2.3.4.5";',
     "assets/index.css": "@font-face{font-family:M;src:url(./manrope.woff2)}",
     "favicon.svg": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>',
     "og.jpg": COVER,
@@ -77,6 +79,22 @@ describe("check-demo.mjs", { timeout: 30_000 }, () => {
     refuses(artifact({ "assets/index.js": 'fetch("https://secret-host.example.net/api/me")' }), "assets/index.js");
     refuses(artifact({ "assets/x.json": '{"a":"http://secret-host.example.net"}' }), "assets/x.json");
     refuses(artifact({ "assets/index.js": 'location="https://github.com.secret-host.net/"' }), "assets/index.js");
+    // A placeholder names no host only when it is the whole host.
+    refuses(artifact({ "assets/index.js": "u=`https://${a}.secret-host.example.net/`" }), "assets/index.js");
+    // A backslash ends the host of an https address, as a slash does, so this one is not github.com's.
+    const backslash = '<a href="https://secret-host.example.net\\@github.com/">a</a>\n';
+    refuses(artifact({ "index.html": page({ body: backslash }) }), "index.html");
+  });
+
+  it("refuses a bracketed IPv6 host", () => {
+    refuses(artifact({ "assets/index.js": 'fetch("https://[2001:db8::7]/api/me")' }), "assets/index.js");
+    refuses(artifact({ "assets/index.js": 'fetch("https://[2001:db8::7]:8443/api/me")' }), "assets/index.js");
+    refuses(artifact({ "index.html": page({ body: '<img src="//[2001:db8::7]/a.png">\n' }) }), "index.html");
+  });
+
+  it("refuses a host outside ASCII", () => {
+    refuses(artifact({ "assets/index.js": 'fetch("https://сервер.рф/api/me")' }), "assets/index.js");
+    refuses(artifact({ "assets/index.css": "a{background:url(//сервер.рф/a.png)}" }), "assets/index.css");
   });
 
   it("refuses an address without its scheme in an attribute or a style sheet", () => {
@@ -89,6 +107,7 @@ describe("check-demo.mjs", { timeout: 30_000 }, () => {
     refuses(artifact({ "assets/index.js": 'const a="10-20-30-40.sslip.io"' }), "assets/index.js");
     refuses(artifact({ "assets/index.js": 'const a="10-20-30-40.NIP.IO"' }), "assets/index.js");
     refuses(artifact({ "assets/index.css": "/* 10.20.30.40 */" }), "assets/index.css");
+    refuses(artifact({ "assets/index.css": "/* at 10.20.30.40. */" }), "assets/index.css");
     refuses(artifact({ "assets/font.woff2": Buffer.from("\u0000\u0001 10.20.30.40\u0000") }), "assets/font.woff2");
   });
 
@@ -101,6 +120,9 @@ describe("check-demo.mjs", { timeout: 30_000 }, () => {
       + `    <meta http-equiv="Content-Security-Policy" content="${POLICY}">\n  </head>\n  <body></body>\n</html>\n`;
     refuses(artifact({ "app.html": late }), "app.html");
     refuses(artifact({ "app.html": page().replace(/<meta http-equiv[^>]*>/, "") }), "app.html");
+    // A browser ignores a report-only policy in <meta>: the page would have none.
+    const reportOnly = page().replace("Content-Security-Policy", "Content-Security-Policy-Report-Only");
+    refuses(artifact({ "app.html": reportOnly }), "app.html");
     refuses(artifact({ "index.html": page({ policy: POLICY.replace("connect-src 'none'", "connect-src 'self'") }) }), "index.html");
     refuses(artifact({ "index.html": page({ policy: POLICY.replace("connect-src 'none'", "connect-src 'none' https:") }) }), "index.html");
   });

@@ -15,22 +15,32 @@ const COVER = new URL("../../docs/images/cover.jpg", import.meta.url);
 const LIMIT = 5 * 1024 * 1024;
 
 // An address with its scheme anywhere in a text, and one without it (//host) in an attribute or in
-// CSS. Only a written-out host counts: «https://${host}» and «https://…» name none.
-const ABSOLUTE = /https?:\/\/(?:[^\s/?#@"'`<>]*@)?([a-z0-9.-]*)/gi;
-const ATTRIBUTE = /=\s*["']?\s*\/\/([a-z0-9.-]*)/gi;
-const STYLE = /(?:url\(\s*["']?|@import\s+["'])\s*\/\/([a-z0-9.-]*)/gi;
+// CSS. The host runs up to a delimiter, so «[2001:db8::1]» and «сервер.рф» are hosts too; a backslash
+// is one, since an https address treats it as a slash.
+const ABSOLUTE = /https?:\/\/(?:[^\s/?#@"'`<>\\]*@)?([^\s/?#"'`<>\\]*)/gi;
+const ATTRIBUTE = /=\s*["']?\s*\/\/([^\s/?#"'`<>\\]*)/gi;
+const STYLE = /(?:url\(\s*["']?|@import\s+["'])\s*\/\/([^\s/?#"'`<>\\]*)/gi;
 // Services that make a host name of an IP address.
 const IP_SERVICE = /(?:sslip|nip)\.io/i;
-// Four numbers with nothing but other characters around them: not a part of «1.2.3.4.5».
-const IPV4 = /(?:^|[^\d.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\d.])/g;
+// Four numbers that are not a part of a longer run such as «1.2.3.4.5»: a period after them may end
+// a sentence.
+const IPV4 = /(?:^|[^\d.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?!\d|\.\d)/g;
 // A group that looks behind: "(?<" with "=" or "!". Escaped, since no source of the webapp holds the
 // two together (src/test/sourceRules.test.ts).
 const LOOKBEHIND = /\(\?<[=!]/;
 
+/** The host an address names, without its port; "" for none: «https://», «https://…», «https://${…}». */
+function hostOf(found) {
+  const host = found.replace(/\.+$/, "").toLowerCase();
+  const colon = host.indexOf(":", host.startsWith("[") ? host.indexOf("]") + 1 : 0);
+  const name = colon < 0 ? host : host.slice(0, colon);
+  return name === "…" || /^\$\{[^}]*\}$/.test(name) ? "" : name;
+}
+
 /** The hosts an address pattern finds that are not on the list. */
 function strangers(text, pattern) {
   return [...text.matchAll(pattern)]
-    .map((match) => (match[1] ?? "").replace(/\.+$/, "").toLowerCase())
+    .map((match) => hostOf(match[1] ?? ""))
     .filter((host) => host !== "" && !HOSTS.has(host));
 }
 
@@ -50,7 +60,8 @@ function decode(value) {
 function policyProblem(html) {
   const head = /<head\b[^>]*>([\s\S]*)/i.exec(html)?.[1];
   const first = head === undefined ? "" : (/^\s*(?:<!--[\s\S]*?-->\s*)*<([^>]*)>/.exec(head)?.[1] ?? "");
-  if (!/^meta\s/i.test(first) || !/\bhttp-equiv\s*=\s*["']?content-security-policy\b/i.test(first)) {
+  // Not …-Report-Only: a browser ignores that one in <meta>, and the page would have no policy.
+  if (!/^meta\s/i.test(first) || !/\bhttp-equiv\s*=\s*["']?content-security-policy(?![\w-])/i.test(first)) {
     return "the Content-Security-Policy is not the first tag of <head>";
   }
   const content = /\bcontent\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(first);
