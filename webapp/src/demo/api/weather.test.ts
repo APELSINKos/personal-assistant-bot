@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Forecast, SharedCard } from "../../api/types";
+import type { City, Forecast, SharedCard, WeatherCity } from "../../api/types";
 import { demoApi, problem } from "./testApi";
 
 const WORDS_RU = ["ясно", "малооблачно", "пасмурно", "туман", "морось", "дождь", "снег", "ливень", "снегопад", "гроза"];
@@ -41,6 +41,24 @@ describe("the weather (routers/weather.py)", () => {
     expect(call("GET /weather?city=9")).toEqual(problem(404, "not_found", { entity: "city" }));
     expect(call("GET /weather?city=x")).toEqual(problem(422, "validation_error", { field: "city" }));
     expect(call("GET /weather?city=-1")).toEqual(problem(422, "validation_error", { field: "city", limit: 0 }));
+  });
+
+  it("gives a place its own weather: wherever it stands in the list, and as the home too", () => {
+    const { read, call } = demoApi();
+    // A forecast without its label: the home city is shown as the home, an extra one by its id.
+    const sky = (forecast: Forecast) => ({ ...forecast, city: null });
+    const moscow = read<Forecast>("GET /weather");
+    const kamchatka = read<Forecast>("GET /weather?city=2");
+    const yerevan = read<Forecast>("GET /weather?city=3");
+    expect(call("DELETE /me/cities/1").status).toBe(204);
+    expect(read<Forecast>("GET /weather?city=2")).toEqual(kamchatka);
+    expect(read<Forecast>("GET /weather?city=3")).toEqual(yerevan);
+    // Ереван becomes the home, Москва an extra city: each keeps its weather.
+    const [found] = read<City[]>("GET /cities?q=ереван");
+    read("PUT /me/city", { name: found?.name, lat: found?.lat, lon: found?.lon, timezone: found?.timezone, geo_id: found?.geo_id });
+    expect(sky(read<Forecast>("GET /weather"))).toEqual(sky(yerevan));
+    const added = read<WeatherCity>("POST /me/cities", read<City[]>("GET /cities?q=москва")[0]);
+    expect(sky(read<Forecast>(`GET /weather?city=${added.id}`))).toEqual(sky(moscow));
   });
 
   it("holds together: the same moment gives the same weather, in the user's words", () => {

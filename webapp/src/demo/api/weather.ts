@@ -31,13 +31,13 @@ interface Pattern {
 }
 
 const PATTERNS: readonly Pattern[] = [
-  // The home city: drizzle in the morning, rain from 17:00 into the night, showers on the third day,
-  // a wet fifth day.
+  // Москва: drizzle in the morning, rain from 17:00 into the night, showers on the third day, a wet
+  // fifth day.
   {
     bands: [[7, 10, 45, "drizzle"], [17, 26, 90, "rain"], [31, 35, 60, "drizzle"], [82, 92, 70, "showers"], [120, 143, 100, "rain"]],
     base: 5, fog: [[53, 56]], wind: 10.2, gusts: 17.8, humidity: 81,
   },
-  // The extra cities, by their place in the list.
+  // Тула, Петропавловск-Камчатский, Ереван, and one more; any other place draws one of the five.
   { bands: [[13, 22, 65, "showers"], [48, 71, 40, "rain"]], base: 10, wind: 4.1, gusts: 7.9, humidity: 74 },
   { bands: [[5, 14, 80, "drizzle"], [24, 47, 50, "drizzle"], [96, 130, 95, "rain"]], base: 25, wind: 6.3, gusts: 11, humidity: 92 },
   { bands: [[111, 114, 25, "showers"]], base: 0, clear: true, wind: 2.1, gusts: 4.5, humidity: 38 },
@@ -46,13 +46,30 @@ const PATTERNS: readonly Pattern[] = [
 /** A little unevenness of the chances from hour to hour. */
 const WOBBLE = [0, 3, -2, 5, -4, 2, -1, 4];
 
-/** The seasons of the places of the demo's story: [latitude, longitude, the year's mean, its swing, a day's swing]. */
-const CLIMATES: readonly (readonly [number, number, number, number, number])[] = [
-  [55.75, 37.62, 5.8, 13, 3.5], // Москва
-  [54.2, 37.62, 5.5, 13.5, 4], // Тула
-  [53.04, 158.65, 2.5, 8, 3], // Петропавловск-Камчатский
-  [40.18, 44.51, 12.5, 15, 7], // Ереван
+/**
+ * The places of the demo's story, known by where they are: [latitude, longitude, the year's mean, its
+ * swing, a day's swing, the pattern of their days].
+ */
+const CLIMATES: readonly (readonly [number, number, number, number, number, number])[] = [
+  [55.75, 37.62, 5.8, 13, 3.5, 0], // Москва
+  [54.2, 37.62, 5.5, 13.5, 4, 1], // Тула
+  [53.04, 158.65, 2.5, 8, 3, 2], // Петропавловск-Камчатский
+  [40.18, 44.51, 12.5, 15, 7, 3], // Ереван
 ];
+
+/** The place of the story within half a degree of a place on each axis, if there is one. */
+const climateOf = (place: Place) =>
+  CLIMATES.find(([lat, lon]) => Math.abs(lat - place.lat) < 0.5 && Math.abs(lon - place.lon) < 0.5);
+
+/**
+ * The pattern of a place's days, by the place alone: home or not, wherever it stands in the list. A
+ * place of the story has its own; any other gets one drawn from where it is.
+ */
+function patternOf(place: Place): Pattern {
+  const known = climateOf(place);
+  const draw = chance(place.lat.toFixed(2), place.lon.toFixed(2), "pattern");
+  return PATTERNS[known ? known[5] : Math.floor(draw * PATTERNS.length)] ?? (PATTERNS[0] as Pattern);
+}
 
 /** weather.py's codes: the icon and the words of a WMO code, the moon instead of a clear sky at night. */
 const CODES: readonly (readonly [number, number, string, WeatherWord])[] = [
@@ -72,7 +89,7 @@ function describe(code: number, lang: Visit["language"], isDay = true): [string,
 
 /** A place's mean temperature on a day of the year: m − a·cos(2π(day − 15)/365), the south the other way round. */
 function seasonal(place: Place, day: string): { mean: number; swing: number } {
-  const known = CLIMATES.find(([lat, lon]) => Math.abs(lat - place.lat) < 0.5 && Math.abs(lon - place.lon) < 0.5);
+  const known = climateOf(place);
   const latitude = Math.abs(place.lat);
   const [mean, amplitude, swing] = known
     ? [known[2], known[3], known[4]]
@@ -133,9 +150,9 @@ export interface Model {
   isDay(hour: number): boolean;
 }
 
-/** The weather of a place: `patternIndex` 0 is the home city's, 1 to 4 the extra cities'. */
-export function model(visit: Visit, place: Place, patternIndex: number): Model {
-  const pattern = PATTERNS[patternIndex] ?? (PATTERNS[0] as Pattern);
+/** The weather of a place: the same place has the same, as the home city or as an extra one. */
+export function model(visit: Visit, place: Place): Model {
+  const pattern = patternOf(place);
   const local = wall(place.timezone, visit.now());
   const first = dayOf(local);
   const days = Array.from({ length: 8 }, (_, offset) => addDaysIso(first, offset));
@@ -277,7 +294,7 @@ function forecastOut(w: Model, city: Forecast["city"], lang: Visit["language"]):
 }
 
 /** The home city's weather around now. */
-export const homeModel = (visit: Visit): Model => model(visit, visit.data.profile.home, 0);
+export const homeModel = (visit: Visit): Model => model(visit, visit.data.profile.home);
 
 /** «Сегодня»'s weather: the home city now, as the bot's weather card shows it. */
 export function weatherOut(visit: Visit, w: Model): Weather {
@@ -314,10 +331,9 @@ export function classesWeather(visit: Visit, w: Model, lessons: { start: number;
 function cityOf(visit: Visit, query: URLSearchParams): { shown: Forecast["city"]; w: Model } {
   const id = queryInt(query, "city", { ge: 0, le: ID_MAX }) ?? 0;
   if (!id) return { shown: { id: 0, name: visit.data.profile.home.name, home: true }, w: homeModel(visit) };
-  const index = visit.data.cities.findIndex((city) => city.id === id);
-  const city = visit.data.cities[index];
+  const city = visit.data.cities.find((other) => other.id === id);
   if (!city) throw notFound("city");
-  return { shown: { id, name: city.name, home: false }, w: model(visit, city, 1 + (index % 4)) };
+  return { shown: { id, name: city.name, home: false }, w: model(visit, city) };
 }
 
 export const WEATHER: Route[] = [
