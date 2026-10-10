@@ -236,6 +236,17 @@ describe("a phrase (routers/reminders.py, services/phrases.py)", () => {
       ["at midnight sleep", parsed("sleep", { date: "2026-10-08", time: "00:00" })],
       ["в 9 купить 3 яблока", parsed("купить 3 яблока", { date: "2026-10-08", time: "09:00" })],
       ["завтра купить 2 батона", parsed("купить 2 батона", { date: "2026-10-08" })],
+      // A unit after the number makes it a quantity: a whole word with the bot's endings, ending where its word ends.
+      ["в 7 метро", parsed("метро", { date: "2026-10-08", time: "07:00" })],
+      ["завтра в 10 рубить дрова", parsed("рубить дрова", { date: "2026-10-08", time: "10:00" })],
+      ["завтра в 9 классный час", parsed("классный час", { date: "2026-10-08", time: "09:00" })],
+      ["tomorrow at 9 start the report", parsed("start the report", { date: "2026-10-08", time: "09:00" })],
+      ["at 5 milestone review", parsed("milestone review", { date: "2026-10-08", time: "05:00" })],
+      ["завтра в 9 классе собрание", parsed("в 9 классе собрание", { date: "2026-10-08" })],
+      ["завтра забрать посылку в 5 минутах от дома", parsed("забрать посылку в 5 минутах от дома", { date: "2026-10-08" })],
+      ["завтра в 2 шагах от дома встреча", parsed("в 2 шагах от дома встреча", { date: "2026-10-08" })],
+      ["завтра ехать в 20 км/ч", parsed("ехать в 20 км/ч", { date: "2026-10-08" })],
+      ["завтра в 10, м. Тверская", parsed("м. Тверская", { date: "2026-10-08", time: "10:00" })],
       // A time ahead: minutes and hours an exact moment, days and weeks a day.
       ["через 2 часа выключить духовку", parsed("выключить духовку", { date: "2026-10-07", time: "12:30" })],
       ["через час позвонить", parsed("позвонить", { date: "2026-10-07", time: "11:30" })],
@@ -289,7 +300,8 @@ describe("a phrase (routers/reminders.py, services/phrases.py)", () => {
   it("POST /reminders/parse: what it does not understand is refused, and the form keeps its fields", () => {
     // No time, day or repeat in it; a time the clock has not; or a date, which the demo leaves to the bot.
     for (const phrase of [
-      "купить молоко", "buy milk", "9.30 зарядка", "в 25 часов", "в 2 раза больше", "каждый месяц 32-го в 9 отчёт",
+      "купить молоко", "buy milk", "9.30 зарядка", "в 25 часов", "в 2 раза больше", "в 5 минутах от дома",
+      "каждый месяц 32-го в 9 отчёт",
       "25 октября в 10 купить подарок", "10.12 сдать отчёт", "25.10.2026 отчёт", "on October 25 at 10 buy a gift",
       "October 25 buy a gift",
     ]) {

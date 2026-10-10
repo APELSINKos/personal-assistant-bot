@@ -45,8 +45,17 @@ const UNITS: Readonly<Record<string, "minute" | "hour" | "day" | "week">> = {
 /** «утром в 7» and «в 7 утром» read as «в 7 утра». */
 const PART_OF_DAY: Readonly<Record<string, string>> = { утром: "утра", днем: "дня", вечером: "вечера", ночью: "ночи" };
 const MERIDIEMS = ["утра", "дня", "вечера", "ночи", ...Object.keys(PART_OF_DAY)];
-/** After the number of «в N», a unit means a quantity, not a time: «в 2 раза», «at 5 stars». */
-const QUANTITY = /^(?:раза?|км|кг|м|г|л|мл|см|мм|лет|%|times|percent|km|kg|floor|(?:метр|километр|класс|год|этаж|процент|руб|mile|year|star)\S*)$/;
+/**
+ * phrases._UNITS: after the number of «в N» or «at N», a unit makes it a quantity, not a time — «в 2 раза», «в 5
+ * минутах», «at 5 stars». A unit is a whole word with one of these endings, the word ending where the bot's \w ends,
+ * so «в 7 метро» and «at 9 start» stay times and «в 20 км/ч» does not. A «%» needs nothing after it.
+ */
+const QUANTITY = new RegExp(String.raw`^(?:%|(?:${[
+  "раза?", "км", "кг", "м", "г", "л", "мл", "см", "мм", "метр(?:а|е|у|ом|ов|ах|ами)?",
+  "километр(?:а|е|у|ом|ов|ах|ами)?", "класс(?:а|е|у|ом|ы|ов|ах|ами)?", "лет", "год(?:а|у|ом|ы|ов|ах)?",
+  "этаж(?:а|е|у|ом|и|ей|ах)?", "процент(?:а|ы|ом|ов|ах)?", "минутах", "часах", "шагах",
+  "руб(?:ль|ля|лю|лем|лей|лях|лями)?", "times", "percent", "stars?", "km", "kg", "miles?", "years?", "floor",
+].join("|")})(?![\p{L}\p{N}_]))`, "u");
 /** The rules of a monthly repeat: «каждый месяц 10-го», «каждое 5 число», «on the 5th of every month». */
 const NTH = /^\d{1,2}(?:-?го)?$/;
 const ORDINAL = /^\d{1,2}(?:st|nd|rd|th)?$/;
@@ -298,6 +307,8 @@ function parse(phrase: string, todayWeekday: number): Parsed | null {
 
   // The time, the bot's way and order: «в полдень», then «at 9:30 pm», «в 8 вечера», «19:45».
   const noon = first([[["в", "at"], ["полдень", "полночь", "noon", "midnight"]]]);
+  /** A unit right after the number makes it a quantity; past a comma or a full stop it does not: «в 10, м. Тверская». */
+  const quantity = (number: number) => /\d$/.test(words[number]?.text ?? "") && QUANTITY.test(low(number + 1));
   const clocks: ((start: number) => [string | null, number] | null)[] = [
     // «at 9», «at 9.30 pm», «7pm», «7:30 am».
     (start) => {
@@ -307,14 +318,14 @@ function parse(phrase: string, todayWeekday: number): Parsed | null {
       const clock = (after > start ? /^(\d{1,2})(?:[:.](\d{2}))?$/ : /^(\d{1,2})(?::(\d{2}))?$/).exec(low(after));
       const meridiem = /^([ap])\.?m\.?$/.exec(low(after + 1));
       if (clock && meridiem) return [hhmm(withMeridiem(Number(clock[1]), `${meridiem[1]}m`), Number(clock[2] ?? 0)), after + 2];
-      if (!clock || after === start || QUANTITY.test(low(after + 1))) return null;
+      if (!clock || after === start || quantity(after)) return null;
       return [hhmm(Number(clock[1]), Number(clock[2] ?? 0)), after + 1];
     },
     // «в 9», «в 9.30», «к 9», «в 9 часов», «утром в 7», «в 8 вечера».
     (start) => {
       const pre = own(PART_OF_DAY, low(start)) ? 1 : 0;
       const clock = fits(start + pre, ["в", "во", "к"]) ? /^(\d{1,2})(?:[:.](\d{2}))?$/.exec(low(start + pre + 1)) : null;
-      if (!clock || QUANTITY.test(low(start + pre + 2))) return null;
+      if (!clock || quantity(start + pre + 1)) return null;
       let end = start + pre + 2;
       if (fits(end, ["ч", "час", "часа", "часов"])) end += 1;
       const meridiem = fits(end, MERIDIEMS) ? low(end) : pre ? low(start) : "";
