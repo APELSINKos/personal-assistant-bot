@@ -238,10 +238,11 @@ export function startDemo(root: HTMLElement, options: DemoOptions): Demo {
     const target = event.target instanceof Node ? event.target : null;
     if (!menu.contains(target) && !menuButton.contains(target)) closeMenu(false);
   });
-  // Focus that leaves the menu, into the app's frame too, closes it.
-  menu.addEventListener("focusout", (event) => {
+  // Focus that leaves «⋯» and its menu, forwards or backwards, closes the menu; focus that goes into
+  // the app's frame blurs the page's window.
+  device.slots.end.addEventListener("focusout", (event) => {
     const next = event.relatedTarget instanceof Node ? event.relatedTarget : null;
-    if (next && !menu.contains(next) && next !== menuButton) closeMenu(false);
+    if (next && !device.slots.end.contains(next)) closeMenu(false);
   });
   window.addEventListener("blur", () => closeMenu(false));
 

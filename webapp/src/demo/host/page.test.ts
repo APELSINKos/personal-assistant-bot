@@ -273,6 +273,24 @@ describe("the demo's menu", () => {
     expect(menuButton()).toHaveAttribute("aria-expanded", "false");
   });
 
+  it("closes when focus leaves it, backwards past «⋯» as well as forwards", () => {
+    open();
+    fireEvent.click(menuButton());
+    // Shift+Tab from the first item: «⋯» keeps the menu open, the header's «Закрыть» before it does not.
+    menuButton().focus();
+    expect(menuButton()).toHaveAttribute("aria-expanded", "true");
+    screen.getByRole("button", { name: "Закрыть" }).focus();
+    expect(menuButton()).toHaveAttribute("aria-expanded", "false");
+    expect(document.getElementById(menuButton().getAttribute("aria-controls") ?? "")).not.toBeVisible();
+    // Tab from the last item goes into the app's frame, and a browser says so with the page's blur.
+    fireEvent.click(menuButton());
+    const menu = within(document.getElementById(menuButton().getAttribute("aria-controls") ?? "") as HTMLElement);
+    menu.getByRole("link", { name: "Исходный код на GitHub" }).focus();
+    appFrame().focus();
+    fireEvent.blur(window);
+    expect(menuButton()).toHaveAttribute("aria-expanded", "false");
+  });
+
   it("switches the language from the menu and closes", () => {
     const { demo } = open();
     fireEvent.click(menuButton());
