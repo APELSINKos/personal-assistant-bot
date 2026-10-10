@@ -116,9 +116,9 @@ describe("the demo's data", () => {
       [1, "Покупки"], [2, "Собрать в поездку"], [3, "Код домофона: 45В7"],
       [4, "Идеи подарков: маме\u00a0— плед, брату\u00a0— настольная игра, бабушке\u00a0— фотоальбом"],
       [5, "Почитать осенью: что-нибудь о космосе, сборник рассказов, книгу о дизайне интерфейсов"],
-      [6, "Блины: 2 яйца, 500 мл молока, 200 г муки, щепотка соли, ложка сахара"],
-      [7, "Курсовая: план до 20 октября, источники\u00a0— https://example.com/library"],
-      [8, "Вернуть Диме 1 500 ₽ до пятницы"],
+      [6, "Блины: 2\u00a0яйца, 500\u00a0мл молока, 200\u00a0г муки, щепотка соли, ложка сахара"],
+      [7, "Курсовая: план до 20\u00a0октября, источники\u00a0— https://example.com/library"],
+      [8, "Вернуть Диме 1\u00a0500\u00a0₽ до пятницы"],
     ]);
     expect(checklist(ru, 1)).toEqual(["✅ молоко", "✅ хлеб", "✅ яйца", "сыр", "яблоки", "кофе", "макароны"]);
     expect(checklist(ru, 2)).toEqual([
@@ -135,9 +135,9 @@ describe("the demo's data", () => {
       "Shopping", "Packing list", "Door code: 45B7",
       "Gift ideas: a blanket for Mum, a board game for my brother, a photo album for Grandma",
       "To read this autumn: something about space, a short story collection, a book on interface design",
-      "Pancakes: 2 eggs, 500 ml of milk, 200 g of flour, a pinch of salt, a spoonful of sugar",
+      "Pancakes: 2\u00a0eggs, 500\u00a0ml of milk, 200\u00a0g of flour, a pinch of salt, a spoonful of sugar",
       "Coursework: the outline by October\u00a020, sources\u00a0— https://example.com/library",
-      "Pay Dima back 1,500 ₽ by Friday",
+      "Pay Dima back 1,500\u00a0₽ by Friday",
     ]);
     expect(checklist(en, 1)).toEqual(["✅ milk", "✅ bread", "✅ eggs", "cheese", "apples", "coffee", "pasta"]);
     expect(checklist(en, 2)).toEqual([
@@ -146,6 +146,8 @@ describe("the demo's data", () => {
     // A line of a card never starts with «—»: the space before a dash does not break.
     const loose = (data: Data) => data.notes.filter((note) => note.text.replaceAll("\u00a0—", "").includes("—"));
     expect([...loose(ru), ...loose(en)]).toEqual([]);
+    // A number stays with the word after it («500 мл»), as on the host page: the space after it does not break.
+    expect([...ru.notes, ...en.notes].map((note) => note.text).filter((text) => /\d /.test(text))).toEqual([]);
   });
 
   it("hold the eight reminders of §5.3: two today while there is time, then the week, then the repeats", () => {

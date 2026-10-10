@@ -137,7 +137,8 @@ export interface SeedWords {
   group: string;
   /**
    * The eight notes; the shopping list's title is WORDS.shopping, which the host page looks for. A no-break space
-   * ties each «—» and a date's day to the word before it, so a card's line never starts with a dash or splits a date.
+   * keeps each «—» with the word before it, each number with the word after it and a date's day with its month,
+   * so a card's line never starts with a dash and never cuts a number from its word or a date in two.
    */
   notes: {
     shoppingItems: readonly string[];
@@ -175,9 +176,9 @@ export const SEED_WORDS: Record<Lang, SeedWords> = {
       door: "Код домофона: 45В7",
       gifts: "Идеи подарков: маме\u00a0— плед, брату\u00a0— настольная игра, бабушке\u00a0— фотоальбом",
       reading: "Почитать осенью: что-нибудь о космосе, сборник рассказов, книгу о дизайне интерфейсов",
-      pancakes: "Блины: 2 яйца, 500 мл молока, 200 г муки, щепотка соли, ложка сахара",
-      coursework: "Курсовая: план до 20 октября, источники\u00a0— https://example.com/library",
-      debt: "Вернуть Диме 1 500 ₽ до пятницы",
+      pancakes: "Блины: 2\u00a0яйца, 500\u00a0мл молока, 200\u00a0г муки, щепотка соли, ложка сахара",
+      coursework: "Курсовая: план до 20\u00a0октября, источники\u00a0— https://example.com/library",
+      debt: "Вернуть Диме 1\u00a0500\u00a0₽ до пятницы",
     },
     reminders: {
       parcel: "Забрать посылку", call: "Созвон по курсовой", lab: "Сдать лабораторную",
@@ -215,9 +216,9 @@ export const SEED_WORDS: Record<Lang, SeedWords> = {
       door: "Door code: 45B7",
       gifts: "Gift ideas: a blanket for Mum, a board game for my brother, a photo album for Grandma",
       reading: "To read this autumn: something about space, a short story collection, a book on interface design",
-      pancakes: "Pancakes: 2 eggs, 500 ml of milk, 200 g of flour, a pinch of salt, a spoonful of sugar",
+      pancakes: "Pancakes: 2\u00a0eggs, 500\u00a0ml of milk, 200\u00a0g of flour, a pinch of salt, a spoonful of sugar",
       coursework: "Coursework: the outline by October\u00a020, sources\u00a0— https://example.com/library",
-      debt: "Pay Dima back 1,500 ₽ by Friday",
+      debt: "Pay Dima back 1,500\u00a0₽ by Friday",
     },
     reminders: {
       parcel: "Pick up the parcel", call: "Coursework call", lab: "Hand in the lab report",
