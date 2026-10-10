@@ -26,4 +26,12 @@ describe("the host page's words", () => {
     expect(words.flatMap(shown).filter((text) => text.replaceAll(`${NBSP}—`, "").includes("—"))).toEqual([]);
     for (const { tagline } of words) expect(tagline).toContain(`\u{1F327}${NBSP}`);
   });
+
+  it("keep each number with the word after it", () => {
+    // A number stays on the line of the word after it («40 минут»), as «80 %» does in the app's dictionaries.
+    const words = [WORDS.ru, WORDS.en];
+    expect(words.flatMap(shown).filter((text) => /\d /.test(text))).toEqual([]);
+    expect(WORDS.ru.tagline).toContain(`40${NBSP}минут`);
+    expect(WORDS.en.tagline).toContain(`40${NBSP}min`);
+  });
 });

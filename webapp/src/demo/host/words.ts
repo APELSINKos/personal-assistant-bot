@@ -53,7 +53,8 @@ export const WORDS: Record<Lang, HostWords> = {
     kicker: "Демо · приложение внутри Telegram",
     name: "Личный помощник",
     tagline:
-      "Telegram-бот, который не просто скажет «+12°C», а напишет «🌧\u00a0Через 40 минут дождь\u00a0— возьми зонт». "
+      "Telegram-бот, который не просто скажет «+12°C», а напишет "
+      + "«🌧\u00a0Через 40\u00a0минут дождь\u00a0— возьми зонт». "
       + "Погода, напоминания, расписание пар, заметки, привычки и деньги\u00a0— в чате и в приложении прямо внутри "
       + "Telegram, а по утрам бот пишет первым.",
     tryIt: "Попробовать:",
@@ -104,7 +105,8 @@ export const WORDS: Record<Lang, HostWords> = {
     kicker: "Demo · an app inside Telegram",
     name: "Personal Assistant",
     tagline:
-      "A Telegram bot that doesn't just say “+12°C”\u00a0— it says “🌧\u00a0Rain in 40 min\u00a0— take an umbrella”. "
+      "A Telegram bot that doesn't just say “+12°C”\u00a0— it says "
+      + "“🌧\u00a0Rain in 40\u00a0min\u00a0— take an umbrella”. "
       + "Weather, reminders, class schedule, notes, habits and money\u00a0— in the chat and in an app right inside "
       + "Telegram, and in the morning the bot writes first.",
     tryIt: "Try:",
