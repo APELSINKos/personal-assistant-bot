@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import type { Lang } from "../../i18n";
 import type { ApiReply, ApiRequest, DemoFrame, DemoHost, MainButtonState } from "./contract";
 
 function notFound(): ApiReply {
@@ -7,13 +8,14 @@ function notFound(): ApiReply {
 
 /**
  * A host page for the bridges' tests: every call recorded, the API's answers given by the test, and
- * the frame that connected kept, so that a test can press the host's buttons.
+ * the frame that connected kept, so that a test can press the host's buttons. The visitor speaks
+ * Russian unless told otherwise.
  */
-export function testHost(answer: (request: ApiRequest) => ApiReply = notFound) {
+export function testHost(answer: (request: ApiRequest) => ApiReply = notFound, language: Lang = "ru") {
   let frame: DemoFrame | null = null;
   const host = {
-    language: "ru",
-    user: { id: 1, first_name: "Саша", language_code: "ru" },
+    language,
+    user: { id: 1, first_name: language === "ru" ? "Саша" : "Alex", language_code: language },
     clockOffset: null,
     scheme: vi.fn<() => "dark" | "light">(() => "dark"),
     api: vi.fn(answer),

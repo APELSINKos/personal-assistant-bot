@@ -173,33 +173,129 @@ describe("the calendar (routers/agenda.py)", () => {
 });
 
 describe("a phrase (routers/reminders.py, services/phrases.py)", () => {
-  it("POST /reminders/parse: the day, the time and the repeat it names, the rest as the text", () => {
-    const { read } = demoApi();
-    expect(read<ParsedPhrase>("POST /reminders/parse", { text: "завтра в 9:30 купить молоко" })).toEqual({
-      text: "купить молоко", repeat: "none", date: "2026-10-08", time: "09:30", weekdays: null, interval_weeks: 1,
-      month_day: null, description: null,
+  /** What the form fills in from a phrase: the bot's answer, its defaults left out. */
+  const parsed = (text: string, answer: Partial<ParsedPhrase>): ParsedPhrase => ({
+    text, repeat: "none", date: null, time: null, weekdays: null, interval_weeks: 1, month_day: null, description: null,
+    ...answer,
+  });
+  /** The answer at the README's moment, Wednesday 7 October 2026, 10:30 in Moscow, in the phrase's language. */
+  const parse = (phrase: string) =>
+    demoApi(/[а-яё]/i.test(phrase) ? "ru" : "en").call("POST /reminders/parse", { text: phrase });
+
+  it("POST /reminders/parse: the README's three phrases, in Russian and in English", () => {
+    const weekdays = { repeat: "weekly", date: "2026-10-08", time: "07:30", weekdays: 31 } as const;
+    for (const [phrase, answer] of [
+      ["завтра в 9 купить молоко", parsed("купить молоко", { date: "2026-10-08", time: "09:00" })],
+      ["через 20 минут чай", parsed("чай", { date: "2026-10-07", time: "10:50" })],
+      ["по будням в 7:30 зарядка", parsed("зарядка", { ...weekdays, description: "по будням в 07:30" })],
+      ["tomorrow at 9 buy milk", parsed("buy milk", { date: "2026-10-08", time: "09:00" })],
+      ["in 20 minutes tea", parsed("tea", { date: "2026-10-07", time: "10:50" })],
+      ["on weekdays at 7:30 workout", parsed("workout", { ...weekdays, description: "on weekdays at 07:30" })],
+    ] as const) {
+      expect(parse(phrase), phrase).toEqual({ status: 200, body: answer, headers: { "Content-Type": "application/json" } });
+    }
+  });
+
+  it("POST /reminders/parse: the days, the times and the repeats of §5.4, read as the bot reads them", () => {
+    // Each answer is the one routers/reminders.py gives with services/phrases.py at the same moment.
+    const weekly = (weekdays: number, date: string, time: string, description: string, interval_weeks = 1) =>
+      ({ repeat: "weekly", weekdays, date, time, description, interval_weeks }) as const;
+    const monthly = { repeat: "monthly", date: "2026-11-05", time: "10:00", month_day: 5 } as const;
+    const TABLE: [string, ParsedPhrase][] = [
+      // Days, a weekday, a time alone: a time already gone today means tomorrow, a weekday next week.
+      ["сегодня в 18 позвонить маме", parsed("позвонить маме", { date: "2026-10-07", time: "18:00" })],
+      ["сегодня в 9 позвонить", parsed("позвонить", { date: "2026-10-07", time: "09:00" })],
+      ["послезавтра сдать отчёт", parsed("сдать отчёт", { date: "2026-10-09" })],
+      ["на завтра в 9 молоко", parsed("молоко", { date: "2026-10-08", time: "09:00" })],
+      ["в среду", parsed("", { date: "2026-10-07" })],
+      ["в среду в 19 бассейн", parsed("бассейн", { date: "2026-10-07", time: "19:00" })],
+      ["в среду в 9:30 созвон", parsed("созвон", { date: "2026-10-14", time: "09:30" })],
+      ["в пятницу сдать долг", parsed("сдать долг", { date: "2026-10-09" })],
+      ["в следующую пятницу в 10 отчёт", parsed("отчёт", { date: "2026-10-16", time: "10:00" })],
+      ["today at 18:00 call mum", parsed("call mum", { date: "2026-10-07", time: "18:00" })],
+      ["the day after tomorrow at 9 call", parsed("call", { date: "2026-10-09", time: "09:00" })],
+      ["tomorrow buy milk", parsed("buy milk", { date: "2026-10-08" })],
+      ["on Wednesday at 9:30 meeting", parsed("meeting", { date: "2026-10-14", time: "09:30" })],
+      ["on friday pay back", parsed("pay back", { date: "2026-10-09" })],
+      ["wednesday at 7 pm swim", parsed("swim", { date: "2026-10-07", time: "19:00" })],
+      ["next friday at 10 report", parsed("report", { date: "2026-10-16", time: "10:00" })],
+      ["в 9", parsed("", { date: "2026-10-08", time: "09:00" })],
+      ["в 23 спать", parsed("спать", { date: "2026-10-07", time: "23:00" })],
+      ["в 9.30 зарядка", parsed("зарядка", { date: "2026-10-08", time: "09:30" })],
+      ["в 19.45 позвонить", parsed("позвонить", { date: "2026-10-07", time: "19:45" })],
+      ["19:45 позвонить", parsed("позвонить", { date: "2026-10-07", time: "19:45" })],
+      ["в 9 часов зарядка", parsed("зарядка", { date: "2026-10-08", time: "09:00" })],
+      ["к 9 на работу", parsed("на работу", { date: "2026-10-08", time: "09:00" })],
+      ["в 8 вечера кино", parsed("кино", { date: "2026-10-07", time: "20:00" })],
+      ["утром в 7 пробежка", parsed("пробежка", { date: "2026-10-08", time: "07:00" })],
+      ["в 12 ночи спать", parsed("спать", { date: "2026-10-08", time: "00:00" })],
+      ["в полдень обед", parsed("обед", { date: "2026-10-07", time: "12:00" })],
+      ["at 9:30 standup", parsed("standup", { date: "2026-10-08", time: "09:30" })],
+      ["at 7:30 am run", parsed("run", { date: "2026-10-08", time: "07:30" })],
+      ["7pm dinner", parsed("dinner", { date: "2026-10-07", time: "19:00" })],
+      ["at midnight sleep", parsed("sleep", { date: "2026-10-08", time: "00:00" })],
+      ["в 9 купить 3 яблока", parsed("купить 3 яблока", { date: "2026-10-08", time: "09:00" })],
+      ["завтра купить 2 батона", parsed("купить 2 батона", { date: "2026-10-08" })],
+      // A time ahead: minutes and hours an exact moment, days and weeks a day.
+      ["через 2 часа выключить духовку", parsed("выключить духовку", { date: "2026-10-07", time: "12:30" })],
+      ["через час позвонить", parsed("позвонить", { date: "2026-10-07", time: "11:30" })],
+      ["через пять минут чай", parsed("чай", { date: "2026-10-07", time: "10:35" })],
+      ["через полчаса выйти", parsed("выйти", { date: "2026-10-07", time: "11:00" })],
+      ["через 1 час 30 минут созвон", parsed("созвон", { date: "2026-10-07", time: "12:00" })],
+      ["через 3 дня в 10 позвонить", parsed("позвонить", { date: "2026-10-10", time: "10:00" })],
+      ["через неделю отчёт", parsed("отчёт", { date: "2026-10-14" })],
+      ["in 2 hours turn off the oven", parsed("turn off the oven", { date: "2026-10-07", time: "12:30" })],
+      ["in an hour call", parsed("call", { date: "2026-10-07", time: "11:30" })],
+      ["in 2 hours and 15 minutes call", parsed("call", { date: "2026-10-07", time: "12:45" })],
+      ["in 2 weeks at 9 dentist", parsed("dentist", { date: "2026-10-21", time: "09:00" })],
+      // Repeats, from their first firing on.
+      ["каждый день в 8 выпить воды", parsed("выпить воды", { repeat: "daily", date: "2026-10-08", time: "08:00", description: "каждый день в 08:00" })],
+      ["каждый день зарядка", parsed("зарядка", { repeat: "daily" })],
+      ["по выходным в 11 пробежка", parsed("пробежка", weekly(96, "2026-10-10", "11:00", "по выходным в 11:00"))],
+      ["по средам в 19 бассейн", parsed("бассейн", weekly(4, "2026-10-07", "19:00", "ср в 19:00"))],
+      ["по средам бассейн", parsed("бассейн", { repeat: "weekly", weekdays: 4 })],
+      ["по вторникам и четвергам в 18:00 полить цветы", parsed("полить цветы", weekly(10, "2026-10-08", "18:00", "вт, чт в 18:00"))],
+      ["каждый понедельник в 10 планёрка", parsed("планёрка", weekly(1, "2026-10-12", "10:00", "пн в 10:00"))],
+      ["раз в две недели в 18 полить цветы", parsed("полить цветы", weekly(4, "2026-10-07", "18:00", "раз в 2 недели: ср в 18:00", 2))],
+      [
+        "раз в две недели по вторникам и четвергам в 18:00 полить цветы",
+        parsed("полить цветы", weekly(10, "2026-10-08", "18:00", "раз в 2 недели: вт, чт в 18:00", 2)),
+      ],
+      ["каждую вторую среду в 10 отчёт", parsed("отчёт", weekly(4, "2026-10-14", "10:00", "раз в 2 недели: ср в 10:00", 2))],
+      ["каждый месяц 10-го в 12 оплатить телефон", parsed("оплатить телефон", {
+        repeat: "monthly", date: "2026-10-10", time: "12:00", month_day: 10, description: "каждый месяц 10-го в 12:00",
+      })],
+      ["ежемесячно 5-го в 10 аренда", parsed("аренда", { ...monthly, description: "каждый месяц 5-го в 10:00" })],
+      ["every day at 8 drink water", parsed("drink water", { repeat: "daily", date: "2026-10-08", time: "08:00", description: "every day at 08:00" })],
+      ["on weekends at 11 run", parsed("run", weekly(96, "2026-10-10", "11:00", "on weekends at 11:00"))],
+      ["every Monday at 10 meeting", parsed("meeting", weekly(1, "2026-10-12", "10:00", "Mon at 10:00"))],
+      ["every monday and wednesday at 8 gym", parsed("gym", weekly(5, "2026-10-12", "08:00", "Mon, Wed at 08:00"))],
+      ["every other monday at 10 call", parsed("call", weekly(1, "2026-10-12", "10:00", "every other week: Mon at 10:00", 2))],
+      ["monthly on the 5th at 10 rent", parsed("rent", { ...monthly, description: "monthly on day 5 at 10:00" })],
+      // «Напомни» and “remind me … to” are not the text, nor are the commas and the full stop around it.
+      ["пожалуйста, напомни мне завтра в 9 купить молоко", parsed("купить молоко", { date: "2026-10-08", time: "09:00" })],
+      ["remind me tomorrow at 9 to buy milk", parsed("buy milk", { date: "2026-10-08", time: "09:00" })],
+      ["завтра в 9, купить молоко.", parsed("купить молоко", { date: "2026-10-08", time: "09:00" })],
+      ["Завтра В 9 Купить Молоко", parsed("Купить Молоко", { date: "2026-10-08", time: "09:00" })],
+    ];
+    const found = TABLE.flatMap(([phrase, answer]) => {
+      const reply = parse(phrase);
+      return reply.status === 200 && JSON.stringify(reply.body) === JSON.stringify(answer)
+        ? [] : [`${phrase}: ${reply.status} ${JSON.stringify(reply.body)}`];
     });
-    expect(read<ParsedPhrase>("POST /reminders/parse", { text: "каждый день в 8:00 зарядка" })).toEqual({
-      text: "зарядка", repeat: "daily", date: "2026-10-08", time: "08:00", weekdays: null, interval_weeks: 1,
-      month_day: null, description: "каждый день в 08:00",
-    });
-    expect(read<ParsedPhrase>("POST /reminders/parse", { text: "19.45 позвонить" })).toMatchObject({
-      text: "позвонить", date: "2026-10-07", time: "19:45",
-    });
-    expect(read<ParsedPhrase>("POST /reminders/parse", { text: "послезавтра сдать отчёт" })).toMatchObject({
-      text: "сдать отчёт", date: "2026-10-09", time: null,
-    });
-    expect(demoApi("en").read<ParsedPhrase>("POST /reminders/parse", { text: "tomorrow at 9:30 buy milk" })).toMatchObject({
-      text: "buy milk", date: "2026-10-08", time: "09:30",
-    });
+    expect(found).toEqual([]);
   });
 
   it("POST /reminders/parse: what it does not understand is refused, and the form keeps its fields", () => {
-    const { call } = demoApi();
-    expect(call("POST /reminders/parse", { text: "купить молоко" })).toEqual(
-      problem(422, "validation_error", { field: "text", reason: "phrase_not_understood" }),
-    );
-    expect(call("POST /reminders/parse", { text: `завтра ${"я".repeat(201)}` })).toEqual(
+    // No time, day or repeat in it; a time the clock has not; or a date, which the demo leaves to the bot.
+    for (const phrase of [
+      "купить молоко", "buy milk", "9.30 зарядка", "в 25 часов", "в 2 раза больше", "каждый месяц 32-го в 9 отчёт",
+      "25 октября в 10 купить подарок", "10.12 сдать отчёт", "25.10.2026 отчёт", "on October 25 at 10 buy a gift",
+      "October 25 buy a gift",
+    ]) {
+      expect(parse(phrase), phrase).toEqual(problem(422, "validation_error", { field: "text", reason: "phrase_not_understood" }));
+    }
+    expect(parse(`завтра ${"я".repeat(201)}`)).toEqual(
       problem(422, "validation_error", { field: "text", reason: "length", limit: 200 }),
     );
   });
