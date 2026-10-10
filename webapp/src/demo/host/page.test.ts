@@ -117,9 +117,10 @@ describe("the demo's page", () => {
   it("drives the phone from the pitch's links", () => {
     const { demo } = open();
     const app = loaded();
+    // «Список покупок» opens the data's pinned list «Покупки», the first of its notes.
     for (const [name, route] of [
       ["Отметить привычку", "/habits"], ["Записать трату", "/money/new"], ["Напоминание фразой", "/calendar/new"],
-      ["Погода на неделю", "/weather"], ["Список покупок", "/notes"],
+      ["Погода на неделю", "/weather"], ["Список покупок", "/notes/1"],
     ]) {
       const link = pitch().getByRole("link", { name });
       expect(link).toHaveAttribute("href", `#${route}`);

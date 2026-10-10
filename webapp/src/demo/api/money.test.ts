@@ -242,11 +242,13 @@ describe("the categories (routers/money.py, services/money.py)", () => {
 });
 
 describe("the rates (routers/rates.py)", () => {
-  it("GET /rates/all: every currency of the settings, USD, EUR and the user's first, the others by name", () => {
+  it("GET /rates/all: twenty of the bank's currencies, those of the settings among them; USD, EUR and the user's first", () => {
     const { read } = demoApi();
     const rates = read<RatesAll>("GET /rates/all");
     expect(rates.date).toBe("2026-10-07");
-    expect(rates.currencies.map((rate) => rate.code).sort()).toEqual(CURRENCY_CODES.filter((code) => code !== "RUB").sort());
+    expect(rates.currencies).toHaveLength(20);
+    expect(rates.currencies.map((rate) => rate.code)).toEqual(expect.arrayContaining(CURRENCY_CODES.filter((code) => code !== "RUB")));
+    expect(new Set(rates.currencies.map((rate) => rate.code)).size).toBe(20);
     expect(rates.currencies.slice(0, 2).map((rate) => [rate.code, rate.name])).toEqual([["USD", "Доллар США"], ["EUR", "Евро"]]);
     const rest = rates.currencies.slice(2).map((rate) => rate.name);
     expect(rest).toEqual([...rest].sort());
@@ -265,6 +267,7 @@ describe("the rates (routers/rates.py)", () => {
     expect(days).toEqual([...days].sort());
     expect(days.every((day) => ![0, 6].includes(new Date(`${day}T00:00:00Z`).getUTCDay()))).toBe(true);
     expect(read<RatesAll>("GET /rates/all").currencies.find((rate) => rate.code === "EUR")?.value).toBe(history.points.at(-1)?.value);
+    expect(read<RateHistory>("GET /rates/history?code=JPY").points.every((point) => point.value > 0)).toBe(true);
     expect(call("GET /rates/history?code=eur")).toEqual(problem(422, "validation_error", { field: "code" }));
     expect(call("GET /rates/history?code=XAU")).toEqual(problem(404, "not_found", { entity: "currency" }));
     expect(call("GET /rates/history")).toEqual(problem(422, "validation_error", { field: "code", detail: "Field required" }));

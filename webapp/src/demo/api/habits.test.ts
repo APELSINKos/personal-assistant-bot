@@ -29,6 +29,21 @@ describe("the habits (routers/habits.py, services/habits.py)", () => {
     }
   });
 
+  it("GET /habits: the story of §5.3 — «Спорт» done nine days running, «Читать» today, «Без сахара» missed yesterday", () => {
+    for (const language of ["ru", "en"] as const) {
+      const [sport, reading, , sugar] = demoApi(language).read<Habit[]>("GET /habits");
+      expect([sport, reading, sugar].map((habit) => habit?.done_today), language).toEqual([null, true, null]);
+      expect(sport?.last_days, language).toEqual([true, true, true, true, true, true, true, true, null]);
+      expect(sport?.streak, language).toBeGreaterThanOrEqual(9);
+      expect(reading?.streak, language).toBeGreaterThanOrEqual(1);
+      expect(sugar?.last_days.slice(-2), language).toEqual([false, null]);
+      expect(sugar?.streak, language).toBe(0);
+      // About 82 % and 90 % of the last year done.
+      expect(Math.abs((sport?.percent ?? 0) - 82), language).toBeLessThanOrEqual(6);
+      expect(Math.abs((reading?.percent ?? 0) - 90), language).toBeLessThanOrEqual(6);
+    }
+  });
+
   it("counts a daily habit as habits.py does: streak, record, percent, week, last days", () => {
     const { read } = withMarks("2026-09-28", [
       ["2026-09-28", true], ["2026-09-29", true], ["2026-09-30", false], ["2026-10-01", true], ["2026-10-02", true],
@@ -61,6 +76,14 @@ describe("the habits (routers/habits.py, services/habits.py)", () => {
     expect(habit.year.slice(-10)).toBe("---10-....");
     expect(habit.year.slice(0, 357)).toBe(".".repeat(357));
     expect(call("GET /habits/9")).toEqual(problem(404, "not_found", { entity: "habit" }));
+  });
+
+  it("GET /habits/{habit_id}: «Спорт» with a whole year of marks on its map, the last nine days done", () => {
+    const sport = demoApi().read<HabitDetail>("GET /habits/1");
+    expect(sport.year).toHaveLength(371);
+    // Begun 400 days ago: every day of the map up to today is the habit's, marked or not.
+    expect(sport.year.slice(0, -5)).not.toContain(".");
+    expect(sport.year.slice(-14)).toBe(`${"1".repeat(9)}-....`);
   });
 
   it("POST /habits: a new one from today, up to ten, its name its own", () => {

@@ -135,14 +135,22 @@ export interface SeedWords {
   /** The timetable's week label: «5 неделя», as MIREA's calendar names its weeks. */
   week: (number: number) => string;
   group: string;
+  /** The eight notes; the shopping list's title is WORDS.shopping, which the host page looks for. */
   notes: {
+    shoppingItems: readonly string[];
     packing: string;
     packingItems: readonly string[];
     door: string;
-    coursework: string;
+    gifts: string;
+    reading: string;
     pancakes: string;
+    coursework: string;
+    debt: string;
   };
-  reminders: { parcel: string; lab: string; water: string; workout: string };
+  reminders: {
+    parcel: string; call: string; lab: string; dentist: string; water: string; workout: string; plants: string;
+    phone: string;
+  };
   habits: { sport: string; reading: string; swimming: string; sugar: string };
   /** Monday to Sunday: the start, the end, the title, the kind and the room of each lesson. */
   lessons: readonly (readonly [number, string, string, string, string | null, string])[];
@@ -158,14 +166,20 @@ export const SEED_WORDS: Record<Lang, SeedWords> = {
     week: (number) => `${number} неделя`,
     group: "ДЕМО-01-26",
     notes: {
+      shoppingItems: ["молоко", "хлеб", "яйца", "сыр", "яблоки", "кофе", "макароны"],
       packing: "Собрать в поездку",
       packingItems: ["паспорт", "зарядка", "наушники", "зонт", "свитер", "зубная щётка", "книга", "билеты"],
       door: "Код домофона: 45В7",
-      coursework: "Курсовая: план до 20 октября, источники — https://example.com/library",
+      gifts: "Идеи подарков: маме — плед, брату — настольная игра, бабушке — фотоальбом",
+      reading: "Почитать осенью: что-нибудь о космосе, сборник рассказов, книгу о дизайне интерфейсов",
       pancakes: "Блины: 2 яйца, 500 мл молока, 200 г муки, щепотка соли, ложка сахара",
+      coursework: "Курсовая: план до 20 октября, источники — https://example.com/library",
+      debt: "Вернуть Диме 1 500 ₽ до пятницы",
     },
     reminders: {
-      parcel: "Забрать посылку", lab: "Сдать лабораторную", water: "Выпить воды", workout: "Зарядка",
+      parcel: "Забрать посылку", call: "Созвон по курсовой", lab: "Сдать лабораторную",
+      dentist: "Записаться к стоматологу", water: "Выпить воды", workout: "Зарядка", plants: "Полить цветы",
+      phone: "Оплатить телефон",
     },
     habits: { sport: "Спорт", reading: "Читать 20 страниц", swimming: "Бассейн", sugar: "Без сахара" },
     lessons: [
@@ -192,14 +206,20 @@ export const SEED_WORDS: Record<Lang, SeedWords> = {
     week: (number) => `Week ${number}`,
     group: "DEMO-01-26",
     notes: {
+      shoppingItems: ["milk", "bread", "eggs", "cheese", "apples", "coffee", "pasta"],
       packing: "Packing list",
       packingItems: ["passport", "charger", "earphones", "umbrella", "sweater", "toothbrush", "book", "tickets"],
       door: "Door code: 45B7",
-      coursework: "Coursework: the outline by October 20, sources — https://example.com/library",
+      gifts: "Gift ideas: a blanket for Mum, a board game for my brother, a photo album for Grandma",
+      reading: "To read this autumn: something about space, a short story collection, a book on interface design",
       pancakes: "Pancakes: 2 eggs, 500 ml of milk, 200 g of flour, a pinch of salt, a spoonful of sugar",
+      coursework: "Coursework: the outline by October 20, sources — https://example.com/library",
+      debt: "Pay Dima back 1,500 ₽ by Friday",
     },
     reminders: {
-      parcel: "Pick up the parcel", lab: "Hand in the lab report", water: "Drink water", workout: "Workout",
+      parcel: "Pick up the parcel", call: "Coursework call", lab: "Hand in the lab report",
+      dentist: "Book a dentist appointment", water: "Drink water", workout: "Workout", plants: "Water the plants",
+      phone: "Pay the phone bill",
     },
     habits: { sport: "Sport", reading: "Read 20 pages", swimming: "Swimming", sugar: "No sugar" },
     lessons: [

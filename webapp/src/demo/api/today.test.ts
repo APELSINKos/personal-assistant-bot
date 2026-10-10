@@ -14,9 +14,12 @@ describe("«Сегодня» (routers/today.py, services/digest.py)", () => {
         code: expect.any(Number), emoji: expect.any(String), description: expect.any(String),
         tmin: expect.any(Number), tmax: expect.any(Number), tips: expect.any(Array),
       },
-      reminders_today: [{ id: 1, text: "Забрать посылку", time: "12:00", due_at: "2026-10-07T09:00:00Z" }],
-      habits: { done: 0, total: 4 },
-      notes_count: 4,
+      reminders_today: [
+        { id: 1, text: "Забрать посылку", time: "12:00", due_at: "2026-10-07T09:00:00Z" },
+        { id: 2, text: "Созвон по курсовой", time: "14:30", due_at: "2026-10-07T11:30:00Z" },
+      ],
+      habits: { done: 1, total: 4 },
+      notes_count: 8,
       rates: { date: "2026-10-07", usd: { value: expect.any(Number), change: expect.any(Number) } },
       has_schedule: true,
       week_label: "6 неделя",
@@ -25,7 +28,8 @@ describe("«Сегодня» (routers/today.py, services/digest.py)", () => {
         start: "10:40", start_temp: expect.any(Number), end: "14:10", end_temp: expect.any(Number),
       },
       pinned_notes: [
-        { id: 4, text: "Собрать в поездку", done: 4, total: 8 },
+        { id: 1, text: "Покупки", done: 3, total: 7 },
+        { id: 2, text: "Собрать в поездку", done: 4, total: 8 },
         { id: 3, text: "Код домофона: 45В7", done: 0, total: 0 },
       ],
     });
@@ -68,7 +72,7 @@ describe("«Сегодня» (routers/today.py, services/digest.py)", () => {
     const night = read<Today>("GET /today");
     expect(night).toMatchObject({ date: "2026-10-08", part_of_day: "night" });
     expect(night.reminders_today.map((reminder) => [reminder.time, reminder.text])).toEqual([
-      ["07:30", "Зарядка"], ["08:00", "Выпить воды"], ["10:00", "Сдать лабораторную"],
+      ["07:30", "Зарядка"], ["08:00", "Выпить воды"], ["10:00", "Сдать лабораторную"], ["18:00", "Полить цветы"],
     ]);
     expect(night.lessons.map((lesson) => lesson.title)).toEqual(["Физика", "Разработка баз данных"]);
   });

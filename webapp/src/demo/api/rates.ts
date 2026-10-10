@@ -12,10 +12,14 @@ import { chance, fnv1a } from "./random";
 import { weekdayOf } from "./time";
 import { queryText } from "./validate";
 
-/** Roubles for one unit, about the autumn of 2026: the fifteen currencies of the settings besides the rouble. */
+/**
+ * Roubles for one unit, about the autumn of 2026: twenty of the bank's currencies (spec §5.3) — the
+ * fifteen of the settings besides the rouble, and five more.
+ */
 const BASES: Readonly<Record<string, number>> = {
   USD: 81.5, EUR: 95.2, KZT: 0.162, BYN: 25.1, UAH: 1.97, UZS: 0.0066, KGS: 0.94, AMD: 0.212, GEL: 30.2,
   AZN: 47.9, TJS: 8.62, TRY: 1.98, CNY: 11.42, GBP: 109.4, PLN: 22.3,
+  AED: 22.19, CAD: 58.6, CHF: 101.9, INR: 0.921, JPY: 0.551,
 };
 /** routers/rates.py's HISTORY_DAYS. */
 const HISTORY_DAYS = 30;

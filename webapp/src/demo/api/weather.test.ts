@@ -99,6 +99,15 @@ describe("the weather (routers/weather.py)", () => {
     expect(january.days.some((day) => day.description === "снег" || day.description === "снегопад")).toBe(true);
     const july = demoApi("ru", Date.UTC(2027, 6, 15, 9, 0)).read<Forecast>("GET /weather");
     expect(Math.min(...mean(july))).toBeGreaterThan(15);
+    // Every week of both months, whatever the year and the visitor's language.
+    for (const [year, language] of [[2027, "en"], [2028, "ru"]] as const) {
+      for (const date of [1, 8, 15, 22, 29]) {
+        const winter = demoApi(language, Date.UTC(year, 0, date, 9, 0)).read<Forecast>("GET /weather");
+        const summer = demoApi(language, Date.UTC(year, 6, date, 9, 0)).read<Forecast>("GET /weather");
+        expect(Math.max(...mean(winter)), `${year}-01-${date}`).toBeLessThan(0);
+        expect(Math.min(...mean(summer)), `${year}-07-${date}`).toBeGreaterThan(15);
+      }
+    }
   });
 });
 
