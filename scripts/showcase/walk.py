@@ -285,25 +285,21 @@ def assemble(
     scenes: Sequence[tuple[Sequence[Frame], float]],
 ) -> tuple[list[Image.Image], list[int]]:
     """The walk-through's frames from its scenes and their lengths, each in its phone,
-    compose.WALK_WIDTH wide, and how long each one stays."""
-    runs: list[tuple[bytes, int]] = []  # a captured JPEG and the ticks it stays
-    read: dict[Path, bytes] = {}
-    for frames, length in scenes:
-        for index in ticks([frame.time for frame in frames], length):
-            path = frames[index].path
-            data = read.setdefault(path, path.read_bytes())
-            if runs and runs[-1][0] == data:
-                runs[-1] = (data, runs[-1][1] + 1)
-            else:
-                runs.append((data, 1))
+    compose.WALK_WIDTH wide, and how long each one stays: a tick that shows the picture of the
+    tick before makes that frame one tick longer."""
     images: list[Image.Image] = []
     counts: list[int] = []
-    for data, count in runs:
-        with Image.open(io.BytesIO(data)) as shot:
-            framed = compose.shrink(compose.phone(shot.convert("RGB"), THEME), compose.WALK_WIDTH)
-        if images and framed.tobytes() == images[-1].tobytes():
-            counts[-1] += count
-        else:
-            images.append(framed)
-            counts.append(count)
+    shown = b""  # the capture of the last tick
+    for frames, length in scenes:
+        for index in ticks([frame.time for frame in frames], length):
+            data = frames[index].path.read_bytes()
+            if data != shown:  # the same capture again needs no framing to be the same picture
+                shown = data
+                with Image.open(io.BytesIO(data)) as shot:
+                    framed = compose.phone(shot.convert("RGB"), THEME)
+                framed = compose.shrink(framed, compose.WALK_WIDTH)
+                if not images or framed.tobytes() != images[-1].tobytes():
+                    images.append(framed)
+                    counts.append(0)
+            counts[-1] += 1
     return images, durations(counts)

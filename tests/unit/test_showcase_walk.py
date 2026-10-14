@@ -8,10 +8,10 @@ from PIL import Image
 from scripts.showcase import compose, demo, walk
 
 
-def jpeg(folder: Path, name: str, colour: str) -> Path:
+def jpeg(folder: Path, name: str, colour: str, *, optimize: bool = False) -> Path:
     """A captured frame of the device, 780×1688, as the browser sends it."""
     out = io.BytesIO()
-    Image.new("RGB", (780, 1688), colour).save(out, "JPEG", quality=90)
+    Image.new("RGB", (780, 1688), colour).save(out, "JPEG", quality=90, optimize=optimize)
     path = folder / f"{name}.jpg"
     path.write_bytes(out.getvalue())
     return path
@@ -20,6 +20,8 @@ def jpeg(folder: Path, name: str, colour: str) -> Path:
 def test_each_tick_shows_the_last_frame_taken_at_or_before_it() -> None:
     # Ticks every 1/15 s: 0, 0.067, 0.133, 0.2, 0.267, 0.333; the first frame came a little late.
     assert walk.ticks([0.01, 0.05, 0.12, 0.31], 0.4) == [0, 1, 2, 2, 2, 3]
+    # A frame taken just after a tick waits for the next one; one taken on a tick is its own.
+    assert walk.ticks([0.0, 0.07, 0.2, 0.25], 0.34) == [0, 0, 1, 2, 3]
     assert len(walk.ticks([0.0], 2.8)) == 42  # 15 a second
 
 
@@ -29,10 +31,9 @@ def framed(path: Path) -> bytes:
 
 
 def test_equal_neighbours_become_one_longer_frame_and_the_last_one_rests(tmp_path: Path) -> None:
-    red, again, blue, green = (
-        jpeg(tmp_path, name, colour)
-        for name, colour in (("a", "red"), ("b", "red"), ("c", "blue"), ("d", "green"))
-    )
+    red, blue, green = (jpeg(tmp_path, colour, colour) for colour in ("red", "blue", "green"))
+    again = jpeg(tmp_path, "red again", "red", optimize=True)
+    assert again.read_bytes() != red.read_bytes()  # another capture of the same picture
     first = [walk.Frame(0.0, red), walk.Frame(0.1, again), walk.Frame(0.19, blue)]
     frames, durations = walk.assemble([(first, 0.4), ([walk.Frame(0.0, green)], 0.2)])
     # Red for three ticks (two captures of it), blue for three, green for three and the rest.
