@@ -59,6 +59,33 @@ def test_the_emoji_font_joins_the_app_s_two_font_variables() -> None:
     assert demo.EMOJI_URL == "/showcase/fonts/Noto-COLRv1.ttf"
 
 
+class Story:
+    """A page whose demo answers with the given ids of the story's habit and list."""
+
+    def __init__(self, answer: object) -> None:
+        self.answer, self.asked = answer, []
+
+    async def evaluate(self, expression: str) -> object:
+        self.asked.append(expression)
+        return self.answer
+
+
+async def test_the_story_s_habit_and_list_are_found_by_their_names() -> None:
+    page = Story({"habit": 1, "list": 3})
+    assert await demo.story(page, "en") == {"habit": 1, "list": 3}  # type: ignore[arg-type]
+    assert '("Sport", "Shopping")' in page.asked[0]
+    assert "__demoHost" in page.asked[0]  # the demo's own data, through its host page
+
+
+async def test_a_demo_without_the_story_says_what_it_misses() -> None:
+    with pytest.raises(demo.DemoError, match="no habit «Спорт»"):
+        await demo.story(Story({"habit": None, "list": 1}), "ru")  # type: ignore[arg-type]
+    with pytest.raises(demo.DemoError, match="no pinned list «Shopping»"):
+        await demo.story(Story({"habit": 1, "list": None}), "en")  # type: ignore[arg-type]
+    with pytest.raises(demo.DemoError, match="host"):
+        await demo.story(Story(None), "ru")  # type: ignore[arg-type]
+
+
 def test_the_walk_through_holds_on_to_today_s_classes_only() -> None:
     assert demo.HOOKS == {
         "tab": ".tab",

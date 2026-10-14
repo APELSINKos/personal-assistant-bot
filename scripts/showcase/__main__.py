@@ -40,7 +40,18 @@ from pathlib import Path
 
 from PIL import Image
 
-from scripts.showcase import cdp, chat_page, chats, fonts, manifest, readme, serve
+from scripts.showcase import (
+    cdp,
+    chat_page,
+    chats,
+    compose,
+    fonts,
+    manifest,
+    readme,
+    screens,
+    serve,
+    walk,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 IMAGES = ROOT / "docs" / "images"
@@ -100,6 +111,60 @@ class Step:
     draw: Callable[[Run], Awaitable[None]]
     demo: bool = False  # it shows the demo's build
     browser: bool = False  # it takes pictures in a browser
+
+
+async def draw_screens(run: Run) -> None:
+    """The demo's four screens (spec §13.3) in each language and theme, each pair in a browser
+    of its own: the sources of the grids and of the cover."""
+    for lang in run.langs:
+        for theme in run.themes:
+            play = functools.partial(_shoot_screens, run, lang, theme)
+            for name, png in (await cdp.scene(f"screens {lang} {theme}", play)).items():
+                file = compose.screen_file(name, theme, lang)
+                run.write(file, screens.encode(png, file))
+
+
+async def _shoot_screens(run: Run, lang: str, theme: str) -> dict[str, bytes]:
+    assert run.server is not None, "a step that takes pictures has the server"
+    async with run.launch() as browser:
+        return await screens.shoot(await browser.page(), run.server.origin, lang, theme)
+
+
+async def draw_compose(run: Run) -> None:
+    """The grids of four phones (spec §13.4) from the screens in docs/images, as CI makes them
+    again to check them."""
+    for lang in run.langs:
+        for theme in run.themes:
+            shots = []
+            for name in compose.SCREENS:
+                with Image.open(run.images / compose.screen_file(name, theme, lang)) as shot:
+                    shots.append(shot.convert("RGB"))
+            file = compose.grid_file(theme, lang)
+            run.write(file, compose.picture(compose.grid(shots, theme), file))
+
+
+async def draw_walk(run: Run) -> None:
+    """The walk-through (spec §13.5) in each language, dark only: its scenes, each played in a
+    browser of its own, cut together; and its first frame as the still."""
+    if walk.THEME not in run.themes:
+        print("The walk-through is dark only: nothing to draw in the light theme")
+        return
+    for lang in run.langs:
+        clips = []
+        for scene in walk.SCENES:
+            play = functools.partial(_record, run, scene, lang)
+            clips.append((await cdp.scene(f"walk {lang} {scene.name}", play), scene.length))
+        frames, durations = walk.assemble(clips)
+        run.write(compose.walk_file(lang), compose.animation(frames, durations))
+        still = compose.still_file(lang)
+        run.write(still, compose.picture(frames[0], still, compose.STILL_QUALITY))
+
+
+async def _record(run: Run, scene: walk.Scene, lang: str) -> list[walk.Frame]:
+    assert run.server is not None, "a step that takes pictures has the server"
+    async with run.launch() as browser:
+        folder = run.work / "walk" / lang / scene.name  # kept with --keep
+        return await walk.record(await browser.page(), run.server.origin, scene, lang, folder)
 
 
 async def draw_chats(run: Run) -> None:
@@ -167,9 +232,12 @@ async def draw_readme(run: Run) -> None:
         print(f"{path.name}: the chat pictures' block {'written' if changed else 'as it was'}")
 
 
-# The steps of `all` in their order (spec §13.1): screens, compose, walk, chats, readme. Each also
-# runs alone by its name.
+# The steps of `all` in their order (spec §13.1). Each also runs alone by its name: `compose`
+# alone makes the grids again from the screens in docs/images.
 STEPS: tuple[Step, ...] = (
+    Step("screens", draw_screens, demo=True, browser=True),
+    Step("compose", draw_compose),
+    Step("walk", draw_walk, demo=True, browser=True),
     Step("chats", draw_chats, browser=True),
     Step("readme", draw_readme),
 )

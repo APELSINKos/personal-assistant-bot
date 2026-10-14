@@ -1,7 +1,23 @@
 {
   "browser": "Microsoft Edge 155.0.4283.45",
-  "commit": "8c0bc267d18e0444fc0fa25e494acb40c3b10520",
+  "commit": "b1e85c1bfac56eaa77449e4971691cb36028ec57",
   "files": {
+    "app.dark.en.webp": {
+      "sha256": "06b1be02eaa751024a1d9fb13661b15523d61da46662e3b40ae0327c433a1ea6",
+      "size": 139474
+    },
+    "app.dark.webp": {
+      "sha256": "064f90406583459715c26159c71045b2f929c6058271913057d2cbdde9dfe856",
+      "size": 143018
+    },
+    "app.light.en.webp": {
+      "sha256": "e5ae217de3097eebe7d880d3a1ab5e4113248d8cdc276640a7e52f9e2094f9c5",
+      "size": 129842
+    },
+    "app.light.webp": {
+      "sha256": "6408963c4907d8a9f05a2d0be84f00805026793468472363943c4a19a9f26fb6",
+      "size": 133634
+    },
     "chat/chats.en.json": {
       "sha256": "48dab739de59200180e4f5620e9e7d33b4aaa00270e1be4a603b2396dfee4571",
       "size": 4546
@@ -105,6 +121,86 @@
     "chat/week.light.webp": {
       "sha256": "9ad953d9e6db0320e9c0db53db0550323255c4cc06f28e71c3a9e183787dd7f4",
       "size": 28098
+    },
+    "screens/habit.dark.en.webp": {
+      "sha256": "1b67a907a4ac09934eba31f313c901e1e4a3e95f3e5f36e268d62498e0e5c0e5",
+      "size": 94356
+    },
+    "screens/habit.dark.webp": {
+      "sha256": "fe7631a0208c7e6eee3c1eb91a06f83db0f5c7bf6dd7a0c0044932ee38fbaadd",
+      "size": 94856
+    },
+    "screens/habit.light.en.webp": {
+      "sha256": "1afaf0cf7068ded6b77dfc56dab7087e97f7b08de9a7afee3f5bd73ba85c805b",
+      "size": 88452
+    },
+    "screens/habit.light.webp": {
+      "sha256": "4d9403219394516f5a32bfa21a8a51f8f4e95c4a51b1c78f874c203b77d1d4e7",
+      "size": 87866
+    },
+    "screens/money.dark.en.webp": {
+      "sha256": "5d3a6b5be5cd7b8cfa708c1d45aa4f20ae327d8948c39b961e551b478c3f5291",
+      "size": 66784
+    },
+    "screens/money.dark.webp": {
+      "sha256": "9e5d2465e0f6a7e52882914b45a877f7c38ddcd80ae7bee473e059110eb50d34",
+      "size": 66318
+    },
+    "screens/money.light.en.webp": {
+      "sha256": "d1e9e009265918329e38cb460b24378caaeff1a98dc0b9a423bd44b5ccfaf93d",
+      "size": 63646
+    },
+    "screens/money.light.webp": {
+      "sha256": "f1bcdd9e0627c361ab63ead771cab0d6c0f01a1e27526af80d4e204a99fc5505",
+      "size": 63710
+    },
+    "screens/today.dark.en.webp": {
+      "sha256": "e7a0fd9c35f6da8f07941bd14405ea3ff44fabadfd972350f077be4ada35911a",
+      "size": 71142
+    },
+    "screens/today.dark.webp": {
+      "sha256": "fdaba72736626ef56a2b034488f1ee5fa03070b5fe6452d28a0a6a9e8a25e824",
+      "size": 74406
+    },
+    "screens/today.light.en.webp": {
+      "sha256": "1c3d32ea52cd818578beb3de2c07c52e03c1dcdf70d4c216051986b0e823ae18",
+      "size": 68428
+    },
+    "screens/today.light.webp": {
+      "sha256": "0de030719a54aeb6d56acc913ad45cd623965597a632d50e65f902ed7e8372a6",
+      "size": 73132
+    },
+    "screens/weather.dark.en.webp": {
+      "sha256": "b968d4bed19d62fa636a9d817b3d8774e026ef86cc8e13503f806d598ab885c3",
+      "size": 75734
+    },
+    "screens/weather.dark.webp": {
+      "sha256": "583e4a91638b7d556fa34a3f132dfd39cd760199e14a6b95083c90806a78cc89",
+      "size": 76796
+    },
+    "screens/weather.light.en.webp": {
+      "sha256": "22ae2926eb09d7f2c3430b8cd8cc46f3bb41bff53b367946eeac70a577fa3fc4",
+      "size": 73968
+    },
+    "screens/weather.light.webp": {
+      "sha256": "3a075d845f3c9c4bfe00882b7a8e9bc3168b7af2cde72d5b2748b7ec3490772d",
+      "size": 75206
+    },
+    "walkthrough.en.webp": {
+      "sha256": "2b982664687ec3fe08fc73db9910e7dc0eb1711aa7390e2e56695471161dd4b2",
+      "size": 951854
+    },
+    "walkthrough.still.en.webp": {
+      "sha256": "23abd4b2031d572d013d4865df3d836d59b13ae660dfe307e2c90a9c5ed7b61b",
+      "size": 39736
+    },
+    "walkthrough.still.webp": {
+      "sha256": "091a975190b0b13cb5446221f66f43cf8893d5071b37b1690d9843beb42b59ce",
+      "size": 42768
+    },
+    "walkthrough.webp": {
+      "sha256": "12c5bb352bd9551400162634ae43d62b45d490c01f17cd30746594bb02b5d9f7",
+      "size": 1018106
     }
   },
   "from_system_font": [

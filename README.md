@@ -21,6 +21,28 @@
 
 <p align="center"><b>Русский</b> · <a href="README.en.md">English</a></p>
 
+## Как выглядит
+
+<p align="center">
+  <a href="https://apelsinkos.github.io/personal-assistant-bot/?lang=ru">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/images/app.dark.webp">
+      <img src="docs/images/app.light.webp" width="880" alt="Четыре экрана приложения: «Сегодня» с погодой, парами и делами; «Погода» с советами и лентой на сутки; привычка с серией и картой года; «Деньги» с кольцом по категориям">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://apelsinkos.github.io/personal-assistant-bot/?lang=ru">
+    <picture>
+      <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/walkthrough.still.webp">
+      <img src="docs/images/walkthrough.webp" width="360" alt="Приложение за 12 секунд: отметка привычки на «Сегодня», лента погоды на сутки, привычка с картой года, кольцо трат на вкладке «Деньги» и галочка в списке покупок">
+    </picture>
+  </a>
+</p>
+
+<p align="center"><sub>Экраны и анимация сняты с демо: данные выдуманные.</sub></p>
+
 ## Что умеет
 
 | | |

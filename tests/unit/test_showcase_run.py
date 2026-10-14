@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 from scripts.showcase import __main__ as showcase
-from scripts.showcase import manifest, readme
+from scripts.showcase import compose, manifest, readme, walk
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -177,6 +177,87 @@ async def test_the_readme_step_writes_between_the_markers_only(
     assert not (tmp_path / "README.en.md").exists()  # --lang ru
 
 
+def test_all_runs_the_steps_in_their_order() -> None:
+    # The screens first: the grids are made of them; the walk-through and the chats then take
+    # pictures of their own; the README's block last, from the transcripts.
+    assert [(step.name, step.demo, step.browser) for step in showcase.STEPS] == [
+        ("screens", True, True),
+        ("compose", False, False),
+        ("walk", True, True),
+        ("chats", False, True),
+        ("readme", False, False),
+    ]
+
+
+def shot(colour: str = "#0a0913", kind: str = "PNG") -> bytes:
+    """A picture of the demo's device: 390×844 CSS px at DPR 2."""
+    out = io.BytesIO()
+    Image.new("RGB", (780, 1688), colour).save(out, kind)
+    return out.getvalue()
+
+
+async def test_the_screens_are_kept_as_webp_in_docs_images(
+    run: showcase.Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    played: list[str] = []
+
+    async def shoot(run: showcase.Run, lang: str, theme: str) -> dict[str, bytes]:
+        played.append(f"{lang} {theme}")
+        return {name: shot() for name in compose.SCREENS}
+
+    monkeypatch.setattr(showcase, "_shoot_screens", shoot)
+    run.langs, run.themes = ("ru", "en"), ("dark",)
+    await showcase.draw_screens(run)
+    assert played == ["ru dark", "en dark"]  # a browser of its own for each
+    written = sorted(path.relative_to(run.images).as_posix() for path in run.written)
+    assert written == sorted(
+        compose.screen_file(name, "dark", lang) for name in compose.SCREENS for lang in run.langs
+    )
+    with Image.open(run.images / "screens" / "habit.dark.en.webp") as kept:
+        assert (kept.format, kept.size) == ("WEBP", (780, 1688))
+
+
+async def test_the_grids_are_made_of_the_screens_in_docs_images(run: showcase.Run) -> None:
+    for name, colour in zip(compose.SCREENS, ("red", "green", "blue", "white"), strict=True):
+        (run.images / "screens").mkdir(exist_ok=True)
+        (run.images / compose.screen_file(name, "dark", "ru")).write_bytes(shot(colour, "WEBP"))
+    await showcase.draw_compose(run)
+    assert [path.name for path in run.written] == ["app.dark.webp"]
+    with Image.open(run.images / "app.dark.webp") as grid:
+        assert (grid.format, grid.mode, grid.width) == ("WEBP", "RGBA", compose.GRID_WIDTH)
+
+
+async def test_the_walk_through_is_cut_from_its_scenes_with_a_still_of_the_first_frame(
+    run: showcase.Run, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    played: list[str] = []
+
+    async def record(run: showcase.Run, scene: walk.Scene, lang: str) -> list[walk.Frame]:
+        played.append(scene.name)
+        path = tmp_path / f"{scene.name}.jpg"
+        path.write_bytes(shot(("red", "blue")[len(played) % 2], "JPEG"))
+        return [walk.Frame(0.0, path)]
+
+    monkeypatch.setattr(showcase, "_record", record)
+    await showcase.draw_walk(run)
+    assert played == [scene.name for scene in walk.SCENES]
+    assert [path.name for path in run.written] == ["walkthrough.webp", "walkthrough.still.webp"]
+    with Image.open(run.images / "walkthrough.webp") as made:
+        assert (made.n_frames, made.width) == (len(walk.SCENES), 540)
+
+
+async def test_the_walk_through_is_dark_only(
+    run: showcase.Run, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def record(run: showcase.Run, scene: walk.Scene, lang: str) -> list[walk.Frame]:
+        raise AssertionError("no scene is played in the light theme")
+
+    monkeypatch.setattr(showcase, "_record", record)
+    run.themes = ("light",)
+    await showcase.draw_walk(run)
+    assert run.written == []
+
+
 def test_the_languages_and_themes_are_checked() -> None:
     args = showcase.parse(["all", "--lang", "en,ru", "--theme", "light"])
     assert (args.command, args.lang, args.theme) == ("all", ("ru", "en"), ("light",))
@@ -221,7 +302,7 @@ def test_what_ci_imports_loads_without_a_browser() -> None:
     # DevTools client nor the server (spec §13.1), and those without the bot not even aiohttp.
     light = (
         "scripts.forecast_card, scripts.showcase.world, scripts.showcase.manifest, "
-        "scripts.showcase.readme, scripts.showcase.chat_page"
+        "scripts.showcase.readme, scripts.showcase.chat_page, scripts.showcase.compose"
     )
     assert loaded(light) == []
     # The chats run the bot, and aiogram brings aiohttp along by itself: no browser all the same.

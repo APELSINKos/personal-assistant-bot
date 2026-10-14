@@ -21,6 +21,28 @@
 
 <p align="center"><a href="README.md">Русский</a> · <b>English</b></p>
 
+## What it looks like
+
+<p align="center">
+  <a href="https://apelsinkos.github.io/personal-assistant-bot/?lang=en">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/images/app.dark.en.webp">
+      <img src="docs/images/app.light.en.webp" width="880" alt="Four screens of the app: Today with the weather, classes and plans; Weather with tips and a 24-hour strip; a habit with its streak and year map; Money with a ring by category">
+    </picture>
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://apelsinkos.github.io/personal-assistant-bot/?lang=en">
+    <picture>
+      <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/walkthrough.still.en.webp">
+      <img src="docs/images/walkthrough.en.webp" width="360" alt="The app in 12 seconds: marking a habit on Today, the 24-hour weather strip, a habit with its year map, the spending ring on the Money tab and a tick in the shopping list">
+    </picture>
+  </a>
+</p>
+
+<p align="center"><sub>The screens and the animation come from the demo: the data are made up.</sub></p>
+
 ## Features
 
 | | |

@@ -1,6 +1,7 @@
 """What the generator relies on in the demo's build (spec §13.2, §6.4): where a shot of it is, the
-emoji font it adds to the app, the hooks the walk-through holds on to, and how a page shows it is
-ready for its picture (§13.1). The app gets no test ids and no change for any of it.
+emoji font it adds to the app, the hooks the walk-through holds on to, the story's habit and list
+in the demo's data, and how a page shows it is ready for its picture (§13.1). The app gets no
+test ids and no change for any of it.
 
 `npm run build:demo` gives webapp/dist-demo, which the run serves at /demo/. With ?shot=1 its
 page shows nothing but the device's screen, a rectangle of 390×844 CSS px, with the clock of ?at;
@@ -36,6 +37,11 @@ HOOKS = {
     "money legend": ".legend__row",  # «Деньги»: a category under the ring
     "item check": "input.item__check",  # a checklist's item
 }
+
+# The story of the demo's data the pictures tell (spec §5.3, §23.4): its habit and its pinned
+# shopping list, by their names in each language. Their ids are the demo's to give.
+HABIT = {"ru": "Спорт", "en": "Sport"}
+LIST = {"ru": "Покупки", "en": "Shopping"}
 
 
 class DemoError(RuntimeError):
@@ -142,6 +148,35 @@ _UNFIT = f"""(() => {{
   }}
   return "";
 }})()"""
+
+
+# The ids of the story's habit and list in the data the demo's page serves its app (its host's
+# api, as the app's own requests reach it); null for what it does not have, or without the host.
+_STORY = """((habit, list) => {
+  const host = window.__demoHost;
+  if (!host) return null;
+  const get = (path) => host.api({ method: "GET", path, search: "", body: null }).body;
+  const habits = get("/habits"), notes = get("/notes");
+  const found = (items, pick) => (Array.isArray(items) ? items.find(pick)?.id ?? null : null);
+  return {
+    habit: found(habits, (item) => item.name === habit),
+    list: found(notes, (item) => item.pinned && item.text === list),
+  };
+})"""
+
+
+async def story(page: Page, lang: str) -> dict[str, int]:
+    """The ids of the story's habit and list in the demo the page shows: {"habit": 1, "list": 1}
+    for the routes «/habits/{habit}» and «/notes/{list}»."""
+    habit, shopping = HABIT[lang], LIST[lang]
+    found = await page.evaluate(f"{_STORY}({json.dumps(habit)}, {json.dumps(shopping)})")
+    if found is None:
+        raise DemoError("the demo's page has no host for its app")
+    if found["habit"] is None:
+        raise DemoError(f"the demo's data have no habit «{habit}»")
+    if found["list"] is None:
+        raise DemoError(f"the demo's data have no pinned list «{shopping}»")
+    return {"habit": int(found["habit"]), "list": int(found["list"])}
 
 
 async def load(page: Page, origin: str, route: str, lang: str, theme: str, *, motion: bool) -> None:
