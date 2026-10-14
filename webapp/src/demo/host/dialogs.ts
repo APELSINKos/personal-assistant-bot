@@ -128,7 +128,9 @@ export function createDialogs(layer: HTMLElement, outside: () => Element[], fall
       spec.choices.forEach((choice, index) => {
         buttons[index]?.addEventListener("click", () => finish(false, choice.value));
       });
-      buttons[spec.focus ?? 0]?.focus();
+      // Not scrolled to: a sheet slides in from below the screen, which hides its overflow but
+      // still scrolls to a focused button, and would push the header and the app up behind it.
+      buttons[spec.focus ?? 0]?.focus({ preventScroll: true });
     });
   }
 

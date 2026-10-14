@@ -23,11 +23,15 @@ function system(dark = true) {
   };
 }
 
-/** The demo on a test page: `address` as the visitor opened it. */
+/**
+ * The demo on a test page: `address` as the visitor opened it. `loads` lists the addresses loaded
+ * into the app's frame for the starts after the first, each «assign» or «replace»: jsdom loads none.
+ */
 function open(address = "?lang=ru&theme=dark#/", options: Partial<DemoOptions> = {}) {
   const [search = "", hash = ""] = address.split("#");
   const setAddress = vi.fn<(address: string) => void>();
   const makeApi = vi.fn((settings: ApiOptions): DemoApi => createApi(settings));
+  const loads: string[] = [];
   const demo = startDemo(document.body, {
     address: { search, hash: hash ? `#${hash}` : "" },
     setAddress,
@@ -35,11 +39,12 @@ function open(address = "?lang=ru&theme=dark#/", options: Partial<DemoOptions> =
     system: system(),
     languages: ["ru-RU"],
     makeApi,
+    loadFrame: (_frame, next, replace) => loads.push(`${replace ? "replace" : "assign"} ${next}`),
     ...options,
   });
   const frame: DemoFrame = { mainButtonClicked: vi.fn(), backButtonClicked: vi.fn(), themeChanged: vi.fn() };
   demo.host.connect(frame);
-  return { demo, frame, setAddress, makeApi };
+  return { demo, frame, setAddress, makeApi, loads };
 }
 
 function pitch() {
@@ -144,11 +149,12 @@ describe("the demo's page", () => {
   });
 
   it("opens a closed app again from a link of the pitch", () => {
-    open();
+    const { loads } = open();
     screen.getAllByRole("button", { name: "Закрыть" })[0]?.click();
-    expect(document.querySelector("iframe")).toBeNull();
+    expect(appFrame()).not.toBeVisible();
     fireEvent.click(pitch().getByRole("link", { name: "Погода на неделю" }));
-    expect(appFrame().getAttribute("src")).toBe("./app.html#/weather");
+    expect(loads).toEqual(["assign ./app.html?start=1#/weather"]);
+    expect(appFrame()).toBeVisible();
   });
 
   it("keeps the app's route in the address", () => {
@@ -159,8 +165,21 @@ describe("the demo's page", () => {
     expect(setAddress).toHaveBeenLastCalledWith("?lang=ru&theme=dark#/notes");
   });
 
-  it("switches the language: new data in it, and a new frame on the same screen", () => {
-    const { demo, setAddress, makeApi } = open("?theme=dark#/weather");
+  it("takes the phone to a route typed into the address bar, and leaves it for a hash that is none", () => {
+    const { demo } = open("?lang=ru#/");
+    const app = loaded();
+    // Enter in the address bar: a step within the page, which only the page's window hears of.
+    window.history.replaceState(null, "", "?lang=ru#/habits");
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    expect(app.location.hash).toBe("#/habits");
+    expect(demo.device.route()).toBe("/habits");
+    window.history.replaceState(null, "", "?lang=ru#top");
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    expect(demo.device.route()).toBe("/habits");
+  });
+
+  it("switches the language: new data in it, and the app afresh on the same screen", () => {
+    const { demo, setAddress, makeApi, loads } = open("?theme=dark#/weather");
     expect(makeApi).toHaveBeenLastCalledWith(expect.objectContaining({ language: "ru" }));
     const before = appFrame();
     fireEvent.click(within(pitch().getByRole("group", { name: "Язык:" })).getByRole("button", { name: "EN" }));
@@ -170,8 +189,9 @@ describe("the demo's page", () => {
     expect(demo.host.api({ method: "GET", path: "/me", search: "", body: null }).body).toMatchObject({
       first_name: "Alex",
     });
-    expect(appFrame()).not.toBe(before);
-    expect(appFrame().getAttribute("src")).toBe("./app.html#/weather");
+    // In the same frame, a new document in place of the last: Back still steps through the Russian screens.
+    expect(appFrame()).toBe(before);
+    expect(loads).toEqual(["replace ./app.html?start=1#/weather"]);
     expect(appFrame()).toHaveAttribute("title", "The Personal Assistant app");
     expect(document.documentElement.lang).toBe("en");
     expect(document.title).toBe("Personal Assistant — demo");
@@ -217,14 +237,14 @@ describe("the demo's page", () => {
   });
 
   it("starts over: new data and «Сегодня»", () => {
-    const { makeApi, setAddress } = open("?lang=ru#/weather");
+    const { makeApi, setAddress, loads } = open("?lang=ru#/weather");
     const before = appFrame();
     makeApi.mockClear();
     fireEvent.click(pitch().getByRole("button", { name: "Начать заново" }));
     expect(makeApi).toHaveBeenCalledOnce();
     expect(makeApi).toHaveBeenCalledWith(expect.objectContaining({ language: "ru" }));
-    expect(appFrame()).not.toBe(before);
-    expect(appFrame().getAttribute("src")).toBe("./app.html#/");
+    expect(appFrame()).toBe(before);
+    expect(loads).toEqual(["assign ./app.html?start=1#/"]);
     expect(setAddress).toHaveBeenLastCalledWith("?lang=ru#/");
   });
 

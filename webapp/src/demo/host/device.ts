@@ -29,6 +29,12 @@ export interface DeviceOptions {
   outside?: () => Element[];
   /** The app went to another screen, «/weather». */
   onRoute?: (route: string) => void;
+  /**
+   * Loads an address into the app's frame: as a step of the tab's history after the document it
+   * holds, or with `replace` in its place — Location.assign and Location.replace. Tests stand in for
+   * it, as jsdom loads no frame.
+   */
+  load?: (frame: Window, address: string, replace: boolean) => void;
 }
 
 export interface Device {
@@ -39,9 +45,9 @@ export interface Device {
   slots: { end: HTMLElement; view: HTMLElement };
   /** The frame of the app that runs now, as it connected; null while none does. */
   frame(): DemoFrame | null;
-  /** Opens the app afresh on a route, in a new frame, as Telegram opens a Mini App. */
+  /** Starts the app afresh on a route, as Telegram opens a Mini App: a new document in its frame. */
   open(route: string): void;
-  /** Takes the running app to a route, as a link would; opens the app there when it is closed. */
+  /** Takes the running app to a route, as a link would; starts the app there when it is closed. */
   go(route: string): void;
   /** Leaves the theme's own colours where the app painted its: a new theme, until it paints again. */
   unpaint(): void;
@@ -113,14 +119,25 @@ export function createDevice(options: DeviceOptions): Device {
   const screen = h("div", { class: "device__screen" }, top, view, bottom, layer);
   const element = h("div", { class: "device" }, screen);
 
+  // One frame for the visit, each start of the app a new document in it: the screens of every start
+  // stay in the tab's history, and Back to one of an earlier start loads the app there again, with
+  // the visit's data.
   let iframe: HTMLIFrameElement | null = null;
+  /** The app is on the screen; false while the panel «Приложение закрыто» is. */
+  let shown = false;
   let loaded = false;
   let opened = "/";
+  /** The starts after the first, each at an address of its own: the frame loads it even on the route it shows. */
+  let starts = 0;
   let current: DemoFrame | null = null;
   let backShown = false;
   let askBeforeClosing = false;
   let mainState = NO_MAIN_BUTTON;
   let toastTimer: number | undefined;
+  const load = options.load ?? ((frame: Window, address: string, replace: boolean) => {
+    if (replace) frame.location.replace(address);
+    else frame.location.assign(address);
+  });
 
   const dialogs = createDialogs(
     layer,
@@ -130,7 +147,7 @@ export function createDevice(options: DeviceOptions): Device {
 
   /** Focus into the app, or onto «Открыть снова» while it is closed. */
   function focusApp(): void {
-    if (iframe) iframe.focus();
+    if (iframe && shown) iframe.focus();
     else reopen.focus();
   }
 
@@ -143,13 +160,14 @@ export function createDevice(options: DeviceOptions): Device {
     const focused = document.activeElement === main;
     mainState = state;
     mainText.textContent = state.text;
-    main.hidden = !state.visible;
+    // Only with the app on the screen: a closed app keeps its button for when it is back.
+    main.hidden = !state.visible || !shown;
     main.setAttribute("aria-disabled", String(!state.active));
     if (state.progress) main.setAttribute("aria-busy", "true");
     else main.removeAttribute("aria-busy");
     spinner.hidden = !state.progress;
     // A button that goes away leaves focus in the app, not on the page.
-    if (focused && !state.visible) focusApp();
+    if (focused && main.hidden) focusApp();
   }
 
   /** A line at the bottom of the screen for a while, read out by screen readers. */
@@ -161,11 +179,8 @@ export function createDevice(options: DeviceOptions): Device {
     }, ms);
   }
 
-  /** As the app's frame leaves: Telegram's buttons go with it. */
-  function forget(): void {
-    dialogs.dismiss();
-    iframe?.remove();
-    iframe = null;
+  /** Telegram's buttons as the app finds them on a new start: none of the last start's. */
+  function reset(): void {
     current = null;
     backShown = false;
     askBeforeClosing = false;
@@ -173,36 +188,67 @@ export function createDevice(options: DeviceOptions): Device {
     showMain(NO_MAIN_BUTTON);
   }
 
+  /** The app on the screen in place of the panel: focus on «Открыть снова» goes on into the app. */
+  function show(): void {
+    if (shown) return;
+    const reopened = closed.contains(document.activeElement);
+    shown = true;
+    closed.hidden = true;
+    back.hidden = false;
+    if (iframe) iframe.hidden = false;
+    showMain(mainState);
+    if (reopened) iframe?.focus();
+  }
+
   function watch(frame: HTMLIFrameElement): void {
     const win = frame.contentWindow;
-    if (!win || frame !== iframe) return;
+    if (!win) return;
     loaded = true;
     const report = () => options.onRoute?.(routeOf(win.location.hash) ?? opened);
     win.addEventListener("hashchange", report);
+    // Back or Forward to one of the app's screens while it is closed opens it again there.
+    win.addEventListener("popstate", show);
     report();
   }
 
+  /** The route the app shows now, «/weather»; until its document is in, the one it was started on. */
+  function shownRoute(): string {
+    const hash = iframe && loaded ? iframe.contentWindow?.location.hash : undefined;
+    return routeOf(hash ?? "") ?? opened;
+  }
+
   function open(route: string): void {
-    // «Открыть снова» goes away with the panel: focus goes on into the app.
-    const reopened = closed.contains(document.activeElement);
-    forget();
+    const same = route === shownRoute();
+    // The last start goes, and its dialog with it.
+    dialogs.dismiss();
+    reset();
     opened = route;
     loaded = false;
-    closed.hidden = true;
-    back.hidden = false;
     loading.hidden = false;
-    const frame = h("iframe", { class: "tg-frame", title: words().frame, src: `./app.html#${route}` });
-    frame.addEventListener("load", () => watch(frame));
-    iframe = frame;
-    view.prepend(frame);
-    if (reopened) frame.focus();
+    if (iframe) {
+      // In place of the last start on the screen it shows (another language), else after it: Back
+      // then goes from the new start to where the last one was.
+      starts += 1;
+      const win = iframe.contentWindow;
+      if (win) load(win, `./app.html?start=${starts}#${route}`, same);
+    } else {
+      const frame = h("iframe", { class: "tg-frame", title: words().frame, src: `./app.html#${route}` });
+      frame.addEventListener("load", () => watch(frame));
+      iframe = frame;
+      view.prepend(frame);
+    }
+    show();
   }
 
   function close(): void {
-    forget();
+    // Out of sight, as Telegram closes it, but kept as it was: Back or Forward to one of its screens
+    // opens it again there, and «Открыть снова» starts it afresh.
+    shown = false;
+    if (iframe) iframe.hidden = true;
     back.hidden = true;
     loading.hidden = true;
     closed.hidden = false;
+    showMain(mainState);
     reopen.focus();
   }
 
@@ -233,7 +279,7 @@ export function createDevice(options: DeviceOptions): Device {
 
   function go(route: string): void {
     const win = iframe?.contentWindow;
-    if (loaded && win) win.location.hash = route;
+    if (shown && loaded && win) win.location.hash = route;
     else open(route);
   }
 
@@ -241,7 +287,13 @@ export function createDevice(options: DeviceOptions): Device {
 
   const chrome: Chrome = {
     connect: (frame) => {
+      // A new document of the app — a new start, or Back to a screen of an earlier one — finds
+      // Telegram's buttons as a Mini App finds them on its start, and is on the screen. A dialog
+      // stays: the page's own may be open while the app loads.
+      reset();
       current = frame;
+      loading.hidden = false;
+      show();
     },
     ready: () => {
       loading.hidden = true;
@@ -317,7 +369,7 @@ export function createDevice(options: DeviceOptions): Device {
     setTime: (text) => {
       time.textContent = text;
     },
-    route: () => (iframe ? (routeOf(iframe.contentWindow?.location.hash ?? "") ?? opened) : opened),
+    route: shownRoute,
     relocalize,
   };
 }

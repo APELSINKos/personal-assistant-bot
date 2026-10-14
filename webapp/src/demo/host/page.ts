@@ -12,7 +12,7 @@ import { createApi, type ApiOptions, type DemoApi } from "../api";
 import { moscowTime, parseAt } from "../api/clock";
 import { WORDS as DATA } from "../api/words";
 import type { DemoHost, HostWindow } from "../bridge/contract";
-import { createDevice, routeOf, type Device } from "./device";
+import { createDevice, routeOf, type Device, type DeviceOptions } from "./device";
 import { h, icon } from "./dom";
 import { LINKS, WORDS, type HostWords } from "./words";
 
@@ -37,6 +37,8 @@ export interface DemoOptions {
   languages: readonly string[];
   /** Makes the demo's API with its data: on every start, and anew in another language. */
   makeApi?: (options: ApiOptions) => DemoApi;
+  /** Loads an address into the app's frame for a new start of the app: the device's own by default. */
+  loadFrame?: DeviceOptions["load"];
 }
 
 export interface Demo {
@@ -111,7 +113,9 @@ export function startDemo(root: HTMLElement, options: DemoOptions): Demo {
 
   const writeAddress = (route: string) => options.setAddress(pageAddress(options.address.search, route, chosen));
   const pitch = h("section", { class: "pitch", "aria-labelledby": "pitch-title" });
-  const device = createDevice({ language: () => language, words, outside: () => [pitch], onRoute: writeAddress });
+  const device = createDevice({
+    language: () => language, words, outside: () => [pitch], onRoute: writeAddress, load: options.loadFrame,
+  });
 
   // The switches, on the page and in the menu alike.
   const pressed: { button: HTMLButtonElement; on: () => boolean }[] = [];
@@ -343,6 +347,13 @@ export function startDemo(root: HTMLElement, options: DemoOptions): Demo {
     device.open("/");
     writeAddress("/");
   }
+
+  // A route typed into the address bar of the open demo is a step within the page, and only the
+  // page's window hears of it: the phone goes there too.
+  window.addEventListener("hashchange", () => {
+    const route = routeOf(window.location.hash);
+    if (route !== null && route !== device.route()) device.go(route);
+  });
 
   const host: DemoHost = {
     get language() {

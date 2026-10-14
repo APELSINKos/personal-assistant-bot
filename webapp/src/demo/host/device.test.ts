@@ -5,14 +5,27 @@ import type { DemoFrame } from "../bridge/contract";
 import { createDevice } from "./device";
 import { WORDS } from "./words";
 
-/** The device on a page of its own, with the app's frame connected. */
+/** What the app's frame says to the host. */
+function appSide(): DemoFrame {
+  return { mainButtonClicked: vi.fn(), backButtonClicked: vi.fn(), themeChanged: vi.fn() };
+}
+
+/**
+ * The device on a page of its own, with the app's frame connected. `loads` lists the addresses loaded
+ * into the frame after the first, each «assign» (a step of the history) or «replace» (in place of the
+ * frame's document): jsdom loads none.
+ */
 function stand(language: Lang = "ru") {
-  const device = createDevice({ language: () => language, words: () => WORDS[language] });
+  const loads: string[] = [];
+  const device = createDevice({
+    language: () => language, words: () => WORDS[language],
+    load: (_frame, address, replace) => loads.push(`${replace ? "replace" : "assign"} ${address}`),
+  });
   document.body.append(device.element);
   device.open("/");
-  const frame: DemoFrame = { mainButtonClicked: vi.fn(), backButtonClicked: vi.fn(), themeChanged: vi.fn() };
+  const frame = appSide();
   device.chrome.connect(frame);
-  return { device, frame };
+  return { device, frame, loads };
 }
 
 function appFrame(): HTMLIFrameElement {
@@ -168,16 +181,19 @@ describe("the demo's device", () => {
     screen.getByRole("button", { name: "Закрыть" }).click();
     within(screen.getByRole("dialog")).getByRole("button", { name: "Всё равно закрыть" }).click();
     await vi.waitFor(() => expect(screen.getByText("Приложение закрыто")).toBeVisible());
-    expect(document.querySelector("iframe")).toBeNull();
+    expect(appFrame()).not.toBeVisible();
   });
 
   it("closes at once without the question, and opens the app again on «Сегодня»", () => {
-    const { device } = stand();
+    const { device, loads } = stand();
+    const running = appFrame();
+    running.dispatchEvent(new Event("load"));
+    device.go("/habits");
     device.chrome.mainButton({ text: "Сохранить", visible: true, active: true, progress: false });
     device.chrome.backButton(false);
     screen.getByRole("button", { name: "Закрыть" }).click();
     expect(screen.getByText("Приложение закрыто")).toBeVisible();
-    expect(document.querySelector("iframe")).toBeNull();
+    expect(running).not.toBeVisible();
     expect(screen.queryByRole("button", { name: "Сохранить" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Закрыть" })).toBeNull();
     expect(screen.getByRole("link", { name: "Открыть бота в Telegram" })).toHaveAttribute(
@@ -190,11 +206,55 @@ describe("the demo's device", () => {
     expect(again).toHaveFocus();
 
     again.click();
-    expect(appFrame().getAttribute("src")).toBe("./app.html#/");
-    expect(appFrame()).toHaveFocus();
+    // A new start in the same frame, after the last one in the tab's history: Back goes to «Привычки».
+    expect(appFrame()).toBe(running);
+    expect(loads).toEqual(["assign ./app.html?start=1#/"]);
+    expect(running).toBeVisible();
+    expect(running).toHaveFocus();
     expect(screen.getByText("Приложение закрыто")).not.toBeVisible();
     expect(screen.getByRole("button", { name: "Закрыть" })).toBeInTheDocument();
     expect(device.frame()).toBeNull();
+  });
+
+  it("keeps a closed app as it was: Back or Forward to one of its screens opens it again", () => {
+    const { device, frame, loads } = stand();
+    appFrame().dispatchEvent(new Event("load"));
+    device.chrome.mainButton({ text: "Сохранить", visible: true, active: true, progress: false });
+    screen.getByRole("button", { name: "Закрыть" }).click();
+    expect(screen.queryByRole("button", { name: "Сохранить" })).toBeNull();
+    (appFrame().contentWindow as Window).dispatchEvent(new PopStateEvent("popstate"));
+    expect(appFrame()).toBeVisible();
+    expect(screen.getByText("Приложение закрыто")).not.toBeVisible();
+    expect(loads).toEqual([]);
+    expect(device.frame()).toBe(frame);
+    screen.getByRole("button", { name: "Сохранить" }).click();
+    expect(frame.mainButtonClicked).toHaveBeenCalledOnce();
+  });
+
+  it("starts a new document of the app — Back to an earlier start — with Telegram's buttons reset", async () => {
+    const { device } = stand();
+    device.chrome.backButton(true);
+    device.chrome.mainButton({ text: "Сохранить", visible: true, active: true, progress: false });
+    device.chrome.closingConfirmation(true);
+    device.chrome.ready();
+    // The page's own dialog stays, opened while the app loads: «Об этом демо».
+    const about = device.dialogs.open({
+      kind: "sheet", label: "Об этом демо", choices: [{ text: "Закрыть", value: true }], cancel: false,
+    });
+    const next = appSide();
+    device.chrome.connect(next);
+    within(screen.getByRole("dialog", { name: "Об этом демо" })).getByRole("button", { name: "Закрыть" }).click();
+    await expect(about).resolves.toBe(true);
+    expect(device.frame()).toBe(next);
+    expect(screen.queryByRole("button", { name: "Сохранить" })).toBeNull();
+    expect(screen.getByText("Приложение загружается")).toBeVisible();
+    // No «‹ Назад», and closing asks nothing.
+    screen.getByRole("button", { name: "Закрыть" }).click();
+    expect(screen.getByText("Приложение закрыто")).toBeVisible();
+    // Closed, and then Back starts the app at a screen of an earlier start: it is on the screen again.
+    device.chrome.connect(appSide());
+    expect(appFrame()).toBeVisible();
+    expect(screen.getByText("Приложение закрыто")).not.toBeVisible();
   });
 
   it("asks whether the bot may write", async () => {
@@ -226,6 +286,17 @@ describe("the demo's device", () => {
     expect(screen.getByText("Это демо — ничего не отправлено")).toBeInTheDocument();
     vi.advanceTimersByTime(1);
     expect(screen.queryByText("Это демо — ничего не отправлено")).toBeNull();
+  });
+
+  it("gives the sheet's first button focus without scrolling the screen to it while it slides in", () => {
+    const { device } = stand();
+    const focus = vi.spyOn(HTMLElement.prototype, "focus");
+    void device.chrome.share("demo-habit-7-1");
+    const send = screen.getByRole("button", { name: "Отправить" });
+    expect(send).toHaveFocus();
+    // The screen hides its overflow, but a script's focus() still scrolls it, to a sheet that starts
+    // below it: the header and the app would jump up behind the sheet for its 0.2 s.
+    expect(focus.mock.calls[focus.mock.contexts.indexOf(send)]).toEqual([{ preventScroll: true }]);
   });
 
   it("shows the week's forecast in the visitor's language, and a cancelled picker says nothing", async () => {
@@ -276,8 +347,8 @@ describe("the demo's device", () => {
     expect(device.route()).toBe("/notes");
   });
 
-  it("takes the running app to a screen, and opens a closed one there", () => {
-    const { device } = stand();
+  it("takes the running app to a screen, and starts a closed one there", () => {
+    const { device, loads } = stand();
     const running = appFrame();
     running.dispatchEvent(new Event("load"));
     device.go("/habits");
@@ -285,18 +356,25 @@ describe("the demo's device", () => {
     expect(running.contentWindow?.location.hash).toBe("#/habits");
     screen.getByRole("button", { name: "Закрыть" }).click();
     device.go("/money/new");
-    expect(appFrame().getAttribute("src")).toBe("./app.html#/money/new");
+    expect(loads).toEqual(["assign ./app.html?start=1#/money/new"]);
+    expect(running).toBeVisible();
   });
 
-  it("starts the app afresh in a new frame: Telegram's buttons go with the old one", () => {
-    const { device } = stand();
+  it("starts the app afresh in its frame, after the last start or on its screen in its place", () => {
+    const { device, loads } = stand();
     device.chrome.backButton(true);
     device.chrome.mainButton({ text: "Сохранить", visible: true, active: true, progress: false });
     device.chrome.ready();
-    const old = appFrame();
+    const running = appFrame();
+    running.dispatchEvent(new Event("load"));
     device.open("/weather");
-    expect(appFrame()).not.toBe(old);
-    expect(appFrame().getAttribute("src")).toBe("./app.html#/weather");
+    // The new start's document comes in on its screen; started again there, as another language does.
+    (running.contentWindow as Window).location.hash = "#/weather";
+    running.dispatchEvent(new Event("load"));
+    device.open("/weather");
+    // Each start's screens stay in the tab's history: Back to one starts the app there again.
+    expect(appFrame()).toBe(running);
+    expect(loads).toEqual(["assign ./app.html?start=1#/weather", "replace ./app.html?start=2#/weather"]);
     expect(device.route()).toBe("/weather");
     expect(device.frame()).toBeNull();
     expect(screen.getByRole("button", { name: "Закрыть" })).toBeInTheDocument();
