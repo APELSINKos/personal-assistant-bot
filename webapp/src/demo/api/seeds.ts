@@ -81,11 +81,14 @@ function reminders(words: SeedWords["reminders"], now: number): StoredReminder[]
   const rule = (repeat: RepeatRule["repeat"], time: string, more: Partial<RepeatRule> = {}): RepeatRule => ({
     repeat, time_local: time, weekdays: null, interval_weeks: 1, month_day: null, anchor_date: anchor, ...more,
   });
-  // Two of today's: at the first :00 or :30 an hour and a half ahead and four hours ahead, while that is still today.
-  const todays = ([[1, words.parcel, 90 * MINUTE], [2, words.call, 4 * HOUR]] as const).flatMap(([id, text, ahead]) => {
-    const due = halfHourAfter(now, ahead);
-    return localDay(ZONE, due) === today ? [{ id, text, due, rule: null }] : [];
-  });
+  // Two of today's: at the first :00 or :30 an hour and a half ahead and four hours ahead, but not
+  // before 09:00 and 11:30 — a visit after midnight finds them in the morning — while that is still today.
+  const todays = ([[1, words.parcel, 90 * MINUTE, "09:00"], [2, words.call, 4 * HOUR, "11:30"]] as const).flatMap(
+    ([id, text, ahead, earliest]) => {
+      const due = Math.max(halfHourAfter(now, ahead), momentOf(ZONE, today, earliest));
+      return localDay(ZONE, due) === today ? [{ id, text, due, rule: null }] : [];
+    },
+  );
   return [
     ...todays,
     { id: 3, text: words.lab, due: momentOf(ZONE, addDaysIso(today, 1), "10:00"), rule: null },

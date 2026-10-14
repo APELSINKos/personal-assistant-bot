@@ -179,6 +179,10 @@ describe("the demo's data", () => {
     const evening = seed("ru", Date.UTC(2026, 9, 7, 17, 30)).reminders.map((reminder) => reminder.id);
     expect(evening).toEqual([1, 3, 4, 5, 6, 7, 8]);
     expect(seed("ru", Date.UTC(2026, 9, 7, 19, 31)).reminders.map((reminder) => reminder.id)).toEqual([3, 4, 5, 6, 7, 8]);
+    // After midnight the day's two wait for the morning: the parcel from 09:00, the call from 11:30.
+    const todays = (moment: number) => seed("ru", moment).reminders.filter((reminder) => reminder.id <= 2).map((reminder) => reminder.due);
+    expect(todays(Date.UTC(2026, 9, 6, 21, 56))).toEqual([Date.UTC(2026, 9, 7, 6, 0), Date.UTC(2026, 9, 7, 8, 30)]);
+    expect(todays(Date.UTC(2026, 9, 7, 5, 0))).toEqual([Date.UTC(2026, 9, 7, 6, 30), Date.UTC(2026, 9, 7, 9, 0)]);
   });
 
   it("give every record its own id and the next one after them", () => {
