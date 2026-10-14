@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/avatar.jpg" width="140" alt="Personal Assistant">
+  <a href="https://apelsinkos.github.io/personal-assistant-bot/?lang=en">
+    <img src="docs/images/cover.en.jpg" width="100%" alt="Personal Assistant — a Telegram bot and Mini App: weather with tips, reminders in plain words, classes, habits, notes and money">
+  </a>
 </p>
-
-<h1 align="center">Personal Assistant</h1>
 
 <p align="center">
   A Telegram bot that doesn't just say “+12°C” — it says “🌧 Rain in 40 min — take an umbrella”.<br>
@@ -10,13 +10,20 @@
 </p>
 
 <p align="center">
+  <a href="https://apelsinkos.github.io/personal-assistant-bot/?lang=en"><img src="https://img.shields.io/badge/Open_the_demo-7cf5c4?style=for-the-badge" alt="Open the demo"></a>
+  <a href="https://t.me/ikbo63_24_bot"><img src="https://img.shields.io/badge/Telegram-%40ikbo63__24__bot-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" alt="Open the bot in Telegram"></a>
+</p>
+
+<p align="center"><sub>The demo is the same app with made-up data: it opens in any browser, without Telegram or a server, and saves nothing.</sub></p>
+
+<p align="center">
   <a href="https://github.com/APELSINKos/personal-assistant-bot/actions/workflows/ci.yml"><img src="https://github.com/APELSINKos/personal-assistant-bot/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/APELSINKos/personal-assistant-bot/releases/latest"><img src="https://img.shields.io/github/v/release/APELSINKos/personal-assistant-bot?label=release" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/python-3.12%20%7C%203.13-3776AB?logo=python&logoColor=white" alt="Python 3.12 | 3.13">
   <img src="https://img.shields.io/badge/aiogram-3-26A5E4?logo=telegram&logoColor=white" alt="aiogram 3">
   <img src="https://img.shields.io/badge/Mini_App-React_19-61DAFB?logo=react&logoColor=black" alt="Mini App: React 19">
   <img src="https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&logoColor=white" alt="API: FastAPI">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2ea44f" alt="MIT"></a>
-  <a href="https://t.me/ikbo63_24_bot"><img src="https://img.shields.io/badge/Telegram-open_the_bot-26A5E4?logo=telegram&logoColor=white" alt="Open in Telegram"></a>
 </p>
 
 <p align="center"><a href="README.md">Русский</a> · <b>English</b></p>
@@ -47,8 +54,8 @@
 
 | | |
 |---|---|
-| 📱 **Mini App** | The same inside Telegram as an app: a Today screen, the weather for a day and a week, a calendar with classes and reminders, one-tap habits, money with charts, notes with checklists and settings. Theme and language follow Telegram |
-| 🌤 **Weather with tips** | Not just degrees: in how many minutes rain or snow starts, whether it gets colder by the evening, whether it's too windy or cold, whether it's a good day for a bike ride. An hourly and a 7-day forecast in the same message, for your home city and four more, and the weather on the way to classes and back |
+| 📱 **Mini App** | The same inside Telegram as an app: a Today screen, the weather for a day and a week, a calendar with classes and reminders, one-tap habits, money with charts, notes with checklists and settings. Theme and language follow Telegram · [demo in the browser](https://apelsinkos.github.io/personal-assistant-bot/?lang=en) |
+| 🌤 **Weather with tips** | Not just degrees: in how many minutes rain or snow starts, whether it gets colder by the evening, whether it's too windy or cold, whether it's a good day for a bike ride. An hourly and a 7-day forecast in the same message, for your home city and four more, and the weather on the way to classes and back; the week's forecast as a picture to forward |
 | ☀️ **Morning digest** | The bot writes at the time you choose, in your city's time zone: the weather now and for your classes, today's plans, habits, yesterday's spending, rates |
 | 📅 **My day** | Everything important for today in one message — with your pinned notes, and in the evening with tomorrow's weather |
 | ⏰ **Reminders** | Write like to a person: “tomorrow at 9 buy milk”, “in 20 minutes tea”, “on weekdays at 7:30 workout”. Repeats on weekdays, every other week or monthly — in your city's time zone; a delivered reminder has “+10 min”, “+1 h”, “Tomorrow”, “✓ Done” buttons |
@@ -159,7 +166,7 @@ The Open button next to the message field opens the app right inside Telegram �
 | **Money** | The month with arrows: what is spent and what is left for each day, a ring by category (a tap shows the category's entries), spending day by day and every entry — a tap edits, a swipe deletes. A new entry, budgets, your own categories with emoji, any Bank of Russia currency over 30 days and a converter |
 | **More** | Cities — the home one and up to four extra ones, the class schedule (a group, a link or a file, class alerts), the morning digest, language, currency, the data sources, version |
 
-Dark and light themes follow Telegram, Back and the main button are Telegram's own buttons, and actions answer with haptics. The app only works inside Telegram: every request carries Telegram's signature, and the server checks it.
+Dark and light themes follow Telegram, Back and the main button are Telegram's own buttons, and actions answer with haptics. The real app only works inside Telegram: every request carries Telegram's signature, and the server checks it. The [demo](https://apelsinkos.github.io/personal-assistant-bot/?lang=en) is the same app in a separate build with made-up data: it talks to no server and saves nothing.
 
 ## How it works
 
@@ -183,17 +190,18 @@ flowchart LR
 - **Phrases without AI.** “tomorrow at 9”, “in 20 minutes”, “every other wednesday” are parsed by Russian and English rules with over a hundred table tests; nothing is created until you confirm the card.
 - **Expenses without AI too.** “coffee 250” goes through rules and a dictionary of two hundred word stems, and the user's own memory knows where they moved entries before. Reminder phrases are parsed first, units and times (“2 liters”, “meeting at 9”) never become an expense, and every expense noted comes with an Undo button at once.
 - **The core knows nothing about Telegram.** Limits, habit streaks, time parsing and weather tips live in `assistant.core` and are covered by tests. The bot only parses input and formats replies, and the app's API calls the same services — so the chat and the app follow the same rules.
-- **The app is trusted only by signature.** The API lets a request reach any data only when its initData is signed by Telegram with the bot token and is less than a day old; the user comes from the signature, and someone else's id gets 404. The one exception is the card picture, which Telegram fetches itself by a token link (below). Errors are problem+json, at most 120 requests a minute.
+- **The app is trusted only by signature.** The API lets a request reach any data only when its initData is signed by Telegram with the bot token and is less than a day old; the user comes from the signature, and someone else's id gets 404. The one exception is the pictures for Share: Telegram downloads them itself, by a link with a token (below). Errors are problem+json, at most 120 requests a minute.
 - **A timetable from any calendar.** A MIREA group is found by name in a directory the server builds itself from the groups' calendars; a link or an `.ics` file goes through the same parser. Classes are expanded four months ahead and shown in your city's time zone; when the source is down, the last timetable stays, marked “data from …”.
 - **One request for the forecast.** Open-Meteo gives everything for a city at once: the weather now, precipitation every 15 minutes, the week by the hour and by the day. Moments come as Unix seconds and are turned into the city's time zone, so the hour labels don't slip after the clocks go back. An answer is checked before it goes into a 10-minute cache; at most two requests run at once, a failure pauses them for a minute, and My day, the digest and Today still come without the weather.
 - **A checklist in the chat and in the app.** Items are rows of their own in the database, so a check made in the chat and one made in the app never overwrite each other. An item's button does not toggle but sets the state it offers: a button of an old card never undoes a check made in the app. The notes search folds case and “ё” the same way in Python and TypeScript, and one table of cases tests both sides.
-- **Pictures are drawn on the server.** Pillow draws the habit card, the month's report and the 30-day rates — 1080×1350 JPEGs from fonts and emoji kept in the repository, so the same data gives the same picture on any machine. A habit card shared from the app is fetched by Telegram by a link with a random 256-bit token; it is kept while Telegram may ask for it, but no longer than 7 days, at most 10 cards per user. At most 6 pictures a minute per user.
+- **Pictures are drawn on the server.** Pillow draws the habit card, the month's report, the 30-day rates and the week's forecast — 1080×1350 JPEGs from fonts and emoji kept in the repository; letters Manrope lacks (Kazakh and others) come from the fallback font Onest. So the same data give the same picture on any machine. Telegram fetches a habit card or a forecast shared from the app by a link with a random 256-bit token; the picture is kept while Telegram may ask for it, but no longer than 7 days, and a user keeps at most 10. At most 6 pictures a minute per user.
 - **The app's charts are its own.** The category ring, the day bars, the rate line and the temperature curve are SVG without libraries; each chart has a label for screen readers, and its numbers are in the legend and the lists too.
 - **Links never lead inside the server.** A calendar link is downloaded from public addresses only: the server resolves the name itself, checks every address and every redirect and connects to the checked IP — up to 2 MB and 10 seconds, at most three calendar downloads or parses a minute per user (in the bot and in the app separately). On top of that, the systemd services cannot reach private, link-local or CGNAT (`100.64.0.0/10`) networks (loopback stays open).
 - **Time without surprises.** Every moment is stored in UTC, "today" is computed in the city's time zone, DST transitions are handled.
 - **Delivery with retries.** On 429 the bot waits exactly as long as Telegram asks; on network failures it retries after 30 s, 1 min, 5 min, 15 min, 1 h and 3 h; users who blocked the bot are left alone.
 - **Dialogs in the database.** Unfinished input survives a restart, and a menu button pressed mid-dialog simply opens that section.
 - **Automatic deploys.** After a green CI run a commit from `main` goes to the server. The app is built while the previous version keeps running; if the bot or the API does not come up, the script restores the previous code, database and app build.
+- **A demo without a server.** The same app, unchanged, is built a second time for GitHub Pages: a host page draws Telegram's buttons and answers the app with made-up data kept in the tab, and the CSP `connect-src 'none'` lets no request out of the page. The demo is published from `main` after a green CI, and a build check keeps foreign addresses out of it.
 
 More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (Russian).
 
@@ -210,6 +218,7 @@ uv run alembic upgrade head
 uv run python -m assistant.bot      # the bot
 uv run python -m assistant.api      # the app's API, 127.0.0.1:8000
 cd webapp && npm ci && npm run dev  # the app in a browser
+cd webapp && npm run dev:demo       # the demo: the app without a server or Telegram
 ```
 
 Settings come from environment variables or a `.env` file, see [.env.example](.env.example). To open the app in an ordinary browser you need signed initData: `scripts/dev_init_data.py` prints it using a test bot's token. Checks: `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy`; for the app — `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`. Details in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (Russian).
@@ -224,7 +233,7 @@ Settings come from environment variables or a `.env` file, see [.env.example](.e
 - [x] **v2.4** — habits: a year map, goals, a shareable stats card
 - [x] **v2.5** — finances: expenses, budget, exchange rate charts
 - [x] **v2.6** — 7-day forecast, several cities, search and checklists in notes
-- [ ] **v2.7** — showcase: screenshots, a demo and a project cover
+- [x] **v2.7** — showcase: a demo in the browser, screenshots, a forecast picture and a project cover
 
 ## Documentation (in Russian)
 
@@ -240,7 +249,7 @@ Version 1.0 (September 2026) was a coursework project for the “Software Testin
 
 ## Author
 
-Aleksandr Kovalev — [@APELSINKos](https://github.com/APELSINKos)
+<p><img src="assets/avatar-128.jpg" width="64" align="middle" alt="The avatar of the Personal Assistant bot"> Aleksandr Kovalev — <a href="https://github.com/APELSINKos">@APELSINKos</a></p>
 
 ## Data and licences
 
