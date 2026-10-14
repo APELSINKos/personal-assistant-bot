@@ -9,7 +9,9 @@ the app runs in a frame of the same origin, so a script of the page reaches into
 
 from __future__ import annotations
 
+import asyncio
 import json
+import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -20,6 +22,8 @@ WIDTH, HEIGHT, SCALE = 390, 844, 2  # CSS px at DPR 2: 780×1688
 FRAME = "iframe.tg-frame"  # the app's frame in the demo's page
 EMOJI = "Showcase Emoji"
 EMOJI_URL = "/showcase/fonts/Noto-COLRv1.ttf"  # on the run's server, the demo's own origin
+SETTLE_TIME = 8.0  # seconds for a page to calm down before its picture
+POLL = 0.05  # seconds between two looks at a busy page
 
 # What the walk-through holds on to: today's classes of the app. A scene asks for a hook by its
 # name and stops with that name when the app no longer has it.
@@ -107,29 +111,22 @@ _EMOJI_IN_PLACE = f"""(async () => {{
   return "";
 }})()"""
 
-# Up to 8 s for the page to calm down, then two frames: what still keeps it busy, or nothing.
-_SETTLE = f"""(async () => {{
+# What keeps the page busy now, or nothing when it is calm.
+_BUSY = f"""(() => {{
   {_DOCUMENTS}
-  const busy = () => {{
-    for (const doc of documents()) {{
-      if (doc.fonts.status === "loading") return "a font is loading";
-      if (doc.querySelector('[aria-busy="true"], .skeleton')) return "something is still loading";
-      if (doc.querySelector(".tg-loading:not([hidden])")) return "the app has not said it is ready";
-      const running = doc.getAnimations().some((animation) => animation.playState === "running"
-        && animation.effect?.getComputedTiming().iterations !== Infinity);
-      if (running) return "an animation is running";
-    }}
-    return "";
-  }};
-  const started = performance.now();
-  let left = busy();
-  while (left && performance.now() - started < 8000) {{
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    left = busy();
+  for (const doc of documents()) {{
+    if (doc.fonts.status === "loading") return "a font is loading";
+    if (doc.querySelector('[aria-busy="true"], .skeleton')) return "something is still loading";
+    if (doc.querySelector(".tg-loading:not([hidden])")) return "the app has not said it is ready";
+    const running = doc.getAnimations().some((animation) => animation.playState === "running"
+      && animation.effect?.getComputedTiming().iterations !== Infinity);
+    if (running) return "an animation is running";
   }}
-  if (left) return left;
-  {_FRAMES}
   return "";
+}})()"""
+
+_TWO_FRAMES = f"""(async () => {{
+  {_FRAMES}
 }})()"""
 
 # What makes a calm page unfit for its picture, or nothing.
@@ -195,11 +192,19 @@ async def go(page: Page, route: str) -> None:
 
 async def settle(page: Page) -> None:
     """Waits until the page is calm (§13.1): its fonts loaded, nothing loading (aria-busy,
-    .skeleton, the device's own loader), no finite animation running, two frames drawn; no
-    longer than 8 s."""
-    left = await page.evaluate(_SETTLE)
-    if left:
-        raise NotSettled(f"the page did not settle in 8 s: {left}")
+    .skeleton, the device's own loader), no finite animation running, and still so after two
+    more frames, which may start an animation or ask for a font; no longer than 8 s."""
+    started = time.monotonic()
+    while True:
+        left = await page.evaluate(_BUSY)
+        if not left:
+            await page.evaluate(_TWO_FRAMES)
+            left = await page.evaluate(_BUSY)
+            if not left:
+                return
+        if time.monotonic() - started >= SETTLE_TIME:
+            raise NotSettled(f"the page did not settle in {SETTLE_TIME:g} s: {left}")
+        await asyncio.sleep(POLL)
 
 
 async def check(page: Page) -> None:

@@ -67,6 +67,18 @@ def test_a_step_writes_into_the_images_folder_only(run: showcase.Run) -> None:
     assert not (run.images.parent / "README.md").exists()
 
 
+def test_a_step_never_overwrites_a_picture_of_another_script(run: showcase.Run) -> None:
+    # The cards, the forecast and the cover in docs/images are drawn by scripts of their own:
+    # the name is refused before anything is written, not when the manifest is recorded.
+    (run.images / "forecast-card.jpg").write_bytes(b"drawn by scripts/forecast_card.py")
+    for name in ("forecast-card.jpg", "cover.jpg", "screens/../showcase.json", "chat.webp"):
+        with pytest.raises(ValueError, match="not a picture of the generator"):
+            run.write(name, b"overwritten")
+    assert (run.images / "forecast-card.jpg").read_bytes() == b"drawn by scripts/forecast_card.py"
+    assert sorted(path.name for path in run.images.iterdir()) == ["forecast-card.jpg"]
+    assert run.written == []
+
+
 def test_a_run_prepares_only_what_its_steps_need(
     run: showcase.Run, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -96,7 +108,8 @@ def test_a_run_prepares_only_what_its_steps_need(
     ]
     prepared.clear()
     showcase.generate((showcase.Step("screens", nothing, demo=True, browser=True),), run)
-    assert prepared[:2] == ["demo", "browser None"]
+    # A machine without Edge or Chrome stops before the demo's build, npm ci and all.
+    assert prepared[:2] == ["browser None", "demo"]
 
 
 def test_the_languages_and_themes_are_checked() -> None:

@@ -64,10 +64,14 @@ class Run:
         return self.work / "pages"
 
     def write(self, name: str, data: bytes) -> Path:
-        """Writes a file of docs/images, and nothing outside it, for the manifest."""
-        path = self.images / name
-        if not path.resolve().is_relative_to(self.images.resolve()):
+        """Writes one of the generator's files of docs/images, for the manifest. Anything else,
+        outside the folder or another script's picture in it, is refused before a byte is
+        written."""
+        path, images = (self.images / name).resolve(), self.images.resolve()
+        if not path.is_relative_to(images):
             raise ValueError(f"{name}: outside docs/images")
+        if not manifest.owns(path.relative_to(images).as_posix()):
+            raise ValueError(f"{name}: not a picture of the generator")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
         self.written.append(path)
@@ -141,10 +145,12 @@ def folder(keep: Path | None) -> Iterator[Path]:
 def generate(steps: Sequence[Step], run: Run, *, browser: str | None = None) -> None:
     """Runs the steps with what they need, then records what they wrote."""
     with ExitStack() as stack:
+        pictures = any(step.browser for step in steps)
+        if pictures:  # first: without a browser nothing is built or downloaded
+            run.browser = cdp.find(browser)
         if any(step.demo for step in steps):
             build_demo()
-        if any(step.browser for step in steps):
-            run.browser = cdp.find(browser)
+        if pictures:
             for font in fonts.FONTS:
                 fonts.fetch(font)
             routes = {

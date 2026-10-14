@@ -34,6 +34,9 @@ async def devtools(request: web.Request) -> web.WebSocketResponse:
             await socket.send_json({"id": number, "error": {"code": -32000, "message": "No tab"}})
         elif method == "Test.big":
             await socket.send_json({"id": number, "result": {"data": BIG}})
+        elif method == "Test.event":  # the event in its params, then the answer
+            await socket.send_json(command["params"])
+            await socket.send_json({"id": number, "result": {}})
         elif method == "Page.navigate":
             await socket.send_json({"method": "Page.loadEventFired", "sessionId": "other"})
             await socket.send_json({"id": number, "result": {"frameId": "1", "loaderId": "2"}})
@@ -89,7 +92,17 @@ async def test_a_message_past_four_megabytes_arrives_whole(connection: cdp.Conne
 
 async def test_a_page_waits_for_its_own_load_event(connection: cdp.Connection) -> None:
     page = cdp.Page(connection, "tab")
-    await page.navigate("http://127.0.0.1/demo/")  # the other tab's event does not count
+    await page.navigate("http://127.0.0.1/demo/")
+
+
+async def test_another_tab_s_event_is_not_this_tab_s(connection: cdp.Connection) -> None:
+    loaded = connection.expect("Page.loadEventFired", session="tab")
+    event = {"method": "Page.loadEventFired", "params": {"timestamp": 1}}
+    await connection.send("Test.event", {**event, "sessionId": "other"})
+    assert not loaded.done()
+    await connection.send("Test.event", {**event, "sessionId": "tab", "params": {"timestamp": 2}})
+    assert loaded.done()
+    assert loaded.result() == {"timestamp": 2}
 
 
 async def test_a_lost_connection_fails_what_waits_for_it(connection: cdp.Connection) -> None:
@@ -134,6 +147,21 @@ async def test_a_scene_that_fails_otherwise_is_not_played_again() -> None:
     with pytest.raises(LookupError):
         await cdp.scene("habit", play)
     assert len(played) == 1
+
+
+async def test_a_browser_closed_twice_ends_its_processes_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A step that closes its browser inside launch()'s block, which closes it again: the job's
+    # handle must not be closed twice, as Windows may have given its number to another object.
+    ended: list[tuple[object, object]] = []
+    monkeypatch.setattr(cdp, "_end", lambda process, job, *_: ended.append((process, job)))
+    browser = cdp.Browser(Path("msedge.exe"), tmp_path / "profile-test")
+    process = object()
+    browser.process, browser._job = process, 7  # type: ignore[assignment]
+    await browser.close()
+    await browser.close()
+    assert ended == [(process, 7)]
 
 
 def test_the_browser_is_the_one_asked_for_then_the_usual_ones(

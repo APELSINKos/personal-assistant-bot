@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -47,16 +48,29 @@ def _file(path: Path) -> File:
     return File(len(data), hashlib.sha256(data).hexdigest())
 
 
+def _pattern(glob: str) -> re.Pattern[str]:
+    """A pattern of OWNED as a regular expression: «**/» is any number of folders, «*» any part
+    of one name."""
+    parts = {"**/": "(?:[^/]+/)*", "*": "[^/]*"}
+    pieces = re.split(r"(\*\*/|\*)", glob)
+    return re.compile("".join(parts.get(piece) or re.escape(piece) for piece in pieces))
+
+
+_OWNED = tuple(_pattern(glob) for glob in OWNED)
+
+
+def owns(name: str) -> bool:
+    """Whether the generator writes this file of docs/images, named by its place there."""
+    parts = name.split("/")
+    if "\\" in name or any(part in ("", ".", "..") for part in parts):
+        return False
+    return any(pattern.fullmatch(name) for pattern in _OWNED)
+
+
 def owned(images: Path) -> list[str]:
     """The generator's files in the images folder, by their place in it."""
-    return sorted(
-        {
-            path.relative_to(images).as_posix()
-            for pattern in OWNED
-            for path in images.glob(pattern)
-            if path.is_file()
-        }
-    )
+    found = (path.relative_to(images).as_posix() for path in images.rglob("*") if path.is_file())
+    return sorted(name for name in found if owns(name))
 
 
 def scene_sums(transcript: Mapping[str, Any]) -> dict[str, str]:

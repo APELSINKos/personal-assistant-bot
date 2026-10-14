@@ -137,6 +137,31 @@ def test_only_the_generator_s_files_in_the_images_folder_are_recorded(images: Pa
     assert not (images / "showcase.json").exists()
 
 
+def test_the_generator_owns_its_pictures_and_nothing_else() -> None:
+    mine = (
+        "screens/today.dark.webp",
+        "screens/money.light.en.webp",
+        "chat/chats.en.json",
+        "chat/morning.dark.webp",
+        "app.light.en.webp",
+        "walkthrough.webp",
+        "walkthrough.still.en.webp",
+    )
+    others = (
+        "forecast-card.jpg",
+        "habit-card.en.jpg",
+        "cover.jpg",
+        "showcase.json",
+        "chat.webp",
+        "screens/../showcase.json",
+        "../README.md",
+        "/chat/morning.dark.webp",
+        "chat\\morning.dark.webp",
+    )
+    assert [name for name in mine if not manifest.owns(name)] == []
+    assert [name for name in others if manifest.owns(name)] == []
+
+
 def test_without_a_manifest_nothing_is_in_step(images: Path) -> None:
     assert manifest.problems(images) == ["showcase.json is missing"]
 

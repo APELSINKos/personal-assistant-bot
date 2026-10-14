@@ -5,10 +5,11 @@ commands over one WebSocket and ends with everything it started.
 Each rule here comes from a failure measured while the generator was designed. A long session
 slows down and then hangs, so every scene starts a browser of its own. A command gets 20 s, and a
 scene that runs out of time plays once more before the run stops with its name. A screenshot at
-2× can be larger than aiohttp's 4 MB for one message, so the socket takes any size. The browser
-goes with the generator even when that is killed from outside: on Windows it runs in a job object
-that ends it as the generator's handle to the job closes, on POSIX in a process group of its own.
-A browser is never ended by name, only the processes that carry this run's profile.
+2× can be larger than aiohttp's 4 MB for one message, so the socket takes any size. On Windows the
+browser runs in a job object that ends it as the generator's handle to the job closes, so it goes
+with the generator even when that is killed from outside. On POSIX it runs in a process group of
+its own, which the cleanup ends; a generator killed from outside leaves it running. A browser is
+never ended by name, only the processes that carry this run's profile.
 """
 
 from __future__ import annotations
@@ -292,20 +293,26 @@ class Browser:
         return page
 
     async def close(self) -> None:
-        """Browser.close, then whatever of this run is left, then the profile."""
+        """Browser.close, then whatever of this run is left, then the profile. A second call
+        does nothing: each part is let go of once, the job's handle above all, whose number
+        Windows may already have given to another object of the generator."""
+        connection, self._connection = self._connection, None
+        client, self._client = self._client, None
+        process, self.process = self.process, None
+        job, self._job = self._job, None
         asked = False
-        if self._connection is not None:
+        if connection is not None:
             with contextlib.suppress(
                 CommandError, ConnectionError, TimeoutError, aiohttp.ClientError
             ):
-                await self._connection.send("Browser.close", limit=5)
+                await connection.send("Browser.close", limit=5)
                 asked = True
-            await self._connection.close()
-        if self._client is not None:
-            await self._client.close()
-        if self.process is not None:
+            await connection.close()
+        if client is not None:
+            await client.close()
+        if process is not None:
             grace = 10 if asked else 0  # the time a closing browser gets to end itself
-            await asyncio.to_thread(_end, self.process, self._job, self.profile.name, grace)
+            await asyncio.to_thread(_end, process, job, self.profile.name, grace)
         await asyncio.to_thread(_remove, self.profile)
 
 

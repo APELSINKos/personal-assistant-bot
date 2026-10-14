@@ -2,7 +2,41 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from scripts.showcase import demo
+
+
+class Page:
+    """A tab that tells what keeps it busy, one answer from the list a question, and draws its
+    frames at once."""
+
+    def __init__(self, answers: list[str]) -> None:
+        self.answers, self.asked = answers, []
+
+    async def evaluate(self, expression: str) -> object:
+        if "requestAnimationFrame" in expression:
+            self.asked.append("two frames")
+            return None
+        self.asked.append("busy?")
+        return self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
+
+
+async def test_a_page_busy_again_after_its_two_frames_is_waited_for() -> None:
+    # Calm, then busy again in the two frames that were to end the wait: an entrance that
+    # starts with the first render, a font a late layout asks for.
+    page = Page(["", "an animation is running", "", ""])
+    await demo.settle(page)  # type: ignore[arg-type]
+    assert page.asked == ["busy?", "two frames", "busy?", "busy?", "two frames", "busy?"]
+
+
+async def test_a_page_that_never_calms_down_runs_out_of_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(demo, "SETTLE_TIME", 0.2)
+    page = Page(["a font is loading"])
+    with pytest.raises(demo.NotSettled, match="a font is loading"):
+        await demo.settle(page)  # type: ignore[arg-type]
+    assert isinstance(demo.NotSettled("x"), TimeoutError)  # a scene plays once more
 
 
 def test_a_shot_opens_the_demo_s_device_at_the_frozen_moment() -> None:
