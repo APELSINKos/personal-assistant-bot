@@ -824,6 +824,18 @@ describe("sharing a picture", () => {
     expect(calls.map((call) => call.path)).toEqual(["/habits/7/share", "/habits/7/card"]);
   });
 
+  it("goes to no chat on a 503 that names no service: only Telegram's own is the bot's to send", async () => {
+    const { calls } = mockApi({
+      "POST /habits/7/share": { status: 503, body: { status: 503, code: "upstream_unavailable" } },
+      "POST /habits/7/card": { status: 204 },
+    });
+    const { result } = sharing(useHabitCard);
+    act(() => result.current.share.mutate());
+    expect(await screen.findByText("Сервис временно недоступен")).toBeInTheDocument();
+    await waitFor(() => expect(result.current.share.isError).toBe(true));
+    expect(calls.map((call) => call.path)).toEqual(["/habits/7/share"]);
+  });
+
   it("does not fall back past a refusal meant for the user", async () => {
     const { calls } = mockApi({
       "POST /habits/7/share": { status: 429, body: { status: 429, code: "rate_limited" } },
