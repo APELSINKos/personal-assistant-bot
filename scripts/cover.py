@@ -5,10 +5,13 @@ Usage:  uv run python scripts/cover.py --lang ru --out docs/images/cover.jpg
         uv run python scripts/cover.py --favicon webapp/demo/public/favicon.svg
 
 The cover opens the README and is the link preview of the repository and of the demo: what the
-project is, its name, what it does and three chips on the left; on the right, the bot's own
-pictures from docs/images — the week's forecast, a habit card and the month's report — fanned out.
-Only fixed words and the made-up data of those pictures. It is drawn like them, with card_kit's
-fonts, colours and emoji and the BASIC layout, so the same arguments always give the same file.
+project is, its name, what it does and three chips on the left; on the right, two phones with the
+demo's dark screens from docs/images/screens — «Погода» behind, «Сегодня» in front — in the frame
+of the README's grids (variant A). Until those screens are drawn, the bot's own pictures from
+docs/images — the week's forecast, a habit card and the month's report — fan out there instead
+(variant B); `--variant a|b` picks one. Only fixed words and made-up data. It is drawn like the
+bot's pictures, with card_kit's fonts, colours and emoji and the BASIC layout, so the same
+arguments always give the same file.
 
 The icon is a mint speech bubble on the dark «Вечерний», made of rounded rectangles and circles
 only, so the PNG drawn by Pillow and the SVG of the demo's tab are one sign.
@@ -18,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,6 +29,13 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from assistant.core.habit_style import COLORS
 from assistant.core.services import card_kit as kit
+
+# Run as a file, Python looks for imports in scripts/ itself; the phone's frame is in the package
+# scripts.showcase, found from the repository's root.
+if __name__ == "__main__":
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.showcase import compose  # noqa: E402
 
 IMAGES = Path(__file__).resolve().parents[1] / "docs" / "images"
 WIDTH, HEIGHT = 1280, 640
@@ -36,8 +47,13 @@ CHIP_LINE = (255, 255, 255, 34)
 SHADOW = (0, 0, 0, 150)
 BOT = "ikbo63_24_bot"
 
-# The bot's pictures, back to front: (name in docs/images, centre, degrees counterclockwise,
-# width). Left to right they follow the chips: the weather, a habit, the money.
+# Variant A: the demo's dark screens in phones, back to front: (screen, top left corner). Each
+# phone is PHONE_WIDTH wide and as tall as its frame makes it; the front one runs off the bottom.
+PHONES = (("weather", (742, 58)), ("today", (952, 112)))
+PHONE_WIDTH = 262
+
+# Variant B: the bot's pictures, back to front: (name in docs/images, centre, degrees
+# counterclockwise, width). Left to right they follow the chips: the weather, a habit, the money.
 FAN = (
     ("forecast-card", (790, 345), 9, 290),
     ("money-report", (1066, 345), -9, 290),
@@ -69,8 +85,8 @@ WORDS = {
     "ru": Words(
         over="Telegram-бот и Mini App",
         title=("Личный", "помощник"),
-        # The no-break space keeps the dash off the start of a line.
-        tagline="Погода с советами, напоминания фразой, пары, привычки, заметки и деньги"
+        # No-break spaces keep the dash off the start of a line and «и» off the end of one.
+        tagline="Погода с советами, напоминания фразой, пары, привычки, заметки и\u00a0деньги"
         "\u00a0— в чате и в приложении",
         chips=(("🌤", "Погода"), ("🎯", "Привычки"), ("💰", "Деньги")),
     ),
@@ -166,22 +182,47 @@ def turned(name: str, angle: float, width: int) -> Image.Image:
     return picture.resize(size, Image.Resampling.LANCZOS)
 
 
+def shadowed(cover: Image.Image, picture: Image.Image, x: int, y: int) -> None:
+    """`picture` laid on the cover at (x, y) over a soft shadow of its own shape."""
+    shadow = Image.new("RGBA", cover.size, (0, 0, 0, 0))
+    shadow.paste(SHADOW, (x + 10, y + 24), picture.getchannel("A"))
+    cover.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(26)))
+    cover.alpha_composite(picture, (x, y))
+
+
 def fanned(cover: Image.Image, lang: str) -> None:
-    """The bot's pictures fanned out on the right, each with a soft shadow."""
-    suffix = "" if lang == "ru" else ".en"
+    """Variant B: the bot's pictures fanned out on the right."""
     for name, (centre_x, centre_y), angle, width in FAN:
-        picture = turned(f"{name}{suffix}.jpg", angle, width)
-        x, y = centre_x - picture.width // 2, centre_y - picture.height // 2
-        shadow = Image.new("RGBA", cover.size, (0, 0, 0, 0))
-        shadow.paste(SHADOW, (x + 10, y + 24), picture.getchannel("A"))
-        cover.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(26)))
-        cover.alpha_composite(picture, (x, y))
+        picture = turned(f"{name}{compose.suffix(lang)}.jpg", angle, width)
+        shadowed(cover, picture, centre_x - picture.width // 2, centre_y - picture.height // 2)
 
 
-def draw(lang: str) -> bytes:
-    """The cover in `lang`, a JPEG with full colour (no chroma subsampling)."""
+def dark_screens(lang: str) -> list[Path]:
+    """The demo's dark screens variant A shows, in the order of PHONES."""
+    return [IMAGES / compose.screen_file(name, "dark", lang) for name, _ in PHONES]
+
+
+def phones(cover: Image.Image, lang: str) -> None:
+    """Variant A: the demo's dark screens on the right, in the phone of the README's grids."""
+    for path, (_, (x, y)) in zip(dark_screens(lang), PHONES, strict=True):
+        with Image.open(path) as screen:
+            phone = compose.shrink(compose.phone(screen, "dark"), PHONE_WIDTH)
+        shadowed(cover, phone, x, y)
+
+
+def default_variant(lang: str) -> str:
+    """A once the demo's dark screens of `lang` are in docs/images, B until then."""
+    return "a" if all(path.exists() for path in dark_screens(lang)) else "b"
+
+
+def draw(lang: str, variant: str | None = None) -> bytes:
+    """The cover in `lang`, a JPEG with full colour (no chroma subsampling): variant `variant`,
+    by default the one default_variant() picks."""
     cover = backdrop()
-    fanned(cover, lang)
+    if (variant or default_variant(lang)) == "a":
+        phones(cover, lang)
+    else:
+        fanned(cover, lang)
     words(cover, lang)
     out = io.BytesIO()
     cover.convert("RGB").save(out, "JPEG", quality=kit.QUALITY, optimize=True, subsampling=0)
@@ -237,24 +278,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lang", default="ru", choices=("ru", "en"))
     parser.add_argument(
         "--variant",
-        default="b",
         choices=("a", "b"),
-        help="the cover's look: b, the bot's pictures fanned out; "
-        "a, phones with the demo's dark screens",
+        help="the cover's look: a, phones with the demo's dark screens; b, the bot's pictures "
+        "fanned out; by default a once those screens are in docs/images, else b",
     )
     target = parser.add_mutually_exclusive_group(required=True)
     target.add_argument("--out", type=Path, help="the cover, a JPEG")
     target.add_argument("--icon", type=Path, help="the demo's apple-touch-icon, a PNG")
     target.add_argument("--favicon", type=Path, help="the demo's tab icon, an SVG")
     args = parser.parse_args(argv)
-    if args.variant == "a":
-        parser.error("variant a, the phones with the demo's dark screens, is not drawn yet")
+    missing = [screen for screen in dark_screens(args.lang) if not screen.exists()]
+    if args.out and args.variant == "a" and missing:
+        names = ", ".join(screen.relative_to(IMAGES).as_posix() for screen in missing)
+        parser.error(
+            f"variant a shows the demo's dark screens, and docs/images has no {names}: "
+            "uv run python -m scripts.showcase screens draws them"
+        )
     if args.icon:
         path, data = args.icon, icon()
     elif args.favicon:
         path, data = args.favicon, favicon().encode()
     else:
-        path, data = args.out, draw(args.lang)
+        path, data = args.out, draw(args.lang, args.variant)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
     print(path)
