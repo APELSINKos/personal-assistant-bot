@@ -69,6 +69,9 @@ function CityWeather({ id }: { id: number }) {
   if (id !== 0 && isGone(forecast.error)) return <CityGone />;
   const home = me.data?.city.name;
   const extra = cities.data ?? [];
+  // A refusal's card goes under «Поделиться прогнозом» and stays while the next city's week loads;
+  // not under a week without days, which has no button, nor under a forecast that failed.
+  const refusal = write.refused && (forecast.isPending || (forecast.data?.days.length ?? 0) > 0);
   return (
     <PullToRefresh onRefresh={() => Promise.all([forecast.refetch(), cities.refetch()])}>
       <h1 className="screen__title">{t.weather.title}</h1>
@@ -82,6 +85,9 @@ function CityWeather({ id }: { id: number }) {
         // A city of its own: the strip of another city starts again at «Сейчас».
         <ForecastView key={id} forecast={forecast.data} write={write} />
       )}
+      {/* Outside the city's own part, as the screen's refusal is: one card through a chip, which a
+          screen reader reads out once, as it comes in. */}
+      {refusal && <WriteRefusedCard card={write.card} text={t.weather.writeText} />}
     </PullToRefresh>
   );
 }
@@ -152,7 +158,7 @@ function ForecastView({ forecast, write }: { forecast: Forecast; write: WriteAcc
 /**
  * «Поделиться прогнозом»: the city's week as a picture, to the chat the user picks in Telegram, or
  * to the chat with the bot where Telegram cannot share from the app. Under it, after the user
- * declined to let the bot write, the card that asks again.
+ * declined to let the bot write, the screen's card that asks again.
  */
 function ShareForecast({ city, write }: { city: number; write: WriteAccess }) {
   const t = useT();
@@ -164,18 +170,15 @@ function ShareForecast({ city, write }: { city: number; write: WriteAccess }) {
       },
     });
   return (
-    <>
-      <button
-        type="button"
-        className="button weather-share"
-        style={{ "--i": 4 } as CSSProperties}
-        disabled={share.isPending}
-        onClick={onShare}
-      >
-        {t.weather.share}
-      </button>
-      {write.refused && <WriteRefusedCard card={write.card} text={t.weather.writeText} />}
-    </>
+    <button
+      type="button"
+      className="button weather-share"
+      style={{ "--i": 4 } as CSSProperties}
+      disabled={share.isPending}
+      onClick={onShare}
+    >
+      {t.weather.share}
+    </button>
   );
 }
 

@@ -350,16 +350,34 @@ describe("Weather in the extra cities", () => {
       renderWeather();
       const chips = await screen.findByRole("group", { name: "Города" });
       fireEvent.click(await screen.findByRole("button", { name: "Поделиться прогнозом" }));
-      await screen.findByRole("alert");
+      const card = await screen.findByRole("alert");
       await landed();
       expect(scrollIntoView).toHaveBeenCalledTimes(1);
       fireEvent.click(within(chips).getByRole("button", { name: "Тула" }));
       expect(await screen.findByRole("heading", { name: "Тула" })).toBeInTheDocument();
       await landed();
-      expect(screen.getByRole("button", { name: "Поделиться прогнозом" }).nextElementSibling).toBe(screen.getByRole("alert"));
-      // Drawn again for Тула, not refused again: the reader, up at the chips, stays there.
+      // The same card, kept through Тула's load: a screen reader reads an alert out as it comes in.
+      expect(screen.getByRole("alert")).toBe(card);
+      expect(screen.getByRole("button", { name: "Поделиться прогнозом" }).nextElementSibling).toBe(card);
+      // Not refused again: the reader, up at the chips, stays there.
       expect(scrollIntoView).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("shows that card only where the button is: not under a week without days", async () => {
+    installTelegram({ requestWriteAccess: refuse() }, "7.10");
+    mockApi({
+      "GET /me": { ...me, can_write: false }, "GET /me/cities": [tula], "GET /weather": forecast,
+      "GET /weather?city=3": { ...TULA, days: [] },
+    });
+    renderWeather();
+    const chips = await screen.findByRole("group", { name: "Города" });
+    fireEvent.click(await screen.findByRole("button", { name: "Поделиться прогнозом" }));
+    await screen.findByRole("alert");
+    fireEvent.click(within(chips).getByRole("button", { name: "Тула" }));
+    expect(await screen.findByRole("heading", { name: "Тула" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Поделиться прогнозом" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("opens an extra city by its address", async () => {
@@ -469,5 +487,22 @@ describe("Weather when Open-Meteo fails", () => {
     pullDown();
     await settle();
     expect(within(cardOf("Москва")).getByText("+12°")).toBeInTheDocument();
+  });
+
+  it("leaves a refusal's card out under a city whose forecast failed: there is no week to share", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    installTelegram({ requestWriteAccess: refuse() }, "7.10");
+    mockApi({
+      "GET /me": { ...me, can_write: false }, "GET /me/cities": [tula], "GET /weather": forecast,
+      "GET /weather?city=3": UNAVAILABLE,
+    });
+    renderWeather();
+    const chips = await screen.findByRole("group", { name: "Города" });
+    fireEvent.click(await screen.findByRole("button", { name: "Поделиться прогнозом" }));
+    expect(await screen.findByRole("heading", { name: "Разрешить боту писать?" })).toBeInTheDocument();
+    fireEvent.click(within(chips).getByRole("button", { name: "Тула" }));
+    await settle();
+    expect(screen.getByText("Погода временно недоступна")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Разрешить боту писать?" })).not.toBeInTheDocument();
   });
 });

@@ -13,9 +13,8 @@ import { requestWriteAccess } from "../telegram";
  * `card` is for the screen's WriteRefusedCard. A refusal says nothing else, and its card may come
  * in out of sight: under the bottom bar, below the last thing of a long screen («Поделиться
  * прогнозом»), or at the top of a form read down to its end. Each refusal scrolls the page just
- * enough to show all of the card, above the bar (html's scroll-padding-bottom); a card only drawn
- * again, with no new refusal (another city's forecast under the same one), leaves the page where
- * it is.
+ * enough to show all of the card, above the bar (html's scroll-padding-bottom); a card that only
+ * stays, with no new refusal (under another city's forecast), leaves the page where it is.
  */
 export function useWriteAccess(canWrite: boolean | undefined) {
   const allowWrite = useAllowWrite();
