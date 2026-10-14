@@ -242,4 +242,23 @@ describe("the Telegram bridge", () => {
       Reflect.deleteProperty(navigator, "vibrate");
     }
   });
+
+  it("does not vibrate in an app nobody has tapped yet, where the browser refuses it with an error", () => {
+    installTelegram(testHost().host);
+    const vibrate = vi.fn(() => true);
+    const activation = { hasBeenActive: false, isActive: false };
+    Object.defineProperty(navigator, "vibrate", { value: vibrate, configurable: true });
+    Object.defineProperty(navigator, "userActivation", { value: activation, configurable: true });
+    try {
+      // A link to a city that is gone, opened afresh: the app's error haptic.
+      haptic("error");
+      expect(vibrate).not.toHaveBeenCalled();
+      activation.hasBeenActive = true;
+      haptic("error");
+      expect(vibrate).toHaveBeenCalledOnce();
+    } finally {
+      Reflect.deleteProperty(navigator, "vibrate");
+      Reflect.deleteProperty(navigator, "userActivation");
+    }
+  });
 });

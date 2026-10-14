@@ -28,9 +28,13 @@ function openTab(url: string): void {
   window.open(url, "_blank", "noopener");
 }
 
-/** Haptics where the browser vibrates (Android); nothing elsewhere. */
+/**
+ * Haptics where the browser vibrates (Android); nothing elsewhere. Nor before the visitor's first
+ * tap in the app's document — a link to a city that is gone, opened afresh — which the browser
+ * refuses with an error in the console; a browser that cannot tell is let try.
+ */
 function vibrate(pattern: number | number[]): void {
-  navigator.vibrate?.(pattern);
+  if (navigator.userActivation?.hasBeenActive ?? true) navigator.vibrate?.(pattern);
 }
 
 /** The host's yes or no, handed to Telegram's callback; a dialog that broke is a no. */
