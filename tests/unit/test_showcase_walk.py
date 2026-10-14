@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import dataclasses
 import io
 from pathlib import Path
 
@@ -95,6 +97,132 @@ async def test_an_act_that_finds_nothing_names_its_hook() -> None:
     with pytest.raises(demo.MissingHook, match="habit toggle «Sport»"):
         await walk.act(page, walk.SCENES[0].acts[1], "en")  # type: ignore[arg-type]
     assert page.scripts == ['window.__showcase.tap("button.toggle", "Sport", 0)']
+
+
+class Tab:
+    """A tab whose acts find their targets and whose pictures take a moment, as a browser's do."""
+
+    def __init__(self, done: list[str]) -> None:
+        self.done = done
+
+    async def evaluate(self, expression: str) -> object:
+        if expression == walk.TOUCH:
+            self.done.append("touches")
+            return None
+        self.done.append(expression.removeprefix("window.__showcase."))
+        return True
+
+    async def screenshot(self, **params: object) -> bytes:
+        await asyncio.sleep(0.01)
+        return b"a frame"
+
+
+@pytest.fixture
+def done(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """What the demo was asked to do, in order."""
+    done: list[str] = []
+
+    async def load(page: Tab, origin: str, route: str, lang: str, theme: str, *, motion: bool):
+        done.append(f"load {route} {lang} {theme} motion={motion}")
+
+    async def story(page: Tab, lang: str) -> dict[str, int]:
+        done.append(f"story {lang}")
+        return {"habit": 4, "list": 7}
+
+    async def mark(page: Tab, habit: int) -> None:
+        done.append(f"mark {habit}")
+
+    async def go(page: Tab, route: str) -> None:
+        done.append(f"go {route}")
+
+    async def hook(page: Tab, name: str) -> str:
+        done.append(f"hook {name}")
+        return demo.HOOKS[name]
+
+    async def check(page: Tab) -> None:
+        done.append("check")
+
+    stand_ins = {"load": load, "story": story, "mark": mark, "go": go, "hook": hook, "check": check}
+    for name, stand_in in stand_ins.items():
+        monkeypatch.setattr(demo, name, stand_in)
+    return done
+
+
+def short(scene: walk.Scene) -> walk.Scene:
+    """A scene of the table, played in a tenth of a second."""
+    acts = tuple(dataclasses.replace(act, at=0.02 * (n + 1)) for n, act in enumerate(scene.acts))
+    return dataclasses.replace(scene, length=0.1, acts=acts)
+
+
+async def test_each_scene_plays_on_the_demo_as_the_story_left_it(
+    done: list[str], tmp_path: Path
+) -> None:
+    played = {}
+    for scene in walk.SCENES:
+        done.clear()
+        folder = tmp_path / scene.name
+        frames = await walk.record(Tab(done), "http://127.0.0.1:1", short(scene), "en", folder)  # type: ignore[arg-type]
+        assert frames and all(frame.path.parent == folder for frame in frames), scene.name
+        played[scene.name] = list(done)
+    # «Sport», ticked in the first scene, is done in those after it that show it; the list is
+    # the story's. Each screen passes its checks before the touches and the acts.
+    assert played == {
+        "today": [
+            "load / en dark motion=True",
+            "hook weather card",
+            "hook habit toggle",
+            "hook habit toggle",
+            "check",
+            "touches",
+            'scroll("button.toggle", "Sport", 0)',
+            'tap("button.toggle", "Sport", 0)',
+        ],
+        "weather": [
+            "load /weather en dark motion=True",
+            "hook hourly strip",
+            "check",
+            "touches",
+            'drag(".strip", "", 300)',
+        ],
+        "habit": [
+            "load / en dark motion=True",
+            "story en",
+            "mark 4",
+            "go /habits",
+            "hook habit link",
+            "check",
+            "touches",
+            'tap("a.habit__open", "Sport", 0)',
+        ],
+        "money": [
+            "load /habits en dark motion=True",
+            "story en",
+            "mark 4",
+            "go /",
+            "hook tab",
+            "check",
+            "touches",
+            'tap(".tab", "/money", 0)',
+            "hook money legend",
+        ],
+        "list": [
+            "load / en dark motion=True",
+            "story en",
+            "go /notes/7",
+            "hook item check",
+            "check",
+            "touches",
+            'tap("input.item__check:not(:checked)", "", 0)',
+        ],
+    }
+
+
+def test_the_finger_moves_with_what_it_drags() -> None:
+    # One step of both in each frame of the page: the finger's own transition next to the
+    # browser's smooth scroll left it 0.2 s behind the strip and the page (measured).
+    assert "transition: opacity 0.25s;" in walk.TOUCH  # the finger only fades by itself
+    assert "transition: transform" not in walk.TOUCH
+    assert '"smooth"' not in walk.TOUCH
 
 
 def test_the_walk_through_is_shown_at_two_thirds() -> None:

@@ -179,6 +179,28 @@ async def story(page: Page, lang: str) -> dict[str, int]:
     return {"habit": int(found["habit"]), "list": int(found["list"])}
 
 
+# A habit marked done on a day in the data the demo's page serves its app, by the request a tap
+# on its toggle makes (its JSON as text, as the app's own requests reach the host): the status of
+# the answer, or null without the host.
+_MARK = """((habit, day) => {
+  const host = window.__demoHost;
+  if (!host) return null;
+  const path = `/habits/${habit}/marks/${day}`;
+  return host.api({ method: "PUT", path, search: "", body: JSON.stringify({ done: true }) }).status;
+})"""
+
+
+async def mark(page: Page, habit: int) -> None:
+    """Marks a habit done on the day of the frozen moment in the demo the page shows, as a tap on
+    its toggle does: a scene after the one that taps it shows it so."""
+    day = AT.partition("T")[0]
+    status = await page.evaluate(f"{_MARK}({habit}, {json.dumps(day)})")
+    if status is None:
+        raise DemoError("the demo's page has no host for its app")
+    if status != 200:
+        raise DemoError(f"the demo did not mark its habit {habit} done on {day}: {status}")
+
+
 async def load(page: Page, origin: str, route: str, lang: str, theme: str, *, motion: bool) -> None:
     """Opens the demo's device on a route, the first thing a fresh tab does, as a phone shows it:
     390×844 CSS px at DPR 2, touch, no hover, a coarse pointer and Noto's emoji; without `motion`

@@ -86,6 +86,19 @@ async def test_a_demo_without_the_story_says_what_it_misses() -> None:
         await demo.story(Story(None), "ru")  # type: ignore[arg-type]
 
 
+async def test_the_story_s_habit_is_marked_done_on_the_frozen_day() -> None:
+    page = Story(200)
+    await demo.mark(page, 3)  # type: ignore[arg-type]
+    # The request a tap on its toggle makes, through the demo's host: its JSON as text.
+    assert '(3, "2026-10-07")' in page.asked[0]
+    assert "__demoHost" in page.asked[0] and 'method: "PUT"' in page.asked[0]
+    assert "JSON.stringify({ done: true })" in page.asked[0]
+    with pytest.raises(demo.DemoError, match="habit 3 done on 2026-10-07: 422"):
+        await demo.mark(Story(422), 3)  # type: ignore[arg-type]
+    with pytest.raises(demo.DemoError, match="host"):
+        await demo.mark(Story(None), 3)  # type: ignore[arg-type]
+
+
 def test_the_walk_through_holds_on_to_today_s_classes_only() -> None:
     assert demo.HOOKS == {
         "tab": ".tab",

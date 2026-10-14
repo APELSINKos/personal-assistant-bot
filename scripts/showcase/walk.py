@@ -4,11 +4,13 @@ who ask for less motion.
 
 Each scene plays in a browser of its own — a long session slows down and then hangs — on the
 demo's device at the frozen moment, with motion allowed, and is recorded once the page has
-settled. It acts through the DOM, a click() or a smooth scroll, twice at most, and each act draws
-its touch: a ring that grows and fades where a finger taps, a dot that travels with what a finger
-drags. The frames come from polling Page.captureScreenshot, JPEG at about 25 a second at
-780×1688, each stamped with the middle of its request: Page.startScreencast sends 1× frames and
-stops sending them after about 6 s (measured).
+settled; the scenes after the first that show «Спорт» find it done, as the first leaves it. It
+acts through the DOM, twice at most, and each act draws its touch: a ring that grows and fades
+where a finger taps, then click(); where a finger drags, a dot moved in the same step of each
+frame as the strip or the page it moves (the browser's smooth scroll ended 0.2 s before a dot's
+own transition did, measured). The frames come from polling Page.captureScreenshot, JPEG at
+about 25 a second at 780×1688, each stamped with the middle of its request:
+Page.startScreencast sends 1× frames and stops sending them after about 6 s (measured).
 
 The cut: each scene at 15 frames a second, the last frame taken at or before each tick; equal
 neighbours become one longer frame; plain cuts between the scenes, as a crossfade adds 40 % of
@@ -53,11 +55,16 @@ class Act:
 @dataclass(frozen=True)
 class Scene:
     name: str
-    start: str  # the route it opens on; {list} is the id of the story's list
+    start: str  # the route it plays on; {list} is the id of the story's list
     length: float  # seconds
     acts: tuple[Act, ...]
     before: tuple[str, ...] = ()  # hooks the first screen shows besides those it acts on
     after: tuple[str, ...] = ()  # hooks the last screen shows
+    # The route it opens on first when it needs the story: there the demo gives the story's ids
+    # and, when `done`, marks the habit before the start asks for it. That screen asks for none
+    # of the start's data, which the app would keep for 30 s and show without the mark.
+    via: str = ""
+    done: bool = False  # the story's habit done today, as the first scene leaves it
 
 
 @dataclass(frozen=True)
@@ -80,12 +87,34 @@ SCENES = (
     ),
     # «Погода»: the 24 hours dragged towards the evening and its rain.
     Scene("weather", "/weather", 2.4, (Act(0.8, "drag", "hourly strip", by=300),)),
-    # «Привычки»: «Спорт» opens on its streak and year map, «‹ Назад» in the header.
-    Scene("habit", "/habits", 2.3, (Act(0.5, "tap", "habit link", demo.HABIT),)),
-    # The tab «Деньги»: the cards rise and the ring by category appears.
-    Scene("money", "/", 2.1, (Act(0.2, "tap", "tab", "/money"),), after=("money legend",)),
+    # «Привычки», «Спорт» done: it opens on its streak and year map, «‹ Назад» in the header.
+    Scene(
+        "habit",
+        "/habits",
+        2.3,
+        (Act(0.5, "tap", "habit link", demo.HABIT),),
+        via="/",
+        done=True,
+    ),
+    # The tab «Деньги» from «Сегодня», «Спорт» done: the cards rise and the ring by category
+    # appears.
+    Scene(
+        "money",
+        "/",
+        2.1,
+        (Act(0.2, "tap", "tab", "/money"),),
+        after=("money legend",),
+        via="/habits",
+        done=True,
+    ),
     # The pinned list «Покупки»: the first item still open is ticked.
-    Scene("list", "/notes/{list}", 1.6, (Act(0.6, "tap", "item check", only=":not(:checked)"),)),
+    Scene(
+        "list",
+        "/notes/{list}",
+        1.6,
+        (Act(0.6, "tap", "item check", only=":not(:checked)"),),
+        via="/",
+    ),
 )
 
 _TOUCH_STYLE = """
@@ -107,7 +136,7 @@ _TOUCH_STYLE = """
   width: 40px;
   height: 40px;
   margin: -20px 0 0 -20px;
-  transition: transform 0.5s ease-in-out, opacity 0.25s;
+  transition: opacity 0.25s;
 }
 @keyframes showcase-tap {
   from { transform: scale(0.5); opacity: 1; }
@@ -143,6 +172,25 @@ _TOUCH = """(() => {
     dot.style.opacity = "0";
     setTimeout(() => dot.remove(), 300);
   };
+  // A finger laid on at (x, y) that drags `by` px along `axis`: move(px) takes what it drags as
+  // far, and the dot goes with it in the same step of each frame, 0.5 s, slow at both ends.
+  const slide = async (x, y, axis, by, move) => {
+    const dot = touch("finger", x, y);
+    await wait(60);
+    const start = performance.now();
+    await new Promise((resolve) => {
+      const step = (now) => {
+        const t = Math.min(Math.max((now - start) / 500, 0), 1);
+        const moved = (by * (1 - Math.cos(Math.PI * t))) / 2;
+        move(moved);
+        dot.style.transform = `translate${axis}(${-moved}px)`;
+        if (t < 1) requestAnimationFrame(step);
+        else resolve();
+      };
+      requestAnimationFrame(step);
+    });
+    lift(dot);
+  };
   window.__showcase = {
     async tap(selector, which) {
       const target = find(selector, which);
@@ -161,13 +209,12 @@ _TOUCH = """(() => {
       if (!target) return false;
       const outer = frame().getBoundingClientRect();
       const box = target.getBoundingClientRect();
-      const y = outer.top + box.top + box.height * 0.6;
-      const dot = touch("finger", outer.left + box.right - 60, y);
-      await wait(60);
-      dot.style.transform = `translateX(${-by}px)`;
-      target.scrollBy({ left: by, behavior: "smooth" });
-      await wait(560);
-      lift(dot);
+      const from = target.scrollLeft;
+      const far = Math.min(by, target.scrollWidth - target.clientWidth - from);
+      // The finger's way is centred on the strip, so it starts and ends on it.
+      const x = outer.left + box.left + (box.width + far) / 2;
+      await slide(x, outer.top + box.top + box.height * 0.6, "X", far, (moved) =>
+        target.scrollTo({ left: from + moved, behavior: "instant" }));
       return true;
     },
     async scroll(selector, which) {
@@ -175,16 +222,14 @@ _TOUCH = """(() => {
       if (!target) return false;
       const view = frame().contentWindow;
       const box = target.getBoundingClientRect();
-      const end = view.document.documentElement.scrollHeight - view.innerHeight - view.scrollY;
+      const from = view.scrollY;
+      const end = view.document.documentElement.scrollHeight - view.innerHeight - from;
       const centred = Math.round(box.top + box.height / 2 - view.innerHeight / 2);
       const by = Math.max(0, Math.min(centred, end));
       const outer = frame().getBoundingClientRect();
-      const dot = touch("finger", outer.left + outer.width * 0.62, outer.top + outer.height * 0.75);
-      await wait(60);
-      dot.style.transform = `translateY(${-by}px)`;
-      view.scrollBy({ top: by, behavior: "smooth" });
-      await wait(560);
-      lift(dot);
+      const x = outer.left + outer.width * 0.62;
+      await slide(x, outer.top + outer.height * 0.75, "Y", by, (moved) =>
+        view.scrollTo({ top: from + moved, behavior: "instant" }));
       return true;
     },
   };
@@ -211,10 +256,12 @@ async def act(page: Page, act: Act, lang: str) -> None:
 
 async def record(page: Page, origin: str, scene: Scene, lang: str, folder: Path) -> list[Frame]:
     """Plays a scene in a fresh tab and keeps its frames in `folder`, each with its time."""
-    opens = "/" if "{" in scene.start else scene.start
-    await demo.load(page, origin, opens, lang, THEME, motion=True)
-    if opens != scene.start:  # the story's list: its id is the demo's to give
-        await demo.go(page, scene.start.format(**await demo.story(page, lang)))
+    await demo.load(page, origin, scene.via or scene.start, lang, THEME, motion=True)
+    if scene.via:  # the story's ids are the demo's to give
+        story = await demo.story(page, lang)
+        if scene.done:
+            await demo.mark(page, story["habit"])
+        await demo.go(page, scene.start.format(**story))
     for hook in (*scene.before, *(item.hook for item in scene.acts)):
         await demo.hook(page, hook)
     await demo.check(page)

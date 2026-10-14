@@ -1,6 +1,6 @@
 {
   "browser": "Microsoft Edge 155.0.4283.45",
-  "commit": "b1e85c1bfac56eaa77449e4971691cb36028ec57",
+  "commit": "e9cb806783dfce0cd3d483c6bdb1a2032b1393f8",
   "files": {
     "app.dark.en.webp": {
       "sha256": "06b1be02eaa751024a1d9fb13661b15523d61da46662e3b40ae0327c433a1ea6",
@@ -187,8 +187,8 @@
       "size": 75206
     },
     "walkthrough.en.webp": {
-      "sha256": "2b982664687ec3fe08fc73db9910e7dc0eb1711aa7390e2e56695471161dd4b2",
-      "size": 951854
+      "sha256": "50cf5c86f87294ac81ac252d3eb2c7f938021acc7e78993e20d5b603567349a1",
+      "size": 1006744
     },
     "walkthrough.still.en.webp": {
       "sha256": "23abd4b2031d572d013d4865df3d836d59b13ae660dfe307e2c90a9c5ed7b61b",
@@ -199,8 +199,8 @@
       "size": 42768
     },
     "walkthrough.webp": {
-      "sha256": "12c5bb352bd9551400162634ae43d62b45d490c01f17cd30746594bb02b5d9f7",
-      "size": 1018106
+      "sha256": "ad400582a7f81f520e07b2eaad7ffb0b1f9e8a9455c425b8acec231229c6bae9",
+      "size": 1111200
     }
   },
   "from_system_font": [
