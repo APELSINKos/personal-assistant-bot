@@ -209,8 +209,9 @@ function parse(phrase: string, todayWeekday: number): Parsed | null {
     const tail = found[0] + 4;
     take(found[0], 4);
     // On the days named right after it — «по вторникам и четвергам», «во вторник» — or on today's.
+    // The list takes no second «по», as the bot's does not: «по вторникам и по четвергам» is Tuesdays.
     const one = fits(tail, ["в", "во"]) ? ruAcc(low(tail + 1)) : -1;
-    const days = fits(tail, "по") ? dayList(tail + 1, ruDat, "и", "по") : one >= 0 ? { bits: 1 << one, end: tail + 2 } : null;
+    const days = fits(tail, "по") ? dayList(tail + 1, ruDat, "и") : one >= 0 ? { bits: 1 << one, end: tail + 2 } : null;
     if (days) take(tail, days.end - tail);
     return weekly(days?.bits ?? 1 << todayWeekday, 2);
   };
@@ -310,10 +311,12 @@ function parse(phrase: string, todayWeekday: number): Parsed | null {
   /** A unit right after the number makes it a quantity; past a comma or a full stop it does not: «в 10, м. Тверская». */
   const quantity = (number: number) => /\d$/.test(words[number]?.text ?? "") && QUANTITY.test(low(number + 1));
   const clocks: ((start: number) => [string | null, number] | null)[] = [
-    // «at 9», «at 9.30 pm», «7pm», «7:30 am».
+    // «at 9», «at 9.30 pm», «at 9.30am», «7pm», «7:30 am»: a full stop before the minutes only after «at».
     (start) => {
       const after = fits(start, "at") ? start + 1 : start;
-      const glued = /^(\d{1,2})(?::(\d{2}))?([ap])\.?m\.?$/.exec(low(after));
+      const glued = (
+        after > start ? /^(\d{1,2})(?:[:.](\d{2}))?([ap])\.?m\.?$/ : /^(\d{1,2})(?::(\d{2}))?([ap])\.?m\.?$/
+      ).exec(low(after));
       if (glued) return [hhmm(withMeridiem(Number(glued[1]), `${glued[3]}m`), Number(glued[2] ?? 0)), after + 1];
       const clock = (after > start ? /^(\d{1,2})(?:[:.](\d{2}))?$/ : /^(\d{1,2})(?::(\d{2}))?$/).exec(low(after));
       const meridiem = /^([ap])\.?m\.?$/.exec(low(after + 1));
@@ -321,13 +324,15 @@ function parse(phrase: string, todayWeekday: number): Parsed | null {
       if (!clock || after === start || quantity(after)) return null;
       return [hhmm(Number(clock[1]), Number(clock[2] ?? 0)), after + 1];
     },
-    // «в 9», «в 9.30», «к 9», «в 9 часов», «утром в 7», «в 8 вечера».
+    // «в 9», «в 9.30», «к 9», «в 9 часов», «в 9ч», «утром в 7», «в 8 вечера».
     (start) => {
       const pre = own(PART_OF_DAY, low(start)) ? 1 : 0;
-      const clock = fits(start + pre, ["в", "во", "к"]) ? /^(\d{1,2})(?:[:.](\d{2}))?$/.exec(low(start + pre + 1)) : null;
+      const clock = fits(start + pre, ["в", "во", "к"])
+        ? /^(\d{1,2})(?:[:.](\d{2}))?(ч|час|часа|часов)?$/.exec(low(start + pre + 1)) : null;
       if (!clock || quantity(start + pre + 1)) return null;
       let end = start + pre + 2;
-      if (fits(end, ["ч", "час", "часа", "часов"])) end += 1;
+      // The hours as a word of their own, as the bot takes one: none after «9ч».
+      if (!clock[3] && fits(end, ["ч", "час", "часа", "часов"])) end += 1;
       const meridiem = fits(end, MERIDIEMS) ? low(end) : pre ? low(start) : "";
       if (fits(end, MERIDIEMS)) end += 1;
       return [hhmm(withMeridiem(Number(clock[1]), meridiem), Number(clock[2] ?? 0)), end];

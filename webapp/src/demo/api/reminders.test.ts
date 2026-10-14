@@ -225,6 +225,7 @@ describe("a phrase (routers/reminders.py, services/phrases.py)", () => {
       ["в 19.45 позвонить", parsed("позвонить", { date: "2026-10-07", time: "19:45" })],
       ["19:45 позвонить", parsed("позвонить", { date: "2026-10-07", time: "19:45" })],
       ["в 9 часов зарядка", parsed("зарядка", { date: "2026-10-08", time: "09:00" })],
+      ["в 9ч зарядка", parsed("зарядка", { date: "2026-10-08", time: "09:00" })],
       ["к 9 на работу", parsed("на работу", { date: "2026-10-08", time: "09:00" })],
       ["в 8 вечера кино", parsed("кино", { date: "2026-10-07", time: "20:00" })],
       ["утром в 7 пробежка", parsed("пробежка", { date: "2026-10-08", time: "07:00" })],
@@ -232,6 +233,7 @@ describe("a phrase (routers/reminders.py, services/phrases.py)", () => {
       ["в полдень обед", parsed("обед", { date: "2026-10-07", time: "12:00" })],
       ["at 9:30 standup", parsed("standup", { date: "2026-10-08", time: "09:30" })],
       ["at 7:30 am run", parsed("run", { date: "2026-10-08", time: "07:30" })],
+      ["at 9.30am standup", parsed("standup", { date: "2026-10-08", time: "09:30" })],
       ["7pm dinner", parsed("dinner", { date: "2026-10-07", time: "19:00" })],
       ["at midnight sleep", parsed("sleep", { date: "2026-10-08", time: "00:00" })],
       ["в 9 купить 3 яблока", parsed("купить 3 яблока", { date: "2026-10-08", time: "09:00" })],
@@ -271,6 +273,11 @@ describe("a phrase (routers/reminders.py, services/phrases.py)", () => {
       [
         "раз в две недели по вторникам и четвергам в 18:00 полить цветы",
         parsed("полить цветы", weekly(10, "2026-10-08", "18:00", "раз в 2 недели: вт, чт в 18:00", 2)),
+      ],
+      // The bot's list of days every other week has no second «по»: the words from it on are the text.
+      [
+        "раз в две недели по вторникам и по четвергам в 18:00 полить цветы",
+        parsed("и по четвергам полить цветы", weekly(2, "2026-10-13", "18:00", "раз в 2 недели: вт в 18:00", 2)),
       ],
       ["каждую вторую среду в 10 отчёт", parsed("отчёт", weekly(4, "2026-10-14", "10:00", "раз в 2 недели: ср в 10:00", 2))],
       ["каждый месяц 10-го в 12 оплатить телефон", parsed("оплатить телефон", {
