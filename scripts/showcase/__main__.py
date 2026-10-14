@@ -25,8 +25,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import functools
+import io
+import json
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
@@ -34,7 +38,9 @@ from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from scripts.showcase import cdp, fonts, manifest, serve
+from PIL import Image
+
+from scripts.showcase import cdp, chat_page, chats, fonts, manifest, readme, serve
 
 ROOT = Path(__file__).resolve().parents[2]
 IMAGES = ROOT / "docs" / "images"
@@ -51,6 +57,7 @@ class Run:
     themes: tuple[str, ...]
     work: Path  # the run's temporary folder: profiles, frames, pages
     images: Path = IMAGES
+    readmes: Path = ROOT  # where README.md and README.en.md are
     browser: Path | None = None  # Edge or Chrome, for the steps that take pictures
     server: serve.Server | None = None  # /demo/ and /showcase/ for the browser
     written: list[Path] = field(default_factory=list)
@@ -95,9 +102,77 @@ class Step:
     browser: bool = False  # it takes pictures in a browser
 
 
+async def draw_chats(run: Run) -> None:
+    """The bot's messages (spec §13.6): each language's transcript, recorded from the bot, then a
+    page and a picture of each scene in each theme, in a browser of its own per language and
+    theme. The scenes' sums go to the manifest only when every theme was drawn: a picture of the
+    other theme would still show the transcript before."""
+    recorded = {lang: await chats.record(lang) for lang in run.langs}
+    for lang, scenes in recorded.items():
+        run.write(readme.TRANSCRIPT[lang], chats.dump(scenes).encode())
+    run.from_system_font = _from_system_font(run.images)
+    if run.from_system_font:
+        print("Drawn in the machine's own fonts:", ", ".join(run.from_system_font))
+    run.pages.mkdir(parents=True, exist_ok=True)
+    for lang, scenes in recorded.items():
+        for theme in run.themes:
+            pages = {scene: f"chat-{lang}-{theme}-{scene}.html" for scene in scenes}
+            for scene, shown in scenes.items():
+                page = chat_page.html(shown, lang, theme)
+                (run.pages / pages[scene]).write_text(page, encoding="utf-8")
+            play = functools.partial(_shoot_chats, run, pages)
+            for scene, png in (await cdp.scene(f"chats {lang} {theme}", play)).items():
+                run.write(readme.picture(scene, theme, lang), _lossless(png))
+        if set(run.themes) == set(THEMES):
+            run.scenes[readme.TRANSCRIPT[lang]] = manifest.scene_sums(scenes)
+
+
+async def _shoot_chats(run: Run, pages: dict[str, str]) -> dict[str, bytes]:
+    assert run.server is not None, "a step that takes pictures has the server"
+    async with run.launch() as browser:
+        tab = await browser.page()
+        return {
+            scene: await chat_page.shoot(tab, run.server.url(f"/showcase/{name}"))
+            for scene, name in pages.items()
+        }
+
+
+def _lossless(png: bytes) -> bytes:
+    """A shot as a lossless WebP, which the flat colours of a chat keep small."""
+    out = io.BytesIO()
+    with Image.open(io.BytesIO(png)) as shot:
+        shot.convert("RGB").save(out, "WEBP", lossless=True, quality=100, method=6)
+    return out.getvalue()
+
+
+def _from_system_font(images: Path) -> list[str]:
+    """The characters the chat pictures take from the machine's own fonts, Roboto and Noto
+    having none of them (§13.6), over every transcript in docs/images/chat: «U+21BB ↻»."""
+    have = [fonts.coverage(fonts.fetch(font)) for font in fonts.FONTS]
+    drawn: list[str] = []
+    for lang, name in readme.TRANSCRIPT.items():
+        if (images / name).is_file():
+            scenes = json.loads((images / name).read_text(encoding="utf-8"))
+            drawn += [text for scene in scenes.values() for text in chat_page.texts(scene, lang)]
+    return [fonts.describe(char) for char in fonts.outside("".join(drawn), *have)]
+
+
+async def draw_readme(run: Run) -> None:
+    """The «В чате» blocks of the READMEs (spec §15.4), from the transcripts in docs/images/chat;
+    nothing of a README but the text between its markers changes."""
+    for lang in run.langs:
+        transcript = json.loads((run.images / readme.TRANSCRIPT[lang]).read_text(encoding="utf-8"))
+        path = run.readmes / readme.README[lang]
+        changed = readme.write(path, readme.render(transcript, lang))
+        print(f"{path.name}: the chat pictures' block {'written' if changed else 'as it was'}")
+
+
 # The steps of `all` in their order (spec §13.1): screens, compose, walk, chats, readme. Each also
 # runs alone by its name.
-STEPS: tuple[Step, ...] = ()
+STEPS: tuple[Step, ...] = (
+    Step("chats", draw_chats, browser=True),
+    Step("readme", draw_readme),
+)
 
 
 def build_demo() -> None:
@@ -203,6 +278,12 @@ def parse(argv: Sequence[str] | None) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    for stream in (sys.stdout, sys.stderr):
+        # Redirected on Windows, a stream writes the ANSI code page, which has no «↻»: such a
+        # character is printed as its escape rather than stopping the run.
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(errors="backslashreplace")
     args = parse(argv)
     steps = STEPS if args.command == "all" else [s for s in STEPS if s.name == args.command]
     with folder(args.keep) as work:

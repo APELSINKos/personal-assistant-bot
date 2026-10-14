@@ -1,7 +1,132 @@
 {
-  "browser": null,
-  "commit": null,
-  "files": {},
-  "from_system_font": [],
-  "scenes": {}
+  "browser": "Microsoft Edge 155.0.4283.45",
+  "commit": "8c0bc267d18e0444fc0fa25e494acb40c3b10520",
+  "files": {
+    "chat/chats.en.json": {
+      "sha256": "48dab739de59200180e4f5620e9e7d33b4aaa00270e1be4a603b2396dfee4571",
+      "size": 4546
+    },
+    "chat/chats.json": {
+      "sha256": "f8aea66ff537aab58c3b180e9550a1fa062126aabeea28986f8d6c53ec51ce91",
+      "size": 5470
+    },
+    "chat/checklist.dark.en.webp": {
+      "sha256": "9658005dc51e42feaee3607b847f584f2d0986956a9483f11c5482c7aa9d286e",
+      "size": 20730
+    },
+    "chat/checklist.dark.webp": {
+      "sha256": "10c42f710379f692cc53c182944596b12bd58e607f2cf4642cb5eb54849d4532",
+      "size": 22528
+    },
+    "chat/checklist.light.en.webp": {
+      "sha256": "d39d10d07940519b3cf4c196edcaba7ae193643ae406a629b5c5e594961e29b2",
+      "size": 20872
+    },
+    "chat/checklist.light.webp": {
+      "sha256": "365ab75814f3ca7d124c30ebc09c8894c88a0018a4682ccd8c3200573f0db364",
+      "size": 22386
+    },
+    "chat/habits.dark.en.webp": {
+      "sha256": "61a13cdf24037d800263b2c9215ef810a41b107f9e02ec753bd9bc93452e7071",
+      "size": 45440
+    },
+    "chat/habits.dark.webp": {
+      "sha256": "0d0eabd3da87d08a0cb2afeac8b94b76141217b286579686bdece28a78027ee9",
+      "size": 45626
+    },
+    "chat/habits.light.en.webp": {
+      "sha256": "6d7e7ef6d464b0627b704771150ffbb2854bbfb325e21f1ce6286747933a859a",
+      "size": 45190
+    },
+    "chat/habits.light.webp": {
+      "sha256": "f837fa1e73c19407e246499c51590526e645de06b37ea2db8e42b13f035f3576",
+      "size": 45684
+    },
+    "chat/money.dark.en.webp": {
+      "sha256": "21efca513fa5219f92affc4c277b4175eeb152c4c3e0597665c9c29916b6cf10",
+      "size": 14030
+    },
+    "chat/money.dark.webp": {
+      "sha256": "438514e057d542662af22dd0eb6adbcc382d00b643f5ec5001592df6faed1575",
+      "size": 14076
+    },
+    "chat/money.light.en.webp": {
+      "sha256": "cc51aa162df6377c9082912a33afac96cdd0fdff2142f9a0b6bfa9d93f179f03",
+      "size": 14468
+    },
+    "chat/money.light.webp": {
+      "sha256": "9096528a4f257ce2638274b8696110b1c4df720cdde40df0ed7d159db0c9dbed",
+      "size": 14234
+    },
+    "chat/morning.dark.en.webp": {
+      "sha256": "3524fdc051172cc6c21c50225dd5ee6b1490956b83fdbd9068e9e68abcad58fb",
+      "size": 45008
+    },
+    "chat/morning.dark.webp": {
+      "sha256": "6a2b9f84caea77e12e43e69b6a06e50ec5b4497b34085f657ea9f3191b2252a8",
+      "size": 46478
+    },
+    "chat/morning.light.en.webp": {
+      "sha256": "b4f928fd917b75a6fa4e4b676dbdc8ed59d6d4f1a0967733720169fbf471b6c0",
+      "size": 45346
+    },
+    "chat/morning.light.webp": {
+      "sha256": "915f6499b4c958bf73fd0527e28e4d3ad0c591b411f61805704dae18fa1af23f",
+      "size": 46742
+    },
+    "chat/reminder.dark.en.webp": {
+      "sha256": "6d9e5d9d44f5ffddf8b94a01cad6e505c8f4f61545baa51952279043cc77b0c6",
+      "size": 23602
+    },
+    "chat/reminder.dark.webp": {
+      "sha256": "8210231b0cd03199057069a36582773aca0b4f28ebb095889413673ebfa7acaa",
+      "size": 23578
+    },
+    "chat/reminder.light.en.webp": {
+      "sha256": "0a37d8c050f5c883336a812e690a3fd30a3d2f177b005e1ba5783605090ad134",
+      "size": 24028
+    },
+    "chat/reminder.light.webp": {
+      "sha256": "ac22ea0d605f1c674cfbafe1d2abe4bc52f4ed73e318e1d24c7a4e94a9729fa3",
+      "size": 24352
+    },
+    "chat/week.dark.en.webp": {
+      "sha256": "40b8382c11e18fe4aa84d05ec9aec9f5e5b7f2329842a16b49386dbf00d5e6f3",
+      "size": 29958
+    },
+    "chat/week.dark.webp": {
+      "sha256": "1fe11dcf925137264251beb49abca4c185560a88f16bc1d1be9e99aef8f0d3a9",
+      "size": 28306
+    },
+    "chat/week.light.en.webp": {
+      "sha256": "a6f5f9fb66bfad8e6d10f84531bedc83437cac4bbc85c485253a15f61cafb984",
+      "size": 29776
+    },
+    "chat/week.light.webp": {
+      "sha256": "9ad953d9e6db0320e9c0db53db0550323255c4cc06f28e71c3a9e183787dd7f4",
+      "size": 28098
+    }
+  },
+  "from_system_font": [
+    "U+21BB ↻",
+    "U+2713 ✓"
+  ],
+  "scenes": {
+    "chat/chats.en.json": {
+      "checklist": "2665b6efa07b251c1f451f65303db0b78142cb80bff1063583d8258167cc6301",
+      "habits": "39a3fc82c44a6ac6d02c7e904dbf1166fdb74d3aad8a6437b8af68019fca2306",
+      "money": "b2792cfd40673f90aa18570310080deb6f91404f934dbaba5630c413ff618fc4",
+      "morning": "2502114150a7e84c0139414df5e2214b87d87ec972198b56adab87c03da9b620",
+      "reminder": "84bb7e677e117072665d33d789a5a9e09475d0207e4ec8cb6a11b1f22db1b896",
+      "week": "020cd9ede3047b4a12928a1925421150a4a89fd4c16dedd837238a0e049698f5"
+    },
+    "chat/chats.json": {
+      "checklist": "ba9fefe0aed8f08329815010a71672b7239a4543cc435a30a9a1902e1168eacc",
+      "habits": "22cb06a2f59222b7e7a685979b5196efc9f14219eecda67d1d8aceb555680a03",
+      "money": "0af4ac4a005eec1466ecfdb0db16d75ed41e0d50c34508b23336ef1d04eec73d",
+      "morning": "f07046d2efdd6771950681471803eda155ec4fa1f0ad3ca95cf5657e593f376b",
+      "reminder": "467fa7695a65aa6f25f1e78f2c95fbc453f5f71a7f0e01f594255b46eee6951e",
+      "week": "d8966cb17442355f40f1fd929d9a827e899c9f89bba3b86cf89c6b2d2f21db22"
+    }
+  }
 }

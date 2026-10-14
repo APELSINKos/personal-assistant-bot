@@ -1,22 +1,41 @@
-"""The made-up world of the README's pictures of the bot: Moscow on Wednesday, October 7, 2026,
-and the week of weather from that morning.
+"""The made-up world of the README's pictures of the bot (spec §13.6): Moscow on Wednesday,
+October 7, 2026, the week of weather from that morning, and «Саша» / «Alex», who has used the bot
+for a while — two habits with months of marks, a pinned shopping list, October's spending, a
+workout for the evening and two classes of the fictional group «ДЕМО-01-26».
 
 No real chat, account or server is behind it, and nothing comes from tests/: the weather is an
-Open-Meteo answer written by hand, in Unix seconds like the real one. It is imported without a
-browser: scripts/forecast_card.py draws the README's forecast from it.
+Open-Meteo answer written by hand, in Unix seconds like the real one, and the bank's rates are
+made up as well. The settings give every field, so neither .env nor the developer's environment
+reaches the bot. It is imported without a browser: scripts/forecast_card.py draws the README's
+forecast from it, and chats.py records the chats in it.
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from assistant.core.clients.cbr import Point, Rate, Rates
+from assistant.core.clients.openmeteo import City
+from assistant.core.config import Settings
+from assistant.core.errors import InvalidInput, UpstreamUnavailable
+from assistant.core.models import HabitMark, Lesson, ScheduleKind, ScheduleSource, User, WeekLabel
+from assistant.core.services import habits, money, notes, reminders
+
 MOSCOW = ZoneInfo("Europe/Moscow")
+# The chats' clock, in its order: the digest; the user writes; the evening's workout goes, in no
+# picture; the reminder made at noon fires the next morning.
 DIGEST = datetime(2026, 10, 7, 8, 0, tzinfo=MOSCOW)  # the morning digest asks for the forecast
+PHRASES = datetime(2026, 10, 7, 12, 40, tzinfo=MOSCOW)
+EVENING = datetime(2026, 10, 7, 19, 0, tzinfo=MOSCOW)
+NEXT_MORNING = datetime(2026, 10, 8, 7, 30, tzinfo=MOSCOW)
 CITY = {"ru": "Москва", "en": "Moscow"}
+LAT, LON = 55.75204, 37.61781
 
 # Wednesday hour by hour from 00:00: a cold, overcast morning, +6 at the digest and +13 in the
 # afternoon, so the evening is warmer than the morning.
@@ -145,3 +164,217 @@ def forecast_answer() -> dict[str, Any]:
             "sunset": [_stamp(_sun(day)[1]) for day in days],
         },
     }
+
+
+# The user, the names of the demo (spec §17: no real person) and the numbers of their own.
+USER = 1
+NAME = {"ru": "Саша", "en": "Alex"}
+BUDGET = 3_000_000  # 30 000 ₽ a month, in hundredths
+# «Спорт» every day since August: a miss now and then, a few days left unmarked, and today not
+# marked yet, so the strip of nine days ends with a run of five.
+SPORT = {"ru": "Спорт", "en": "Sport"}
+SPORT_SINCE = date(2026, 8, 3)
+SPORT_MISSED = (
+    date(2026, 8, 9), date(2026, 8, 21), date(2026, 9, 2),
+    date(2026, 9, 14), date(2026, 9, 26), date(2026, 10, 1),
+)  # fmt: skip
+SPORT_UNMARKED = (date(2026, 8, 15), date(2026, 9, 6), date(2026, 9, 20))
+# «Бассейн» three times a week since the term began: the goal met for three weeks running, one
+# swim so far this week. The list shows it as a week's progress, «Спорт» as days.
+SWIMMING = {"ru": "Бассейн", "en": "Swimming"}
+SWIMMING_SINCE = date(2026, 8, 31)
+SWIMS = (
+    date(2026, 8, 31), date(2026, 9, 2), date(2026, 9, 4), date(2026, 9, 8), date(2026, 9, 12),
+    date(2026, 9, 14), date(2026, 9, 16), date(2026, 9, 18), date(2026, 9, 21), date(2026, 9, 24),
+    date(2026, 9, 26), date(2026, 9, 29), date(2026, 10, 1), date(2026, 10, 3), date(2026, 10, 5),
+)  # fmt: skip
+SWIMMING_MISSED = (date(2026, 9, 10),)
+SHOPPING = {
+    "ru": ("Покупки", ("молоко", "хлеб", "яйца")),
+    "en": ("Shopping", ("milk", "bread", "eggs")),
+}
+WORKOUT = {"ru": "тренировка", "en": "workout"}  # today at 19:00
+# October before «кофе 250»: 23 600 ₽, 79 % of the budget, so the coffee (23 850 ₽) stays short of
+# the 80 % warning at 24 000 ₽. The rent of the 1st is the one large payment; the other days are
+# ordinary, yesterday's 2 040 ₽ among them, which the digest shows.
+# (day, preset, roubles, (the note in Russian, in English))
+OCTOBER = (
+    (1, "home", 12_000, ("квартира", "rent")),
+    (1, "groceries", 1_350, ("продукты", "groceries")),
+    (2, "cafe", 520, ("обед", "lunch")),
+    (2, "groceries", 1_350, ("продукты", "groceries")),
+    (3, "fun", 1_600, ("кино", "cinema")),
+    (3, "cafe", 860, ("обед", "lunch")),
+    (4, "groceries", 1_650, ("продукты", "groceries")),
+    (5, "transport", 1_400, ("такси", "taxi")),
+    (5, "phone", 830, ("связь", "phone")),
+    (6, "cafe", 640, ("обед", "lunch")),
+    (6, "groceries", 1_400, ("продукты", "groceries")),
+)
+# «Группа МИРЭА»: the demo's fictional group and its Wednesday, the term's sixth week. In English
+# the subjects are English, the rooms in Latin letters and the kinds of class left out, as in the
+# demo. (start, end, kind, subject, room)
+GROUP = {"ru": "ДЕМО-01-26", "en": "DEMO-01-26"}
+WEEK_LABEL = {"ru": "6 неделя", "en": "Week 6"}
+CLASSES = {
+    "ru": (
+        ("10:40", "12:10", "ЛК", "Математический анализ", "А-16"),
+        ("12:40", "14:10", "ПР", "Разработка баз данных", "И-212-б"),
+    ),
+    "en": (
+        ("10:40", "12:10", None, "Calculus", "A-16"),
+        ("12:40", "14:10", None, "Databases", "I-212-b"),
+    ),
+}
+DOLLAR, EURO = Rate(81.4675, -0.2349), Rate(94.8312, 0.1708)
+
+
+def settings() -> Settings:
+    """The bot's settings in the world: every field given, since an argument wins over the
+    environment, and .env left unread. A developer's .env holds the bot's token and the app's
+    address, which would put «📱 Открыть приложение» under the welcome and «Мой день»."""
+    return Settings(
+        _env_file=None,
+        bot_token="123456:SHOWCASE",
+        database_url="sqlite+aiosqlite://",
+        webapp_url=None,
+        default_city=CITY["ru"],
+        default_lat=LAT,
+        default_lon=LON,
+        default_timezone="Europe/Moscow",
+        default_morning_time="08:00",
+        log_level="WARNING",
+        http_timeout=10.0,
+        scheduler_interval=20.0,
+        api_host="127.0.0.1",
+        api_port=8000,
+        api_rate_limit=120,
+        api_docs=False,
+        mirea_directory=False,
+    )
+
+
+class Weather:
+    """Open-Meteo for the bot: the week above wherever it is asked about. No search."""
+
+    async def forecast(
+        self, lat: float, lon: float, *, user_id: int | None = None
+    ) -> dict[str, Any]:
+        return forecast_answer()
+
+    async def search(self, name: str, lang: str, *, user_id: int | None = None) -> list[City]:
+        raise UpstreamUnavailable(service="open-meteo")
+
+
+class Bank:
+    """The Central Bank: the dollar and the euro of the morning. No history."""
+
+    async def daily(self) -> Rates:
+        return Rates(DIGEST.date(), DOLLAR, EURO, {"USD": DOLLAR, "EUR": EURO})
+
+    async def history(self, code: str, days: int = 30) -> list[Point]:
+        raise UpstreamUnavailable(service="cbr")
+
+
+class Calendars:
+    """No calendar can be fetched: the group's classes are in the database already."""
+
+    async def fetch(self, url: str) -> bytes:
+        raise InvalidInput(field="url", reason="unreachable")
+
+    async def head(self, url: str, limit: int = 4096) -> bytes:
+        raise InvalidInput(field="url", reason="unreachable")
+
+
+def _moment(day: date, hour: int = 9) -> datetime:
+    """A moment of the day in Moscow, for what the user did before the pictures."""
+    return datetime.combine(day, time(hour), MOSCOW)
+
+
+async def seed(session: AsyncSession, lang: str) -> None:
+    """The user's world in `lang`, written into an empty database through the bot's own services
+    where it has them: what the user had done before the morning of the digest."""
+    user = User(
+        id=USER,
+        first_name=NAME[lang],
+        tg_language=lang,
+        city=CITY[lang],
+        lat=LAT,
+        lon=LON,
+        timezone="Europe/Moscow",
+        morning_enabled=True,
+        morning_time="08:00",
+        can_write=True,
+        money_budget=BUDGET,
+    )
+    session.add(user)
+    await session.flush()
+    sport = await habits.create(session, user, SPORT[lang], _moment(SPORT_SINCE), emoji="💪")
+    day = SPORT_SINCE
+    while day < DIGEST.date():
+        if day not in SPORT_UNMARKED:
+            session.add(HabitMark(habit_id=sport.id, day=day, done=day not in SPORT_MISSED))
+        day += timedelta(days=1)
+    swimming = await habits.create(
+        session,
+        user,
+        SWIMMING[lang],
+        _moment(SWIMMING_SINCE),
+        emoji="🏊",
+        color="sky",
+        weekly_goal=3,
+    )
+    for day in SWIMS:
+        session.add(HabitMark(habit_id=swimming.id, day=day, done=True))
+    for day in SWIMMING_MISSED:
+        session.add(HabitMark(habit_id=swimming.id, day=day, done=False))
+    title, items = SHOPPING[lang]
+    await notes.create(
+        session, user.id, title, items, pinned=True, now=_moment(date(2026, 10, 6), 20)
+    )
+    presets = {category.preset: category for category in await money.categories(session, user)}
+    for number, preset, roubles, (russian, english) in OCTOBER:
+        await money.add_entry(
+            session,
+            user,
+            amount=roubles * 100,
+            category_id=presets[preset].id,
+            note=russian if lang == "ru" else english,
+            day=date(2026, 10, number),
+            now=DIGEST,
+        )
+    evening = EVENING.replace(tzinfo=None)
+    await reminders.create(session, user, WORKOUT[lang], evening, _moment(date(2026, 10, 6), 21))
+    fetched = _moment(DIGEST.date(), 6)
+    session.add(
+        ScheduleSource(
+            user_id=user.id,
+            kind=ScheduleKind.MIREA,
+            title=GROUP[lang],
+            fetched_at=fetched,
+            ok_at=fetched,
+            next_refresh_at=fetched + timedelta(hours=6),
+        )
+    )
+    for start, end, kind, subject, room in CLASSES[lang]:
+        session.add(
+            Lesson(
+                user_id=user.id,
+                uid=f"{subject}@showcase",
+                starts_at=datetime.combine(DIGEST.date(), time.fromisoformat(start), MOSCOW),
+                ends_at=datetime.combine(DIGEST.date(), time.fromisoformat(end), MOSCOW),
+                title=subject,
+                kind=kind,
+                room=room,
+            )
+        )
+    monday = date(2026, 10, 5)
+    session.add(
+        WeekLabel(
+            user_id=user.id,
+            start_date=monday,
+            end_date=monday + timedelta(days=7),
+            label=WEEK_LABEL[lang],
+        )
+    )
+    await session.flush()

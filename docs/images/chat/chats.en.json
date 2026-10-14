@@ -1,0 +1,178 @@
+{
+  "morning": {
+    "messages": [
+      {
+        "from": "bot",
+        "at": "2026-10-07T08:00",
+        "text": "☀\ufe0f Good morning, Alex!\n📅 Wednesday, October 7\n\n☁\ufe0f Moscow: +6°C, overcast · up to +13°C today\n☔ Rain expected after 18:00 — an umbrella will come in handy\n🧥 Cold in the morning, warmer in the evening\n🎓 To classes (10:40): +10°C · after (14:10): +13°C\n\n📌 Today:\n• 19:00 — workout\n🎓 Classes · Week 6:\n• 10:40–12:10 Calculus · A-16\n• 12:40–14:10 Databases · I-212-b\n\n🎯 Habits for today: 2 — don't forget to mark them\n🔥 Best streak: “Swimming” — 3 weeks\n💰 Yesterday: 2,040\u00a0₽ · 6,400\u00a0₽ left — 256\u00a0₽ a day\n💵 81.47 ₽ · 💶 94.83 ₽",
+        "inline": [
+          [
+            "🕐 Hourly",
+            "📅 Week"
+          ]
+        ]
+      }
+    ]
+  },
+  "week": {
+    "messages": [
+      {
+        "from": "bot",
+        "at": "2026-10-07T08:00",
+        "text": "📅 Moscow — 7 days\n\nToday 🌧 +5…+13°C 💧 80%\nTomorrow ☁\ufe0f +5…+11°C 💧 20%\nFri, 9 Oct 🌤 +3…+12°C\nSat, 10 Oct ☀\ufe0f +2…+12°C\nSun, 11 Oct 🌦 +6…+10°C 💧 70%\nMon, 12 Oct 🌫 +4…+8°C\nTue, 13 Oct 🌨 -1…+3°C 💧 60%",
+        "inline": [
+          [
+            "🌤 Now",
+            "🕐 Hourly",
+            "🖼 Picture"
+          ],
+          [
+            "🏙 Cities"
+          ]
+        ]
+      }
+    ]
+  },
+  "reminder": {
+    "messages": [
+      {
+        "from": "user",
+        "at": "2026-10-07T12:40",
+        "text": "on weekdays at 7:30 workout",
+        "inline": []
+      },
+      {
+        "from": "bot",
+        "at": "2026-10-07T12:40",
+        "text": "↻ on weekdays at 07:30 — workout\nFirst time: Tomorrow, 07:30",
+        "inline": []
+      },
+      {
+        "from": "bot",
+        "at": "2026-10-07T12:40",
+        "text": "✅ I'll remind you on weekdays at 07:30: workout",
+        "inline": []
+      },
+      {
+        "from": "bot",
+        "at": "2026-10-08T07:30",
+        "text": "⏰ Reminder: workout",
+        "inline": [
+          [
+            "+10 min",
+            "+1 h",
+            "Tomorrow"
+          ],
+          [
+            "✓ Done"
+          ]
+        ]
+      }
+    ]
+  },
+  "money": {
+    "messages": [
+      {
+        "from": "user",
+        "at": "2026-10-07T12:40",
+        "text": "coffee 250",
+        "inline": []
+      },
+      {
+        "from": "bot",
+        "at": "2026-10-07T12:40",
+        "text": "✅ ☕ Eating out — 250\u00a0₽ · coffee\nOctober: 23,850\u00a0₽ of 30,000\u00a0₽",
+        "inline": [
+          [
+            "🗂 Category",
+            "↩\ufe0f Undo"
+          ]
+        ]
+      }
+    ]
+  },
+  "habits": {
+    "messages": [
+      {
+        "from": "user",
+        "at": "2026-10-07T12:40",
+        "text": "🎯 Habits",
+        "inline": []
+      },
+      {
+        "from": "bot",
+        "at": "2026-10-07T12:40",
+        "text": "🎯 Your habits (2/10):\n\n1. 💪 Sport — 56 of 66 days 🔥\n    🟩🟩🟥🟩🟩🟩🟩🟩⬜  streak: 5 days\n\n2. 🏊 Swimming — this week 1 of 3 🔥\n    🟩⬜🟩⬜🟩⬜🟩⬜⬜  streak: 3 weeks\n\n🟩 done · 🟥 skipped · ⬜ no mark — the last 9 days",
+        "inline": [
+          [
+            "💪 Sport",
+            "🏊 Swimming"
+          ],
+          [
+            "✅ Mark today"
+          ],
+          [
+            "➕ Add",
+            "🗑 Delete"
+          ]
+        ]
+      }
+    ],
+    "menu": [
+      [
+        "🌤 Weather",
+        "📅 My day"
+      ],
+      [
+        "⏰ Reminders",
+        "📝 Notes"
+      ],
+      [
+        "🎯 Habits",
+        "💰 Money"
+      ],
+      [
+        "🎓 Schedule",
+        "⚙\ufe0f Settings"
+      ]
+    ]
+  },
+  "checklist": {
+    "messages": [
+      {
+        "from": "user",
+        "at": "2026-10-07T12:40",
+        "text": "📝 Notes",
+        "inline": []
+      },
+      {
+        "from": "bot",
+        "at": "2026-10-07T12:40",
+        "text": "📌 Shopping\n\n⬜ milk\n✅ bread\n⬜ eggs",
+        "inline": [
+          [
+            "⬜ milk"
+          ],
+          [
+            "✅ bread"
+          ],
+          [
+            "⬜ eggs"
+          ],
+          [
+            "➕ Items",
+            "🧹 Remove checked"
+          ],
+          [
+            "📌 Unpin",
+            "✏\ufe0f Edit"
+          ],
+          [
+            "🗑 Delete",
+            "↩\ufe0f To notes"
+          ]
+        ]
+      }
+    ]
+  }
+}

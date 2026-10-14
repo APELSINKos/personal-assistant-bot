@@ -47,7 +47,7 @@ def test_the_readmes_show_the_sample_with_its_alt_text() -> None:
         ("en", "README.en.md", "forecast-card.en.jpg"),
     ):
         text = (ROOT / readme).read_text(encoding="utf-8")
-        assert f'<img src="docs/images/{name}" width="360" alt="{forecast_alt(lang)}">' in text
+        assert f'<img src="docs/images/{name}" width="260" alt="{forecast_alt(lang)}">' in text
 
 
 def test_the_readme_forecasts_are_what_the_script_draws() -> None:

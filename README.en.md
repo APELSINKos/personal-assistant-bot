@@ -36,68 +36,70 @@
 | 💰 **Money** | An expense is noted with one phrase right in the chat: “coffee 250”, “yesterday taxi 300”, “+5000 salary”. The category is guessed from a dictionary, and a corrected one is remembered. A monthly budget, total and per category, warns at 80% and 100%, the month's report comes as a picture, Bank of Russia rates — with a 30-day chart and a converter |
 | 🌐 **Two languages** | Russian and English: taken from Telegram, switchable in the settings |
 
-```text
-☀️ Good morning, Alex!
-📅 Monday, September 28
+## In the chat
 
+<!-- chat-pictures: uv run python -m scripts.showcase readme -->
+<table>
+  <tr>
+    <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/chat/morning.dark.en.webp"><img src="docs/images/chat/morning.light.en.webp" width="390" alt="☀️ Good morning, Alex!
+📅 Wednesday, October 7
 ☁️ Moscow: +6°C, overcast · up to +13°C today
 ☔ Rain expected after 18:00 — an umbrella will come in handy
 🧥 Cold in the morning, warmer in the evening
 🎓 To classes (10:40): +10°C · after (14:10): +13°C
-
 📌 Today:
 • 19:00 — workout
-🎓 Classes · Week 5:
+🎓 Classes · Week 6:
 • 10:40–12:10 Calculus · A-16
-• 12:40–14:10 Databases · Room 212
-
-🎯 Habits for today: 3 — don't forget to mark them
-🔥 Best streak: “Sport” — 5 days
-💵 84.20 ₽ · 💶 96.67 ₽
-[🕐 Hourly] [📅 Week]
-```
-
-```text
-📅 Moscow — 7 days
-
-Today 🌧 +6…+13°C 💧 80%
+• 12:40–14:10 Databases · I-212-b
+🎯 Habits for today: 2 — don't forget to mark them
+🔥 Best streak: “Swimming” — 3 weeks
+💰 Yesterday: 2,040 ₽ · 6,400 ₽ left — 256 ₽ a day
+💵 81.47 ₽ · 💶 94.83 ₽
+[🕐 Hourly] [📅 Week]"></picture></td>
+    <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/chat/week.dark.en.webp"><img src="docs/images/chat/week.light.en.webp" width="390" alt="📅 Moscow — 7 days
+Today 🌧 +5…+13°C 💧 80%
 Tomorrow ☁️ +5…+11°C 💧 20%
-Wed, 30 Sep 🌤 +4…+12°C
-Thu, 1 Oct ☀️ +3…+12°C
-Fri, 2 Oct 🌧 +6…+10°C 💧 70%
-Sat, 3 Oct ☁️ +5…+9°C
-Sun, 4 Oct 🌤 +2…+8°C
-[🌤 Now] [🕐 Hourly]
-[🏠 Moscow] [Tula] [Sochi]
-[🏙 Cities]
-```
-
-```text
-🎯 Your habits (2/10):
-
-1. 💪 Sport — 12 of 17 days 🔥
-    🟩🟩🟥🟩🟩🟩🟩🟩⬜  streak: 5 days
-
-2. 📚 Reading — this week 2 of 3 🔥
-    ⬜🟩⬜🟩⬜⬜🟩🟩⬜  streak: 4 weeks
-
-🟩 done · 🟥 skipped · ⬜ no mark — the last 9 days
-```
-
-<p align="center">
-  <img src="docs/images/habit-card.en.jpg" width="360" alt="The card of a “Workout” habit: 42 days in a row, a record of 58 days, 85% over the past year, 5 of 7 this week and a map of the last 12 months">
-</p>
-
-```text
-You: on weekdays at 7:30 workout
+Fri, 9 Oct 🌤 +3…+12°C
+Sat, 10 Oct ☀️ +2…+12°C
+Sun, 11 Oct 🌦 +6…+10°C 💧 70%
+Mon, 12 Oct 🌫 +4…+8°C
+Tue, 13 Oct 🌨 -1…+3°C 💧 60%
+[🌤 Now] [🕐 Hourly] [🖼 Picture]
+[🏙 Cities]"></picture></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/chat/reminder.dark.en.webp"><img src="docs/images/chat/reminder.light.en.webp" width="390" alt="You: on weekdays at 7:30 workout
 Bot: ↻ on weekdays at 07:30 — workout
-     First time: Tomorrow, 07:30
-     [✅ Create] [🕘 Another time] [✖️ Cancel]
-```
-
-```text
-📌 Shopping
-
+First time: Tomorrow, 07:30
+Bot: ✅ I'll remind you on weekdays at 07:30: workout
+October 8
+Bot: ⏰ Reminder: workout
+[+10 min] [+1 h] [Tomorrow]
+[✓ Done]"></picture></td>
+    <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/chat/money.dark.en.webp"><img src="docs/images/chat/money.light.en.webp" width="390" alt="You: coffee 250
+Bot: ✅ ☕ Eating out — 250 ₽ · coffee
+October: 23,850 ₽ of 30,000 ₽
+[🗂 Category] [↩️ Undo]"></picture></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/chat/habits.dark.en.webp"><img src="docs/images/chat/habits.light.en.webp" width="390" alt="You: 🎯 Habits
+Bot: 🎯 Your habits (2/10):
+1. 💪 Sport — 56 of 66 days 🔥
+    🟩🟩🟥🟩🟩🟩🟩🟩⬜  streak: 5 days
+2. 🏊 Swimming — this week 1 of 3 🔥
+    🟩⬜🟩⬜🟩⬜🟩⬜⬜  streak: 3 weeks
+🟩 done · 🟥 skipped · ⬜ no mark — the last 9 days
+[💪 Sport] [🏊 Swimming]
+[✅ Mark today]
+[➕ Add] [🗑 Delete]
+Menu:
+[🌤 Weather] [📅 My day]
+[⏰ Reminders] [📝 Notes]
+[🎯 Habits] [💰 Money]
+[🎓 Schedule] [⚙️ Settings]"></picture></td>
+    <td width="50%" valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/chat/checklist.dark.en.webp"><img src="docs/images/chat/checklist.light.en.webp" width="390" alt="You: 📝 Notes
+Bot: 📌 Shopping
 ⬜ milk
 ✅ bread
 ⬜ eggs
@@ -106,23 +108,20 @@ Bot: ↻ on weekdays at 07:30 — workout
 [⬜ eggs]
 [➕ Items] [🧹 Remove checked]
 [📌 Unpin] [✏️ Edit]
-[🗑 Delete] [↩️ To notes]
-```
+[🗑 Delete] [↩️ To notes]"></picture></td>
+  </tr>
+</table>
+<!-- /chat-pictures -->
 
-```text
-You: coffee 250
-Bot: ✅ ☕ Eating out — 250 ₽ · coffee
-     October: 23,850 ₽ of 30,000 ₽
-     [🗂 Category] [↩️ Undo]
-```
+<table>
+  <tr>
+    <td width="33%" valign="top"><img src="docs/images/habit-card.en.jpg" width="260" alt="The card of a “Workout” habit: 42 days in a row, a record of 58 days, 85% over the past year, 5 of 7 this week and a map of the last 12 months"></td>
+    <td width="33%" valign="top"><img src="docs/images/money-report.en.jpg" width="260" alt="The report for October 2026: 23,600 ₽ spent — 79% of a 30,000 ₽ budget, 6,400 ₽ left — 800 ₽ a day, a ring by category and spending day by day"></td>
+    <td width="33%" valign="top"><img src="docs/images/forecast-card.en.jpg" width="260" alt="The week's forecast for Moscow: now +6°, overcast; for each day an icon, the low, a range bar and the high, from −1° to +13°"></td>
+  </tr>
+</table>
 
-<p align="center">
-  <img src="docs/images/money-report.en.jpg" width="360" alt="The report for October 2026: 23,600 ₽ spent — 79% of a 30,000 ₽ budget, 6,400 ₽ left — 800 ₽ a day, a ring by category and spending day by day">
-</p>
-
-<p align="center">
-  <img src="docs/images/forecast-card.en.jpg" width="360" alt="The week's forecast for Moscow: now +6°, overcast; for each day an icon, the low, a range bar and the high, from −1° to +13°">
-</p>
+The bot draws these pictures; the habit card and the forecast can be sent to any chat right from the app.
 
 ## Mini App
 

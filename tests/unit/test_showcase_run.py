@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+import json
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -7,8 +9,9 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+from PIL import Image
 from scripts.showcase import __main__ as showcase
-from scripts.showcase import manifest
+from scripts.showcase import manifest, readme
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -112,6 +115,68 @@ def test_a_run_prepares_only_what_its_steps_need(
     assert prepared[:2] == ["browser None", "demo"]
 
 
+SCENES = {
+    name: {"messages": [{"from": "bot", "at": "2026-10-07T08:00", "text": name, "inline": []}]}
+    for name in readme.ORDER
+}
+
+
+def png() -> bytes:
+    out = io.BytesIO()
+    Image.new("RGB", (780, 100), "#0e1621").save(out, "PNG")
+    return out.getvalue()
+
+
+@pytest.fixture
+def chats_drawn(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """The chats step with a made-up transcript and a browser that draws plain shots."""
+    shot: list[str] = []
+
+    async def record(lang: str) -> dict[str, object]:
+        return SCENES
+
+    async def shoot(run: showcase.Run, pages: dict[str, str]) -> dict[str, bytes]:
+        shot.extend(pages.values())
+        return {scene: png() for scene in pages}
+
+    monkeypatch.setattr(showcase.chats, "record", record)
+    monkeypatch.setattr(showcase, "_shoot_chats", shoot)
+    monkeypatch.setattr(showcase, "_from_system_font", lambda images: ["U+21BB ↻"])
+    return shot
+
+
+async def test_the_chats_of_one_theme_leave_the_scenes_unrecorded(
+    run: showcase.Run, chats_drawn: list[str]
+) -> None:
+    # The light pictures may still show an older transcript: only a run of both themes says
+    # which transcript the pictures come from.
+    await showcase.draw_chats(run)
+    assert len(chats_drawn) == 6
+    assert (run.images / "chat" / "chats.json").is_file()
+    assert (run.images / "chat" / "morning.dark.webp").is_file()
+    assert not (run.images / "chat" / "morning.light.webp").exists()
+    assert run.scenes == {}
+    assert run.from_system_font == ["U+21BB ↻"]
+    run.themes = ("dark", "light")
+    await showcase.draw_chats(run)
+    assert run.scenes == {"chat/chats.json": manifest.scene_sums(SCENES)}
+
+
+async def test_the_readme_step_writes_between_the_markers_only(
+    run: showcase.Run, tmp_path: Path
+) -> None:
+    (run.images / "chat").mkdir()
+    (run.images / "chat" / "chats.json").write_text(json.dumps(SCENES), encoding="utf-8")
+    run.readmes = tmp_path
+    before, after = "# Личный помощник\n\n", "\n\n## Mini App\n"
+    path = tmp_path / "README.md"
+    path.write_text(f"{before}{readme.START}{readme.END}{after}", encoding="utf-8")
+    await showcase.draw_readme(run)
+    text = path.read_text(encoding="utf-8")
+    assert text == f"{before}{readme.START}{readme.render(SCENES, 'ru')}{readme.END}{after}"
+    assert not (tmp_path / "README.en.md").exists()  # --lang ru
+
+
 def test_the_languages_and_themes_are_checked() -> None:
     args = showcase.parse(["all", "--lang", "en,ru", "--theme", "light"])
     assert (args.command, args.lang, args.theme) == ("all", ("ru", "en"), ("light",))
@@ -136,16 +201,28 @@ def test_the_temporary_folder_goes_unless_it_is_kept(tmp_path: Path) -> None:
     assert (tmp_path / "kept" / "frame.jpg").exists()
 
 
-def test_what_ci_imports_loads_without_a_browser() -> None:
-    # world.py feeds scripts/forecast_card.py and the manifest its test; neither may pull in the
-    # DevTools client, the server or aiohttp (spec §13.1). A fresh interpreter sees what they load.
+def loaded(modules: str) -> list[str]:
+    """Which of aiohttp, the DevTools client and the server a fresh interpreter loads with
+    `modules`."""
     probe = (
-        "import sys; import scripts.forecast_card, scripts.showcase.world, "
-        "scripts.showcase.manifest; "
+        f"import sys; import {modules}; "
         "print(sorted(m for m in ('aiohttp', 'scripts.showcase.cdp', 'scripts.showcase.serve') "
         "if m in sys.modules))"
     )
     answer = subprocess.run(
         [sys.executable, "-c", probe], cwd=ROOT, capture_output=True, text=True, check=True
     )
-    assert answer.stdout.strip() == "[]"
+    found: list[str] = json.loads(answer.stdout.strip().replace("'", '"'))
+    return found
+
+
+def test_what_ci_imports_loads_without_a_browser() -> None:
+    # The modules CI's tests take, scripts/forecast_card.py among them, pull in neither the
+    # DevTools client nor the server (spec §13.1), and those without the bot not even aiohttp.
+    light = (
+        "scripts.forecast_card, scripts.showcase.world, scripts.showcase.manifest, "
+        "scripts.showcase.readme, scripts.showcase.chat_page"
+    )
+    assert loaded(light) == []
+    # The chats run the bot, and aiogram brings aiohttp along by itself: no browser all the same.
+    assert loaded("scripts.showcase.chats") == ["aiohttp"]
