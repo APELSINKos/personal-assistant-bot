@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import pytest
 from scripts.showcase import chats, readme, world
 
+from assistant.bot import scheduler
+from assistant.bot.routers import money_entry
 from assistant.core.config import Settings
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -62,6 +64,32 @@ def test_the_scenes_show_the_chat_s_last_state(recorded: dict[str, dict[str, Any
     # The evening's reminder went at 19:00, outside the pictures.
     texts = [message["text"] for scene in scenes.values() for message in scene["messages"]]
     assert not any("тренировка" in text and "⏰" in text for text in texts)
+
+
+def _broken(*args: object, **kwargs: object) -> NoReturn:
+    raise ValueError("a bug")
+
+
+# What can fail in a scene, and what the run says when it stops.
+FAILURES: dict[str, tuple[object, str, object, str]] = {
+    # A handler that raises: the bot's error router would answer with its apology.
+    "handler": (money_entry, "entry_text", _broken, r"ValueError\('a bug'\)"),
+    # A method the chat cannot show, as if a scene had started to use a new one.
+    "method": (chats, "EditMessageReplyMarkup", type("New", (), {}), "EditMessageReplyMarkup"),
+    # The scheduler logs a failure and goes on: the scene would be short of its message.
+    "digest": (scheduler.texts, "morning_text", _broken, "the scheduler sent 0 messages"),
+    "reminder": (scheduler, "reminder_text", _broken, "the scheduler sent 0 messages"),
+}
+
+
+@pytest.mark.parametrize("failure", FAILURES)
+def test_a_scene_that_fails_stops_the_run(failure: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Else the generator would draw the apology, or a scene without its message, and the test of
+    # the transcripts would agree: the bot really says that then.
+    module, name, broken, said = FAILURES[failure]
+    monkeypatch.setattr(module, name, broken)
+    with pytest.raises(RuntimeError, match=f"a scene failed: .*{said}"):
+        chats.transcript("ru")
 
 
 @pytest.mark.parametrize("lang", LANGS)

@@ -6,7 +6,9 @@ Six scenes: the morning digest; the week under it; a reminder from a phrase, con
 first firing the next morning; «кофе 250»; the habits; the shopping list with an item ticked. An
 edit changes its message in place, buttons alone included, so a picture shows the chat's last
 state. The run starts with /start, in no picture: its welcome brings the menu, which the chat
-keeps, as Telegram does, and the habits' scene shows.
+keeps, as Telegram does, and the habits' scene shows. A scene that fails stops the run, in a
+handler or in the scheduler: neither the bot's apology nor a scene short of its message becomes
+a picture.
 
 A transcript keeps only what a chat shows: who wrote, when, the text and the labels of the buttons,
 row by row — never a button's data, an address or a web app — and the guard below refuses any
@@ -23,7 +25,7 @@ import json
 import re
 import tempfile
 import unicodedata
-from collections.abc import AsyncGenerator, Callable, Iterator
+from collections.abc import AsyncGenerator, Awaitable, Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,6 +43,7 @@ from aiogram.methods import (
 from aiogram.types import (
     CallbackQuery,
     Chat,
+    ErrorEvent,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
@@ -236,6 +239,13 @@ def transcript(lang: str) -> dict[str, Any]:
     return asyncio.run(record(lang))
 
 
+async def _stop(event: ErrorEvent) -> None:
+    """The dispatcher's own error handler, which comes before the bot's error router: a failed
+    update stops the run. The router would answer it with its apology, which the scene would
+    then show."""
+    raise RuntimeError(f"a scene failed: {event.exception!r}") from event.exception
+
+
 async def _play(sessionmaker: async_sessionmaker[AsyncSession], lang: str) -> dict[str, Any]:
     moment = [world.DIGEST]
 
@@ -257,6 +267,7 @@ async def _play(sessionmaker: async_sessionmaker[AsyncSession], lang: str) -> di
         attempts=attempt_limiter(),
         cards=card_limiter(),
     )
+    dispatcher.errors.register(_stop)
     scheduler = Scheduler(bot, sessionmaker, meteo, bank, clock=clock)  # type: ignore[arg-type]
     t = translator(lang)
 
@@ -266,10 +277,16 @@ async def _play(sessionmaker: async_sessionmaker[AsyncSession], lang: str) -> di
     async def presses(number: int, label: str) -> None:
         await dispatcher.feed_update(bot, chat.presses(number, label))
 
+    async def sends_one(job: Awaitable[int]) -> None:
+        # The scheduler logs a failure and goes on: the scene would be short of its message.
+        sent = await job
+        if sent != 1:
+            raise RuntimeError(f"a scene failed: the scheduler sent {sent} messages, not one")
+
     with _world_clock(clock, settings):
         await says("/start")
         chat.scene = "morning"
-        await scheduler.send_digests(clock())
+        await sends_one(scheduler.send_digests(clock()))
         digest = chat.last
         chat.scene = "week"
         await presses(digest, t("button-week"))
@@ -289,9 +306,9 @@ async def _play(sessionmaker: async_sessionmaker[AsyncSession], lang: str) -> di
         await presses(listed, title)
         await presses(listed, items[1])
         moment[0], chat.scene = world.EVENING, None
-        await scheduler.deliver_reminders(clock())
+        await sends_one(scheduler.deliver_reminders(clock()))
         moment[0], chat.scene = world.NEXT_MORNING, "reminder"
-        await scheduler.deliver_reminders(clock())
+        await sends_one(scheduler.deliver_reminders(clock()))
     return chat.transcript()
 
 
