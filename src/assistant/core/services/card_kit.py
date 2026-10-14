@@ -38,7 +38,7 @@ HINT = (163, 159, 192)
 GLASS = (255, 255, 255, 16)
 GLASS_LINE = (255, 255, 255, 30)
 MISSING = "\ue000"  # a private-use character: no font has it, so it shows the «missing» glyph
-# Draws the letters Manrope lacks: the Kazakh Ә Ғ Қ Ң Ұ, the other Cyrillic letters of the CIS
+# Draws the letters Manrope lacks: the Kazakh Ә Ғ Қ Ң Ұ, many other Cyrillic letters of the CIS
 # countries, ʼ and ʻ.
 FALLBACK = "Onest"
 QUALITY = 90

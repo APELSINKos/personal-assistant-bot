@@ -778,6 +778,46 @@ Anyone who keeps the app open across the rollback has to close and reopen
 it: the habits list of 2.6.1 marks the `day` that `GET /habits` returns, which
 the API of 2.6.0 does not send, so until then a tap in that list is refused.
 
+### Going from 2.6.1 to 2.7
+
+Nothing is installed by hand, and the Caddyfile, the units and the scripts
+stay as they are: the deploy runs migration `0007` (`share_cards` may hold a
+picture of no habit — the week's forecast shared from the app — and
+`reminders` gets an index on `parent_id`). The forecast picture is drawn from
+the fonts and emoji in the repository, and Telegram downloads it from the
+site in `WEBAPP_URL`, as it does a habit card. The demo on GitHub Pages is
+built and published from the repository alone and never reaches the server
+([docs/DEPLOY.md](../docs/DEPLOY.md)).
+
+### Going back from 2.7 to 2.6.1
+
+As with 2.6 → 2.5, undo migration `0007` with the 2.7 code that is still
+deployed, then deploy the 2.6.1 commit on purpose:
+
+```bash
+ssh <server> 'sudo bash -s' <<'EOF'
+set -euo pipefail
+systemctl stop assistant-bot assistant-api
+systemctl start assistant-backup.service
+cd /opt/assistant/app
+runuser -u assistant -- bash -c 'set -a; . /etc/assistant/assistant.env; set +a; exec .venv/bin/alembic downgrade 0006'
+EOF
+ssh <server> 'sudo DEPLOY_ALLOW_OLDER=1 /usr/local/sbin/assistant-deploy <v2.6.1 commit sha>'
+```
+
+The downgrade deletes the forecast pictures kept for sharing (they are
+snapshots, drawn again on request), makes `share_cards.habit_id` required
+again and drops the index on `reminders.parent_id`; habit cards and
+everything else stay. The backup runs first, as in the earlier rollbacks:
+the deploy's own snapshot is taken after the downgrade. As there it is
+`assistant-<UTC date>.db`, overwritten by the nightly run at 03:30 UTC.
+
+Anyone who keeps the app open across the rollback has to close and reopen
+it: 2.6.1 has no `/weather/share` and `/weather/card`, so until then
+«Поделиться прогнозом» fails. A forecast message prepared before the rollback
+and not sent yet may arrive without its picture: Telegram fetches the picture
+by its token link, and the downgrade deleted that row.
+
 ## 8. Restore from a backup
 
 Nightly backups live in `/var/backups/assistant`
