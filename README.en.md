@@ -159,7 +159,7 @@ The Open button next to the message field opens the app right inside Telegram �
 | Screen | What's there |
 |---|---|
 | **Today** | A big date, weather with tips (a tap opens the Weather screen), today's classes with the weather on the way and today's plans, one-tap habit marks, today's spending with the budget bar, pinned notes, rates and the best streak. Pull down to refresh |
-| **Weather** | Chips for the cities — home and extra ones; now with the feels-like temperature, gusts, humidity and every tip, a 24-hour strip with a temperature curve, 7 days with range bars, sunrise and sunset |
+| **Weather** | Chips for the cities — home and extra ones; now with the feels-like temperature, gusts, humidity and every tip, a 24-hour strip with a temperature curve, 7 days with range bars, sunrise and sunset; Share the forecast sends the week as a picture to any chat |
 | **Calendar** | A week strip with dots and the week number, a day heading “Today · Tuesday, September 29”, the month on a tap; classes, reminders and repeats per day, editing and deleting, a new reminder from a phrase or the fields |
 | **Habits** | A list with the week's progress and marks that cycle ⬜ → ✅ → ❌ as in the bot. Each habit has its own screen: the streak, the record, the past year's percentage, a year map (a week opens its month), marks for past days, the goal, emoji and color; Share sends the card to any chat |
 | **Notes** | Search above the list, pinned notes on top, checklists with checkboxes and progress, links in the text open on a tap; an editor with a character counter, and leaving with unsaved text asks first |
@@ -221,7 +221,7 @@ cd webapp && npm ci && npm run dev  # the app in a browser
 cd webapp && npm run dev:demo       # the demo: the app without a server or Telegram
 ```
 
-Settings come from environment variables or a `.env` file, see [.env.example](.env.example). To open the app in an ordinary browser you need signed initData: `scripts/dev_init_data.py` prints it using a test bot's token. Checks: `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy`; for the app — `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`. Details in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (Russian).
+Settings come from environment variables or a `.env` file, see [.env.example](.env.example). To open the app in an ordinary browser you need signed initData: `scripts/dev_init_data.py` prints it using a test bot's token. Checks: `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy`; for the app — `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, `npm run build:demo && node scripts/check-demo.mjs dist-demo`. Details in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) (Russian).
 
 ## Roadmap
 

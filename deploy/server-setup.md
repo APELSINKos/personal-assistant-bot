@@ -809,8 +809,7 @@ The downgrade deletes the forecast pictures kept for sharing (they are
 snapshots, drawn again on request), makes `share_cards.habit_id` required
 again and drops the index on `reminders.parent_id`; habit cards and
 everything else stay. The backup runs first, as in the earlier rollbacks:
-the deploy's own snapshot is taken after the downgrade. As there it is
-`assistant-<UTC date>.db`, overwritten by the nightly run at 03:30 UTC.
+the deploy's own snapshot is taken after the downgrade.
 
 Anyone who keeps the app open across the rollback has to close and reopen
 it: 2.6.1 has no `/weather/share` and `/weather/card`, so until then
@@ -894,9 +893,9 @@ the new name, which it gets by itself; only then does the bot get the new
 address, and it sets its menu button to it at start. If the step stops
 without `200`, the bot still has the old address and Caddy serves only the
 new one: run the step again with the old name to go back. Buttons already sent
-into chats keep the old address; a share card prepared before the change does
-too. A Main Mini App link set in @BotFather is changed there. If the IP itself
-changed (the Elastic IP was released, the server was rebuilt), the GitHub
+into chats keep the old address; a shared picture prepared before the change
+does too. A Main Mini App link set in @BotFather is changed there. If the IP
+itself changed (the Elastic IP was released, the server was rebuilt), the GitHub
 secrets `DEPLOY_HOST` and `DEPLOY_KNOWN_HOSTS` are set again as in section 6,
 and the `<server>` alias is pointed at the new address.
 

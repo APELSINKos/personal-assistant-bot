@@ -36,11 +36,17 @@ Pages включается один раз, со сборкой из Actions, а
 
 ```bash
 gh api -X POST repos/APELSINKos/personal-assistant-bot/pages -f build_type=workflow
+gh api repos/APELSINKos/personal-assistant-bot/pages --jq '{html_url, build_type, https_enforced, public}'
+gh api repos/APELSINKos/personal-assistant-bot/environments/github-pages/deployment-branch-policies --jq '[.branch_policies[].name]'
+```
+
+Первая проверка должна показать адрес демо, `workflow` и `true`, вторая — `["main"]`: включая Pages, GitHub может сам создать окружение с этим правилом, и тогда больше ничего не нужно. Только если окружения ещё нет (ответ 404) или `main` в списке нет, окружению задают список веток — `PUT` заодно создаёт окружение — и добавляют в него `main`, а затем повторяют вторую проверку:
+
+```bash
 gh api -X PUT repos/APELSINKos/personal-assistant-bot/environments/github-pages \
   -F 'deployment_branch_policy[protected_branches]=false' -F 'deployment_branch_policy[custom_branch_policies]=true'
 gh api -X POST repos/APELSINKos/personal-assistant-bot/environments/github-pages/deployment-branch-policies \
   -f name=main -f type=branch
-gh api repos/APELSINKos/personal-assistant-bot/pages --jq '{html_url, build_type, https_enforced, public}'
 ```
 
 Если Pages включили уже после пуша в `main`, первый запуск workflow упал; тогда его запускают вручную: `gh workflow run pages.yml --ref main`. Сломанное демо чинится следующим коммитом в `main`; в крайнем случае сайт снимается — `gh api -X DELETE repos/APELSINKos/personal-assistant-bot/pages` (до возвращения ссылки README на демо ведут в 404).
