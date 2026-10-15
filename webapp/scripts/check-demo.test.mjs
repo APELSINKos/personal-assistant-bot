@@ -37,9 +37,10 @@ function artifact(changes = {}) {
       + 'docs="https://react.dev/errors/",r=/^https?:\\/\\/t\\.me\\//,named=/(?<word>x)(?=y)/,u=`https://${host}`,'
       + 'ical=`https://${n.slice(9)}`,hint=`https://…`,scheme="https://",port="https://t.me:443/x",'
       // Listed hosts and a placeholder with the punctuation of a sentence after them, and a listed
-      // host with escaped slashes.
+      // host with escaped slashes, also in a regular expression that escapes its period.
       + 'aside="(https://t.me)",said="https://t.me, https://github.com; https://example.com!",'
-      + 'link=`(https://${host}).`,escaped="https:\\/\\/t.me\\/ikbo63_24_bot",run="1.2.3.4.5";',
+      + 'link=`(https://${host}).`,escaped="https:\\/\\/t.me\\/ikbo63_24_bot",re=/^https:\\/\\/t\\.me\\//,'
+      + 'run="1.2.3.4.5";',
     "assets/index.css": "@font-face{font-family:M;src:url(./manrope.woff2)}a{background:url(https://example.com)}",
     "favicon.svg": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>',
     "og.jpg": COVER,
@@ -85,6 +86,8 @@ describe("check-demo.mjs", { timeout: 30_000 }, () => {
     // Escaped slashes, as JSON may write them, and a stranger in brackets.
     refuses(artifact({ "assets/x.json": '{"a":"https:\\/\\/secret-host.example.net\\/api"}' }), "assets/x.json");
     refuses(artifact({ "assets/index.css": "a{background:url(https://secret-host.example.net)}" }), "assets/index.css");
+    // A regular expression writes a period as «\.», and its host is checked whole.
+    refuses(artifact({ "assets/index.js": "re=/^https:\\/\\/secret-host\\.example\\.net\\//" }), "assets/index.js");
     // A placeholder names no host only when it is the whole host.
     refuses(artifact({ "assets/index.js": "u=`https://${a}.secret-host.example.net/`" }), "assets/index.js");
     // A backslash ends the host of an https address, as a slash does, so this one is not github.com's.
