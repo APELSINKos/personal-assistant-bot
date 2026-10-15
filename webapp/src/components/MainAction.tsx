@@ -29,9 +29,11 @@ export function MainAction({ text, onClick, disabled = false, busy = false }: Pr
 
   useEffect(() => {
     if (!app) return;
-    app.MainButton.setParams({ text, is_active: !disabled && !busy, is_visible: true });
+    // The progress first: telegram-web-app.js makes the button active again when its progress
+    // ends, so the button's state goes after it.
     if (busy) app.MainButton.showProgress?.(false);
     else app.MainButton.hideProgress?.();
+    app.MainButton.setParams({ text, is_active: !disabled && !busy, is_visible: true });
   }, [app, text, disabled, busy]);
 
   if (app) return null;

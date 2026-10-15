@@ -112,6 +112,13 @@ a {
   }
 }
 
+/* The card of a refusal to let the bot write (WriteRefusedCard), which useWriteAccess scrolls into
+   view: scrolled back up to, at the top of a form read to its end, it stops clear of the top edge,
+   near where a screen's content starts (it is still 8px into its rise then). */
+.write-refused {
+  scroll-margin-top: calc(var(--safe-top) + 16px);
+}
+
 .row {
   display: flex;
   align-items: center;

@@ -58,3 +58,9 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # Only the demo's code knows this name: none of it may reach the build for Telegram.
+      - name: No demo code in the build for Telegram
+        run: test -d dist && ! grep -rq __demoHost dist
+      - run: npm run build:demo
+      # The check prints the file and the rule, never what it found: the logs of Actions are public.
+      - run: node scripts/check-demo.mjs dist-demo

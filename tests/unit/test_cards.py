@@ -103,6 +103,8 @@ def test_missed_days_are_painted_apart_from_done_ones() -> None:
     [
         {"name": "Очень длинное название привычки для проверки"},  # 45 characters, two lines
         {"name": "Ж" * 50},  # one word longer than a line
+        {"name": "Кітап оқу әр күні — Ұйқы режимі және таңғы жаттығу"},  # Kazakh, 50 characters
+        {"name": "Қ" * 50},  # only letters of the fallback font
         {"streak": 9999, "record": 9999, "unit": "weeks", "weekly_goal": 3, "week_goal": 3},
     ],
 )
@@ -118,6 +120,12 @@ def test_a_name_loses_only_what_its_font_cannot_draw() -> None:
     assert cards.render(replace(CARD, name="💪 Спорт 读书"), RU) == cards.render(CARD, RU)
     assert cards.render(replace(CARD, name="💪"), RU)[:2] == b"\xff\xd8"  # nothing left: no name
     assert card_kit.drawable("Мои\u0306 день") == "Мой день"  # a decomposed «й» keeps its breve
+
+
+def test_kazakh_letters_of_a_name_are_drawn() -> None:
+    # Manrope lacks «қ»: the fallback font draws it, where 2.6 drew «Кітап оу».
+    kazakh = cards.render(replace(CARD, name="Кітап оқу"), RU)
+    assert kazakh != cards.render(replace(CARD, name="Кітап оу"), RU)
 
 
 def test_every_emoji_and_colour_of_the_set_can_be_drawn() -> None:

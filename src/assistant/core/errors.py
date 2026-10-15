@@ -25,3 +25,9 @@ class NotFound(ServiceError):
 
 class UpstreamUnavailable(ServiceError):
     code = "upstream_unavailable"
+
+
+class WriteForbidden(ServiceError):
+    """Telegram does not let the bot write to the user: blocked, or never started."""
+
+    code = "write_forbidden"

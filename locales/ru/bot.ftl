@@ -106,6 +106,7 @@ weather-city-gone = Этого города уже нет в списке
 button-weather-now = 🌤 Сейчас
 button-hours = 🕐 По часам
 button-week = 📅 Неделя
+button-weather-card = 🖼 Картинка
 button-city-home = 🏠 { $city }
 weather-hours-title = 🕐 { $city } — по часам
 weather-hours-title-local = 🕐 { $city } — по часам (местное время)
@@ -117,6 +118,16 @@ weather-week-title = 📅 { $city } — 7 дней
 weather-day = { $label } { $emoji } { $range }
 weather-day-chance = { $label } { $emoji } { $range } 💧 { $chance } %
 weather-days-none = Прогноза на неделю сейчас нет.
+forecast-card-period = Прогноз на { $count } { $count ->
+        [one] день
+        [few] дня
+       *[many] дней
+    } · { $dates }
+forecast-card-feels = Ощущается как { $temp }
+forecast-card-wind = Ветер { $speed } м/с
+forecast-card-now = сейчас { $time }
+forecast-card-chance = { $chance } %
+forecast-card-caption = { $emoji } { $city }: погода на неделю
 
 ## My day and the morning digest
 today-title = { $part ->
@@ -507,7 +518,7 @@ habit-emoji-ask = 🎨 Выбери эмодзи для «{ $name }»:
 habit-color-ask = 🎨 И цвет — для карточки и приложения:
 habit-rename-ask = ✍️ Новое название для «{ $name }» (до { $limit } символов):
 habit-renamed = ✅ Готово: «{ $name }».
-habit-cards-wait = ⏳ Слишком много карточек подряд — попробуй через { $seconds } с.
+habit-cards-wait = ⏳ Слишком много картинок подряд — попробуй через { $seconds } с.
 
 ## Money
 money-cat-groceries = Продукты

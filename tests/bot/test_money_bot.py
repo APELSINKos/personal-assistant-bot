@@ -151,7 +151,7 @@ async def test_at_most_six_pictures_a_minute(feed, fake, monotonic) -> None:
         await feed(press("report"))
     await feed(press("chart"))
     answer = fake.of(AnswerCallbackQuery)[-1]
-    assert answer.show_alert and answer.text.startswith("⏳ Слишком много карточек подряд")
+    assert answer.show_alert and answer.text.startswith("⏳ Слишком много картинок подряд")
     assert len(fake.of(SendPhoto)) == 6
     monotonic[0] += 61
     await feed(press("chart"))

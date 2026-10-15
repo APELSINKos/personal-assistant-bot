@@ -98,6 +98,14 @@ describe("i18n", () => {
     expect(en.today.classes("09:00", "+3°", "16:20", "+6°")).toBe("🎓 To classes (09:00): +3° · after (16:20): +6°");
   });
 
+  it("keeps the dash of a share's toast on the line before it", () => {
+    // A line never starts with «—», in a toast at 320 px either: the space before the dash does not break.
+    const texts = [ru, en].flatMap((words) => [
+      words.weather.cardSent, words.habits.cardSent, words.errors.write_forbidden, words.errors.share_failed,
+    ]);
+    expect(texts.filter((text) => !text.includes(`${NBSP}— `) || text.includes(" —"))).toEqual([]);
+  });
+
   it("names the row a list's delete button removes, and the city it asks about", () => {
     expect(ru.money.deleteRow("кофе", `430,50${NBSP}₽`)).toBe(`Удалить запись «кофе», 430,50${NBSP}₽`);
     expect(en.money.deleteRow("coffee", "$4.50")).toBe("Delete the entry “coffee”, $4.50");

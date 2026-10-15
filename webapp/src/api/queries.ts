@@ -46,8 +46,26 @@ const OWN_TEXT_REASONS = new Set([
   "forbidden_host", "unreachable", "too_large", "not_calendar", "source",
 ]);
 
+/** Telegram could not send a prepared message: the user may try again, or pick another chat. */
+export class ShareFailed extends Error {
+  constructor() {
+    super("Telegram could not send the message");
+    this.name = "ShareFailed";
+  }
+}
+
+/** Open-Meteo is unavailable: the picture of a forecast can be neither shared nor sent. */
+export class WeatherUnavailable extends Error {
+  constructor() {
+    super("The weather is unavailable");
+    this.name = "WeatherUnavailable";
+  }
+}
+
 /** The key in the `errors` dictionary that explains a failed request. */
 export function errorCode(error: unknown): string {
+  if (error instanceof ShareFailed) return "share_failed";
+  if (error instanceof WeatherUnavailable) return "weather_unavailable";
   if (!(error instanceof ApiError)) return "generic";
   if (error.code === "limit_reached") {
     // The limit's own words where the dictionary has them: «В заметке уже 20 пунктов».
@@ -610,33 +628,75 @@ export function useUpdateHabit() {
   });
 }
 
-export type ShareResult = "shared" | "cancelled" | "sent";
+/**
+ * How sharing a picture ended: shared to the chat the user picked, cancelled in the picker, sent to
+ * the chat with the bot (to forward from there), or stopped without the permission to write.
+ */
+export type ShareResult = "shared" | "cancelled" | "sent" | "stopped";
+
+/** Where a picture goes: a message prepared for Telegram's chat picker, or a photo in the bot's chat. */
+export interface SharePaths {
+  share: string;
+  send: string;
+}
+
+/** A 503 of one of the services behind the API: "telegram" or "open-meteo". */
+function isDown(error: unknown, service: string): boolean {
+  return error instanceof ApiError && error.status === 503 && error.details.service === service;
+}
 
 /**
- * Shares a habit's card: in Telegram 8.0+ through a message the bot prepared (the user picks the
- * chat); where the client or the server cannot, the bot sends the card to the user's chat with
- * it instead, to forward from there.
+ * Shares a picture through Telegram's chat picker. Null when the bot's chat is the way: Telegram
+ * cannot share it after all, or the server cannot prepare messages (no bot, no site).
  */
-export function useShareHabit() {
+async function shareInTelegram(path: string): Promise<"shared" | "cancelled" | null> {
+  let prepared: SharedCard;
+  try {
+    prepared = await api<SharedCard>(path, { method: "POST" });
+  } catch (error) {
+    if (isDown(error, "telegram")) return null;
+    throw error; // the user's to see: a limit, a city gone, Open-Meteo down
+  }
+  const outcome = await shareMessage(prepared.prepared_id);
+  if (outcome === "failed") throw new ShareFailed();
+  if (outcome === "unsupported") return null;
+  return outcome === "sent" ? "shared" : "cancelled";
+}
+
+/**
+ * Shares a picture the bot draws, a habit's card or a city's week: in Telegram 8.0+ through a
+ * message the bot prepared, the user picking the chat; where Telegram or the server cannot, the bot
+ * sends the picture to its chat with the user instead, to forward from there — once `ensureWrite`
+ * (the screen's useWriteAccess) lets it write. A «stopped» says nothing here: a refusal in
+ * Telegram's dialog shows the screen's card, a permission the server did not take has had its toast.
+ */
+export function useShareCard(paths: SharePaths, ensureWrite: () => Promise<boolean>) {
   return useMutation({
-    mutationFn: async (id: number): Promise<ShareResult> => {
-      if (canShareMessages()) {
-        try {
-          const card = await api<SharedCard>(`/habits/${id}/share`, { method: "POST" });
-          return (await shareMessage(card.prepared_id)) ? "shared" : "cancelled";
-        } catch (error) {
-          // 503: the server cannot prepare shared messages; anything else is the user's to see.
-          if (!(error instanceof ApiError && error.status === 503)) throw error;
-        }
+    mutationFn: async (): Promise<ShareResult> => {
+      try {
+        const shared = canShareMessages() ? await shareInTelegram(paths.share) : null;
+        if (shared !== null) return shared;
+        if (!(await ensureWrite())) return "stopped";
+        await api<void>(paths.send, { method: "POST" });
+        return "sent";
+      } catch (error) {
+        // Without the forecast there is no picture of it to share or send: the weather's own words.
+        throw isDown(error, "open-meteo") ? new WeatherUnavailable() : error;
       }
-      await api<void>(`/habits/${id}/card`, { method: "POST" });
-      return "sent";
     },
     onSuccess: (result) => {
-      if (result !== "cancelled") haptic("success");
+      if (result === "shared" || result === "sent") haptic("success");
     },
   });
 }
+
+/** A habit's card. */
+export const useShareHabit = (id: number, ensureWrite: () => Promise<boolean>) =>
+  useShareCard({ share: `/habits/${id}/share`, send: `/habits/${id}/card` }, ensureWrite);
+
+/** A city's week as a picture: 0 is the home city, any other id one of the extra cities. */
+export const useShareForecast = (city: number, ensureWrite: () => Promise<boolean>) =>
+  useShareCard({ share: `/weather/share?city=${city}`, send: `/weather/card?city=${city}` }, ensureWrite);
 
 export const useDeleteHabit = () => useOptimisticRemove<Habit>(keys.habits, (id) => `/habits/${id}`);
 

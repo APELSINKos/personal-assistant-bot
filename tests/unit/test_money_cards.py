@@ -62,6 +62,10 @@ def near(pixel: object, colour: tuple[int, int, int], tolerance: int = 40) -> bo
     return all(abs(a - b) <= tolerance for a, b in zip(pixel, colour, strict=True))
 
 
+def brightest(image: Image.Image, box: tuple[int, int, int, int]) -> int:
+    return max(max(pixel) for pixel in image.crop(box).get_flattened_data())
+
+
 class Recording:
     """Words a picture in Russian and keeps the arguments each message was given."""
 
@@ -149,6 +153,24 @@ def test_every_category_emoji_can_be_drawn() -> None:
         slices = (Slice(emoji, "Своя", 1000, 50), Slice(None, "", 1000, 50))
         report = replace(REPORT, slices=slices, spent=2000)
         assert money_cards.render_report(report, EN)[:2] == b"\xff\xd8"
+
+
+def test_kazakh_letters_of_a_category_are_drawn() -> None:
+    def named(name: str) -> Report:
+        return replace(REPORT, slices=(Slice("🛒", name, 890000, 37), *REPORT.slices[1:]))
+
+    # Manrope lacks «қ»: the fallback font draws it, where 2.6 drew «Азы-түлік».
+    kazakh = money_cards.render_report(named("Азық-түлік"), RU)
+    assert kazakh != money_cards.render_report(named("Азы-түлік"), RU)
+
+
+@pytest.mark.parametrize("name", ["Қоғамдық көлік және такси", "Қ" * 30])
+def test_a_long_kazakh_category_keeps_to_its_room(name: str) -> None:
+    report = replace(REPORT, slices=(Slice("💳", name, 2435000, 100),))
+    image = picture(money_cards.render_report(report, RU)).convert("RGB")
+    # Text is far brighter than the glass and the backdrop (≤ 85 on a plain report).
+    assert brightest(image, (772, 728, 780, 788)) < 120  # between the name's room and «100 %»
+    assert brightest(image, (992, 96, 1028, 1250)) < 120  # the panel's right padding
 
 
 def test_the_rates_picture_and_a_currency_without_data() -> None:

@@ -122,7 +122,7 @@ async def test_the_forecast_under_my_day_comes_as_a_message_of_its_own(feed, fak
     assert fake.of(EditMessageText) == []  # «Мой день» stays as it is
     week = fake.of(SendMessage)[-1]
     assert week is not day and week.text.startswith("📅 Москва — 7 дней\n\nСегодня 🌤 +6…+13°C\n")
-    assert buttons(week)[0] == ["🌤 Сейчас", "🕐 По часам"]
+    assert buttons(week)[0] == ["🌤 Сейчас", "🕐 По часам", "🖼 Картинка"]
 
 
 async def test_rates_and_converter(feed, fake) -> None:

@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from aiogram.methods import AnswerCallbackQuery, EditMessageText, SendMessage
 
-from assistant.bot.keyboards import CityCb, WeatherCb, weather_views
+from assistant.bot.keyboards import CityCb, WeatherCardCb, WeatherCb, weather_views
 from assistant.bot.routers import weather as weather_router
 from assistant.core.clients.openmeteo import City
 from assistant.core.i18n import translator
@@ -120,7 +120,9 @@ async def test_the_views_change_the_message_itself(feed, fake) -> None:
     week = fake.of(EditMessageText)[-1]
     assert week.text.startswith("📅 Москва — 7 дней\n\nСегодня 🌤 +6…+13°C\nЗавтра 🌤 +6…+13°C\n")
     assert week.link_preview_options.is_disabled
-    assert buttons(week) == [["🌤 Сейчас", "🕐 По часам"], ["🏙 Города"]]
+    # Under the week only, the week as a picture.
+    assert buttons(week) == [["🌤 Сейчас", "🕐 По часам", "🖼 Картинка"], ["🏙 Города"]]
+    assert packed(week)[0][2] == WeatherCardCb().pack()
     await feed(callback_update(WeatherCb(view="now").pack()))
     assert fake.of(EditMessageText)[-1].text == NOW_TEXT
     assert buttons(fake.of(EditMessageText)[-1])[0] == ["🕐 По часам", "📅 Неделя"]
@@ -143,7 +145,7 @@ async def test_the_views_in_english(feed, fake) -> None:
     await feed(callback_update(WeatherCb(view="week").pack(), lang="en"))
     week = fake.of(EditMessageText)[-1]
     assert week.text.startswith("📅 Москва — 7 days\n\nToday 🌤 +6…+13°C\n")
-    assert buttons(week)[0] == ["🌤 Now", "🕐 Hourly"]
+    assert buttons(week)[0] == ["🌤 Now", "🕐 Hourly", "🖼 Picture"]
 
 
 async def test_a_city_button_shows_the_same_view_of_that_city(
@@ -215,7 +217,8 @@ async def test_a_gone_city_shows_the_home_city_instead(feed, fake, session, make
         assert fake.of(AnswerCallbackQuery)[-1].text == GONE
         view = fake.of(EditMessageText)[-1]
         assert view.text.startswith("📅 Москва — 7 дней\n")
-        assert buttons(view) == [["🌤 Сейчас", "🕐 По часам"], ["🏙 Города"]]
+        assert buttons(view) == [["🌤 Сейчас", "🕐 По часам", "🖼 Картинка"], ["🏙 Города"]]
+        assert packed(view)[0][2] == WeatherCardCb().pack()  # the city shown: the home one
     assert [city.name for city in await cities.list_for(session, 2)] == ["Сочи"]
 
 

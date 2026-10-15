@@ -275,11 +275,21 @@
   background: var(--accent-text);
 }
 
-/* The last line of the screen: it keeps the room of a card's margin above the tab bar. */
+/* Under the week, with the room of a card's margin under it. */
 .weather-sun {
   margin: 4px 4px 10px;
   font-size: 14px;
   animation: rise 0.35s ease both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+
+/* «Поделиться прогнозом» at the end of the screen: as wide as the cards, a card's margin under it.
+   It rises as they do, but keeps no frame of the rise after it: a kept opacity of 1 would hide the
+   button's disabled look. */
+.weather-share {
+  width: 100%;
+  margin-bottom: 10px;
+  animation: rise 0.35s ease backwards;
   animation-delay: calc(var(--i, 0) * 40ms);
 }
 

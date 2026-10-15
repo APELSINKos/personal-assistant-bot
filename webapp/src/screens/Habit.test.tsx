@@ -1,9 +1,10 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { keys } from "../api/queries";
 import type { HabitDetail } from "../api/types";
 import { Toasts } from "../components/Toasts";
 import { withMark } from "../lib/habits";
+import { BOT_CHAT_URL } from "../lib/links";
 import { installTelegram } from "../test/fakeTelegram";
 import { habit, me } from "../test/fixtures";
 import { mockApi } from "../test/mockApi";
@@ -137,6 +138,36 @@ describe("Habit screen", () => {
     mockApi({ "GET /me": me, "GET /habits/7": DETAIL, "POST /habits/7/card": { status: 204 } });
     fireEvent.click(await screen.findByRole("button", { name: "Поделиться" }));
     expect(await screen.findByText("Карточка в чате с ботом — перешли её, куда захочешь")).toBeInTheDocument();
+  });
+
+  it("asks to let the bot write before it sends the card", async () => {
+    const app = installTelegram({}, "7.10");
+    const { calls } = mockApi({
+      "GET /me": { ...me, can_write: false },
+      "GET /habits/7": DETAIL,
+      "POST /me/write-access": { ...me, can_write: true },
+      "POST /habits/7/card": { status: 204 },
+    });
+    renderWithApp(<><HabitScreen /><Toasts /></>, { path: "/habits/7" });
+    fireEvent.click(await screen.findByRole("button", { name: "Поделиться" }));
+    expect(await screen.findByText("Карточка в чате с ботом — перешли её, куда захочешь")).toBeInTheDocument();
+    expect(app.requestWriteAccess).toHaveBeenCalled();
+    const posts = calls.filter((call) => call.method === "POST").map((call) => call.path);
+    expect(posts).toEqual(["/me/write-access", "/habits/7/card"]);
+  });
+
+  it("shows why the card does not come when the bot may not write", async () => {
+    const refuse = vi.fn((callback?: (allowed: boolean) => void) => callback?.(false));
+    const app = installTelegram({ requestWriteAccess: refuse }, "7.10");
+    const { calls } = mockApi({ "GET /me": { ...me, can_write: false }, "GET /habits/7": DETAIL });
+    renderWithApp(<><HabitScreen /><Toasts /></>, { path: "/habits/7" });
+    fireEvent.click(await screen.findByRole("button", { name: "Поделиться" }));
+    const card = await screen.findByRole("alert");
+    expect(within(card).getByRole("heading", { name: "Разрешить боту писать?" })).toBeInTheDocument();
+    expect(within(card).getByText("Без разрешения бот не сможет прислать карточку.")).toBeInTheDocument();
+    expect(calls.filter((call) => call.method === "POST")).toEqual([]);
+    fireEvent.click(within(card).getByRole("button", { name: "Открыть чат с ботом" }));
+    expect(app.openTelegramLink).toHaveBeenCalledWith(BOT_CHAT_URL);
   });
 
   it("deletes the habit after a confirmation and goes back to the list", async () => {

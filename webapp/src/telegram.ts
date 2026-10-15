@@ -20,6 +20,17 @@ interface TgMainButton extends TgButton {
   hideProgress?(): void;
 }
 
+/** Why a prepared message did not go, in Telegram's words (Bot API 8.0): USER_DECLINED and so on. */
+interface ShareFailure {
+  error?: string;
+}
+
+/** The events the app listens to, each with what telegram-web-app.js passes its listeners. */
+interface TgEvents {
+  themeChanged: () => void;
+  shareMessageFailed: (failure: ShareFailure) => void;
+}
+
 export interface TgWebApp {
   initData: string;
   initDataUnsafe: { user?: TgUser };
@@ -39,8 +50,8 @@ export interface TgWebApp {
   requestWriteAccess?(callback?: (allowed: boolean) => void): void;
   shareMessage?(msgId: string, callback?: (sent: boolean) => void): void;
   openTelegramLink?(url: string): void;
-  onEvent(event: "themeChanged", callback: () => void): void;
-  offEvent(event: "themeChanged", callback: () => void): void;
+  onEvent<E extends keyof TgEvents>(event: E, callback: TgEvents[E]): void;
+  offEvent<E extends keyof TgEvents>(event: E, callback: TgEvents[E]): void;
   BackButton: TgButton;
   MainButton: TgMainButton;
   HapticFeedback?: {
@@ -167,19 +178,60 @@ export function openLink(url: string): void {
   else window.open(url, "_blank", "noopener");
 }
 
-/** Telegram's own "Allow the bot to message you?" dialog; a soft `false` where unsupported. */
 /** Whether this Telegram can share a message the bot prepared (Bot API 8.0). */
 export function canShareMessages(): boolean {
   return Boolean(webApp()?.shareMessage) && supports("8.0");
 }
 
-/** Opens Telegram's chat picker for a prepared message; resolves to whether it was sent. */
-export function shareMessage(preparedId: string): Promise<boolean> {
+/**
+ * How sharing a prepared message ended: sent to the chat the user picked; declined (the picker
+ * closed, or one is open already); unsupported (this Telegram cannot share it after all); failed.
+ */
+export type ShareOutcome = "sent" | "declined" | "unsupported" | "failed";
+
+/**
+ * What a reason in shareMessageFailed means when it is not the user's no: USER_DECLINED, any other
+ * reason or none at all is a closed picker, as it always was.
+ */
+const SHARE_FAILURES = new Map<string, ShareOutcome>([
+  ["UNSUPPORTED", "unsupported"],
+  ["MESSAGE_EXPIRED", "failed"],
+  ["MESSAGE_SEND_FAILED", "failed"],
+  ["UNKNOWN_ERROR", "failed"],
+]);
+
+/**
+ * Opens Telegram's chat picker for a prepared message. Its callback says only whether the message
+ * went; telegram-web-app.js gives the reason it did not in shareMessageFailed right after the
+ * callback, in the same turn, so a «not sent» waits one turn for it.
+ */
+export function shareMessage(preparedId: string): Promise<ShareOutcome> {
   const app = webApp();
-  if (!app?.shareMessage || !supports("8.0")) return Promise.resolve(false);
-  return new Promise((resolve) => app.shareMessage?.(preparedId, (sent) => resolve(sent)));
+  if (!app?.shareMessage || !supports("8.0")) return Promise.resolve("unsupported");
+  return new Promise((resolve) => {
+    let reason: string | undefined;
+    const failed = (failure: ShareFailure) => {
+      reason = failure.error;
+    };
+    const end = (outcome: ShareOutcome) => {
+      app.offEvent("shareMessageFailed", failed);
+      resolve(outcome);
+    };
+    app.onEvent("shareMessageFailed", failed);
+    try {
+      app.shareMessage?.(preparedId, (sent) => {
+        if (sent) end("sent");
+        else setTimeout(() => end(SHARE_FAILURES.get(reason ?? "") ?? "declined"), 0);
+      });
+    } catch (error) {
+      // A picker open already is the user's to finish; any other refusal is a Telegram that
+      // cannot share after all.
+      end(error instanceof Error && error.message === "WebAppShareMessageOpened" ? "declined" : "unsupported");
+    }
+  });
 }
 
+/** Telegram's own "Allow the bot to message you?" dialog; a soft `false` where unsupported. */
 export function requestWriteAccess(): Promise<boolean> {
   const app = webApp();
   if (!app?.requestWriteAccess || !supports("6.9")) return Promise.resolve(false);

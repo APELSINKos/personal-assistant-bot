@@ -45,9 +45,6 @@ DAY_LESSONS_SHOWN = 10
 LESSON_NAME_LIMIT = 120
 # «🕐 По часам»: every hour from the next one, half a day ahead.
 HOURS_SHOWN = 12
-# A chance of rain or snow is worth a mention from this many percent on. The classes line has a
-# threshold of its own (weather.CLASSES_CHANCE).
-CHANCE_SHOWN = 20
 # A pinned note in «Мой день» is one short line: the start of its text.
 PINNED_PREVIEW = 40
 
@@ -103,7 +100,9 @@ def weather_text(now: WeatherNow, t: Translator) -> str:
 
 
 def _chance_shown(chance: int | None) -> bool:
-    return chance is not None and chance >= CHANCE_SHOWN
+    """From weather.CHANCE_SHOWN on, as the forecast picture and the app; the classes line has a
+    threshold of its own (weather.CLASSES_CHANCE)."""
+    return chance is not None and chance >= weather.CHANCE_SHOWN
 
 
 def _same_clock(forecast: Forecast, now: datetime, user_tz: str) -> bool:
@@ -114,7 +113,7 @@ def _same_clock(forecast: Forecast, now: datetime, user_tz: str) -> bool:
 
 
 def _hour_line(hour: Hour, t: Translator) -> str:
-    """«15:00 ☁️ +7°C», with «💧 40 %» from CHANCE_SHOWN on."""
+    """«15:00 ☁️ +7°C», with «💧 40 %» from weather.CHANCE_SHOWN on."""
     emoji, _ = describe_weather(hour.code, hour.is_day)
     values = {"time": hour.at.strftime("%H:%M"), "emoji": emoji, "temp": temp(hour.temperature)}
     if _chance_shown(hour.precip_chance):
@@ -163,8 +162,8 @@ def _week_label(day: date, today: date, t: Translator) -> str:
 
 
 def _day_line(day: Day, today: date, t: Translator) -> str:
-    """«Сегодня ☁️ +2…+7°C», with «💧 80 %» from CHANCE_SHOWN on: the icon is the day's heaviest
-    weather, and the chance tells how likely it is to come."""
+    """«Сегодня ☁️ +2…+7°C», with «💧 80 %» from weather.CHANCE_SHOWN on: the icon is the day's
+    heaviest weather, and the chance tells how likely it is to come."""
     emoji, _ = describe_weather(day.code)
     values = {
         "label": _week_label(day.day, today, t),

@@ -60,6 +60,14 @@ async function answered(outcome: Outcome) {
   await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
 }
 
+/** The card a screen shows on a refusal (WriteRefusedCard), with a stand-in for scrollIntoView. */
+function cardOf(hook: Hook) {
+  const card = document.createElement("div");
+  card.scrollIntoView = vi.fn();
+  hook.result.current.card.current = card;
+  return card;
+}
+
 describe("useWriteAccess", () => {
   it("lets the action through without asking while the profile is not loaded", async () => {
     const { app, calls, hook } = setup(undefined);
@@ -109,6 +117,27 @@ describe("useWriteAccess", () => {
     expect(outcome.answer).toBe(false);
     expect(hook.result.current.refused).toBe(true);
     expect(calls).toEqual([]);
+  });
+
+  it("brings the card into view after each refusal, and only after one", async () => {
+    const { hook } = setup(false, { telegram: { requestWriteAccess: declined() } });
+    const card = cardOf(hook);
+    hook.rerender({ allowed: false });
+    expect(card.scrollIntoView).not.toHaveBeenCalled();
+    await answered(start(hook));
+    expect(card.scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(card.scrollIntoView).toHaveBeenCalledWith({ block: "nearest", behavior: "smooth" });
+    // Refused again while the card shows: `refused` stays up, and the card comes in all the same.
+    await answered(start(hook));
+    expect(card.scrollIntoView).toHaveBeenCalledTimes(2);
+  });
+
+  it("brings the card in at once where less motion is asked for", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query === "(prefers-reduced-motion: reduce)" }) as MediaQueryList);
+    const { hook } = setup(false, { telegram: { requestWriteAccess: declined() } });
+    const card = cardOf(hook);
+    await answered(start(hook));
+    expect(card.scrollIntoView).toHaveBeenCalledWith({ block: "nearest", behavior: "auto" });
   });
 
   it("says no, without a refusal, when the server could not record the answer", async () => {

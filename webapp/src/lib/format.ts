@@ -68,8 +68,8 @@ export function formatRange(low: number | null, high: number | null): string {
 export type ShownChance = number & { readonly __brand: "ShownChance" };
 
 /**
- * The chance the app mentions, as the bot does: from 20 % — the weather of the way to classes from
- * 30 % — else null, and a lower chance goes unsaid.
+ * The chance the app mentions, as the bot and its forecast picture do (weather.CHANCE_SHOWN): from
+ * 20 % — the weather of the way to classes from 30 % — else null, and a lower chance goes unsaid.
  */
 export function shownChance(chance: number | null, from = 20): ShownChance | null {
   return chance !== null && chance >= from ? (chance as ShownChance) : null;
