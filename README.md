@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://apelsinkos.github.io/personal-assistant-bot/?lang=ru">
-    <img src="docs/images/cover.jpg" width="100%" alt="Личный помощник — Telegram-бот и Mini App: погода с советами, напоминания фразой, пары, привычки, заметки и деньги">
+    <img src="docs/images/cover.jpg" width="100%" alt="Личный помощник — Telegram-бот и Mini App: погода с советами, напоминания фразой, пары, привычки, заметки и деньги — открыть демо">
   </a>
 </p>
 
@@ -34,7 +34,7 @@
   <a href="https://apelsinkos.github.io/personal-assistant-bot/?lang=ru">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="docs/images/app.dark.webp">
-      <img src="docs/images/app.light.webp" width="880" alt="Четыре экрана приложения: «Сегодня» с погодой, парами и делами; «Погода» с советами и лентой на сутки; привычка с серией и картой года; «Деньги» с кольцом по категориям">
+      <img src="docs/images/app.light.webp" width="880" alt="Четыре экрана приложения: «Сегодня» с погодой, парами и делами; «Погода» с советами и лентой на сутки; привычка с серией и картой года; «Деньги» с кольцом по категориям — открыть демо">
     </picture>
   </a>
 </p>
@@ -43,7 +43,7 @@
   <a href="https://apelsinkos.github.io/personal-assistant-bot/?lang=ru">
     <picture>
       <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/walkthrough.still.webp">
-      <img src="docs/images/walkthrough.webp" width="360" alt="Приложение за 12 секунд: отметка привычки на «Сегодня», лента погоды на сутки, привычка с картой года, кольцо трат на вкладке «Деньги» и галочка в списке покупок">
+      <img src="docs/images/walkthrough.webp" width="360" alt="Приложение за 12 секунд: отметка привычки на «Сегодня», лента погоды на сутки, привычка с картой года, кольцо трат на вкладке «Деньги» и галочка в списке покупок — открыть демо">
     </picture>
   </a>
 </p>
