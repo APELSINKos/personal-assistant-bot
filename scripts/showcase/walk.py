@@ -173,19 +173,24 @@ _TOUCH = """(() => {
     setTimeout(() => dot.remove(), 300);
   };
   // A finger laid on at (x, y) that drags `by` px along `axis`: move(px) takes what it drags as
-  // far, and the dot goes with it in the same step of each frame, 0.5 s, slow at both ends.
+  // far, and the dot goes with it in the same step of each frame, 0.5 s, slow at both ends. An
+  // error in a step fails the slide at once.
   const slide = async (x, y, axis, by, move) => {
     const dot = touch("finger", x, y);
     await wait(60);
     const start = performance.now();
-    await new Promise((resolve) => {
+    await new Promise((resolve, reject) => {
       const step = (now) => {
-        const t = Math.min(Math.max((now - start) / 500, 0), 1);
-        const moved = (by * (1 - Math.cos(Math.PI * t))) / 2;
-        move(moved);
-        dot.style.transform = `translate${axis}(${-moved}px)`;
-        if (t < 1) requestAnimationFrame(step);
-        else resolve();
+        try {
+          const t = Math.min(Math.max((now - start) / 500, 0), 1);
+          const moved = (by * (1 - Math.cos(Math.PI * t))) / 2;
+          move(moved);
+          dot.style.transform = `translate${axis}(${-moved}px)`;
+          if (t < 1) requestAnimationFrame(step);
+          else resolve();
+        } catch (error) {
+          reject(error);
+        }
       };
       requestAnimationFrame(step);
     });
@@ -255,7 +260,9 @@ async def act(page: Page, act: Act, lang: str) -> None:
 
 
 async def record(page: Page, origin: str, scene: Scene, lang: str, folder: Path) -> list[Frame]:
-    """Plays a scene in a fresh tab and keeps its frames in `folder`, each with its time."""
+    """Plays a scene in a fresh tab and keeps its frames in `folder`, each with its time. The
+    screen it starts on passes demo.check before the recording, and so does the screen its acts
+    lead to after it."""
     await demo.load(page, origin, scene.via or scene.start, lang, THEME, motion=True)
     if scene.via:  # the story's ids are the demo's to give
         story = await demo.story(page, lang)
@@ -289,6 +296,7 @@ async def record(page: Page, origin: str, scene: Scene, lang: str, folder: Path)
     for hook in scene.after:
         await demo.hook(page, hook)
     frames = keep(shots, folder)
+    await demo.check(page)  # after keep(): frames of a screen that fails are there for --keep
     print(f"walk {lang} {scene.name}: {len(frames)} frames in {scene.length:g} s")
     return frames
 

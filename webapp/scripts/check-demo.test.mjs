@@ -36,8 +36,11 @@ function artifact(changes = {}) {
     "assets/index.js": 'const ns="http://www.w3.org/2000/svg",bot="https://t.me/ikbo63_24_bot",v="19.3.0",'
       + 'docs="https://react.dev/errors/",r=/^https?:\\/\\/t\\.me\\//,named=/(?<word>x)(?=y)/,u=`https://${host}`,'
       + 'ical=`https://${n.slice(9)}`,hint=`https://…`,scheme="https://",port="https://t.me:443/x",'
-      + 'run="1.2.3.4.5";',
-    "assets/index.css": "@font-face{font-family:M;src:url(./manrope.woff2)}",
+      // Listed hosts and a placeholder with the punctuation of a sentence after them, and a listed
+      // host with escaped slashes.
+      + 'aside="(https://t.me)",said="https://t.me, https://github.com; https://example.com!",'
+      + 'link=`(https://${host}).`,escaped="https:\\/\\/t.me\\/ikbo63_24_bot",run="1.2.3.4.5";',
+    "assets/index.css": "@font-face{font-family:M;src:url(./manrope.woff2)}a{background:url(https://example.com)}",
     "favicon.svg": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>',
     "og.jpg": COVER,
     ...changes,
@@ -79,6 +82,9 @@ describe("check-demo.mjs", { timeout: 30_000 }, () => {
     refuses(artifact({ "assets/index.js": 'fetch("https://secret-host.example.net/api/me")' }), "assets/index.js");
     refuses(artifact({ "assets/x.json": '{"a":"http://secret-host.example.net"}' }), "assets/x.json");
     refuses(artifact({ "assets/index.js": 'location="https://github.com.secret-host.net/"' }), "assets/index.js");
+    // Escaped slashes, as JSON may write them, and a stranger in brackets.
+    refuses(artifact({ "assets/x.json": '{"a":"https:\\/\\/secret-host.example.net\\/api"}' }), "assets/x.json");
+    refuses(artifact({ "assets/index.css": "a{background:url(https://secret-host.example.net)}" }), "assets/index.css");
     // A placeholder names no host only when it is the whole host.
     refuses(artifact({ "assets/index.js": "u=`https://${a}.secret-host.example.net/`" }), "assets/index.js");
     // A backslash ends the host of an https address, as a slash does, so this one is not github.com's.
@@ -89,6 +95,7 @@ describe("check-demo.mjs", { timeout: 30_000 }, () => {
   it("refuses a bracketed IPv6 host", () => {
     refuses(artifact({ "assets/index.js": 'fetch("https://[2001:db8::7]/api/me")' }), "assets/index.js");
     refuses(artifact({ "assets/index.js": 'fetch("https://[2001:db8::7]:8443/api/me")' }), "assets/index.js");
+    refuses(artifact({ "assets/index.js": 'a="(https://[2001:db8::7])"' }), "assets/index.js");
     refuses(artifact({ "index.html": page({ body: '<img src="//[2001:db8::7]/a.png">\n' }) }), "index.html");
   });
 

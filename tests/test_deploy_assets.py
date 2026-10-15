@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -24,7 +25,7 @@ SPEC_CSP = (
 )
 needs_bash = pytest.mark.skipif(
     sys.platform == "win32" or shutil.which("bash") is None,
-    reason="the deploy scripts run on Linux",
+    reason="the deploy scripts and the workflows' scripts run on Linux",
 )
 # The sandbox every unit shares; the network rules are each unit's own.
 SANDBOX = (
@@ -490,12 +491,6 @@ def pages_jobs() -> dict[str, str]:
     return dict(zip(parts[1::2], parts[2::2], strict=True))
 
 
-def permissions(text: str) -> list[dict[str, str]]:
-    """Every block of permissions in a workflow's text, in order, as {scope: access}."""
-    blocks = re.finditer(r"^( *)permissions:\n((?:\1  [\w-]+: [\w-]+\n)+)", text, re.MULTILINE)
-    return [dict(re.findall(r"([\w-]+): ([\w-]+)", block[2])) for block in blocks]
-
-
 def test_pages_builds_only_green_pushes_to_main_of_this_repository() -> None:
     text = (WORKFLOWS / "pages.yml").read_text(encoding="utf-8")
     assert "workflows: [CI]" in text and "types: [completed]" in text
@@ -530,6 +525,80 @@ def test_pages_publishes_only_the_current_main() -> None:
     assert "\n    if: needs.build.outputs.newest == 'true'\n" in jobs["deploy"]
 
 
+TESTED = "1" * 40  # the commit whose CI finished
+NEWER = "2" * 40  # a commit pushed to main since
+# git as the gate asks it where main is: at $MAIN, or a lookup that fails, as without a network.
+FAKE_GIT = """#!/bin/sh
+[ "$*" = "ls-remote --exit-code origin refs/heads/main" ] || exit 99
+[ -n "$MAIN" ] || exit 2
+printf '%s\\trefs/heads/main\\n' "$MAIN"
+"""
+
+
+def pages_gate() -> str:
+    """The script of pages.yml's step «Only the current main», as the runner's bash gets it."""
+    step = re.search(
+        r"^      - name: Only the current main\n((?:        .*\n)+)",
+        pages_jobs()["build"],
+        re.MULTILINE,
+    )
+    assert step is not None
+    keys, _, script = step[1].partition("        run: |\n")
+    # The commit comes in the step's environment: nothing is written into the script itself.
+    assert "\n        env:\n          SHA: ${{ github.event.workflow_run.head_sha }}\n" in keys
+    assert script and "${{" not in script
+    return textwrap.dedent(script)
+
+
+def run_gate(tmp_path: Path, event: str, main: str | None) -> tuple[int, str, str]:
+    """The gate under the runner's `bash -e` with a git that says where main is: its exit code,
+    what it gave the later steps and what it printed."""
+    (tmp_path / "bin").mkdir()
+    git = tmp_path / "bin" / "git"
+    git.write_text(FAKE_GIT, encoding="utf-8", newline="\n")
+    git.chmod(0o755)
+    script = tmp_path / "gate.sh"
+    script.write_text(pages_gate(), encoding="utf-8", newline="\n")
+    output = tmp_path / "output"  # GITHUB_OUTPUT, which the runner makes empty
+    output.write_text("", encoding="utf-8")
+    env = {
+        "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}",
+        "GITHUB_EVENT_NAME": event,
+        "GITHUB_OUTPUT": str(output),
+        "SHA": TESTED if event == "workflow_run" else "",  # head_sha of the CI run, if any
+    }
+    if main is not None:
+        env["MAIN"] = main
+    result = subprocess.run(["bash", "-e", str(script)], capture_output=True, text=True, env=env)
+    return result.returncode, output.read_text(encoding="utf-8"), result.stdout
+
+
+@needs_bash
+@pytest.mark.parametrize(
+    ("event", "main", "newest"),
+    [
+        ("workflow_run", TESTED, "true"),  # main is still the commit CI tested
+        ("workflow_run", NEWER, "false"),  # main has moved on: an older main is never published
+        ("workflow_dispatch", None, "true"),  # by hand: published without a lookup
+    ],
+    ids=["current", "moved-on", "by-hand"],
+)
+def test_pages_goes_on_only_for_the_commit_main_is_at(
+    tmp_path: Path, event: str, main: str | None, newest: str
+) -> None:
+    code, output, printed = run_gate(tmp_path, event, main)
+    assert (code, output) == (0, f"newest={newest}\n")
+    moved = f"::notice::main has moved past {TESTED}: "
+    assert (moved in printed) == (newest == "false")
+
+
+@needs_bash
+def test_pages_stops_when_it_cannot_tell_where_main_is(tmp_path: Path) -> None:
+    # The step fails, and the later steps get no answer to go on with.
+    code, output, _ = run_gate(tmp_path, "workflow_run", None)
+    assert code != 0 and output == ""
+
+
 def test_pages_checks_the_demo_before_it_uploads() -> None:
     build = pages_jobs()["build"]
     # The same check as CI's: a demo with a stray address or a broken page is never published.
@@ -548,10 +617,12 @@ def test_pages_lets_only_its_deploy_job_publish() -> None:
     text = (WORKFLOWS / "pages.yml").read_text(encoding="utf-8")
     deploy = pages_jobs()["deploy"]
     # The workflow only reads the repository. The deploy job alone may publish, with the token
-    # that proves where a deployment came from, and it may do nothing else.
+    # that proves where a deployment came from, and it may do nothing else. Each block is pinned
+    # whole with the lines around it: a scope added with a comment or in quotes shows too.
     assert text.count("permissions:") == 2
-    assert permissions(text) == [{"contents": "read"}, {"pages": "write", "id-token": "write"}]
-    assert permissions(deploy) == [{"pages": "write", "id-token": "write"}]
+    assert "\npermissions:\n  contents: read\n\njobs:\n" in text
+    publish = "\n    permissions:\n      pages: write\n      id-token: write\n    environment:\n"
+    assert publish in deploy
     assert "\n      name: github-pages\n" in deploy
     assert "- id: deployment\n        uses: actions/deploy-pages@v5\n" in deploy
 

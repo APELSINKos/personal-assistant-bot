@@ -19,8 +19,9 @@ def test_the_covers_fit_a_link_preview() -> None:
     for _, name in COVERS:
         data = (IMAGES / name).read_bytes()
         assert len(data) < 1_000_000, name  # GitHub's limit for a social preview
-        with Image.open(io.BytesIO(data)) as cover:
-            assert (cover.format, cover.mode, cover.size) == ("JPEG", "RGB", (1280, 640)), name
+        with Image.open(io.BytesIO(data)) as picture:
+            found = (picture.format, picture.mode, picture.size)
+            assert found == ("JPEG", "RGB", (1280, 640)), name
 
 
 def test_the_covers_are_what_the_script_draws() -> None:

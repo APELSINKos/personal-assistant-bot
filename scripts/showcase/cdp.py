@@ -228,7 +228,13 @@ class Page:
     async def navigate(self, url: str) -> None:
         """Opens the address and waits for its load event."""
         loaded = self.connection.expect("Page.loadEventFired", session=self.session)
-        answer = await self.send("Page.navigate", {"url": url})
+        try:
+            answer = await self.send("Page.navigate", {"url": url})
+        except BaseException:
+            # Out of time, or no browser: the load event is no longer waited for, and the error a
+            # lost connection sets on it goes unreported («Future exception was never retrieved»).
+            loaded.cancel()
+            raise
         if answer.get("errorText") or "loaderId" not in answer:
             loaded.cancel()  # an error, or a new hash only: no new document comes
             if answer.get("errorText"):

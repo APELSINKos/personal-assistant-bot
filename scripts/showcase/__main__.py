@@ -187,7 +187,8 @@ async def draw_chats(run: Run) -> None:
                 (run.pages / pages[scene]).write_text(page, encoding="utf-8")
             play = functools.partial(_shoot_chats, run, pages)
             for scene, png in (await cdp.scene(f"chats {lang} {theme}", play)).items():
-                run.write(readme.picture(scene, theme, lang), _lossless(png))
+                file = readme.picture(scene, theme, lang)
+                run.write(file, _lossless(png, file))
         if set(run.themes) == set(THEMES):
             run.scenes[readme.TRANSCRIPT[lang]] = manifest.scene_sums(scenes)
 
@@ -202,12 +203,16 @@ async def _shoot_chats(run: Run, pages: dict[str, str]) -> dict[str, bytes]:
         }
 
 
-def _lossless(png: bytes) -> bytes:
-    """A shot as a lossless WebP, which the flat colours of a chat keep small."""
+def _lossless(png: bytes, name: str) -> bytes:
+    """A shot as a lossless WebP, which the flat colours of a chat keep small, within the budget
+    of one picture."""
     out = io.BytesIO()
     with Image.open(io.BytesIO(png)) as shot:
         shot.convert("RGB").save(out, "WEBP", lossless=True, quality=100, method=6)
-    return out.getvalue()
+    data = out.getvalue()
+    if len(data) > compose.PICTURE_BUDGET:
+        raise compose.BudgetError(f"{name}: {len(data)} bytes, over {compose.PICTURE_BUDGET}")
+    return data
 
 
 def _from_system_font(images: Path) -> list[str]:

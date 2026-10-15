@@ -14,10 +14,11 @@ const SCRIPTS = new Set([".js", ".mjs"]);
 const COVER = new URL("../../docs/images/cover.jpg", import.meta.url);
 const LIMIT = 5 * 1024 * 1024;
 
-// An address with its scheme anywhere in a text, and one without it (//host) in an attribute or in
-// CSS. The host runs up to a delimiter, so «[2001:db8::1]» and «сервер.рф» are hosts too; a backslash
-// is one, since an https address treats it as a slash.
-const ABSOLUTE = /https?:\/\/(?:[^\s/?#@"'`<>\\]*@)?([^\s/?#"'`<>\\]*)/gi;
+// An address with its scheme anywhere in a text, its slashes escaped too as JSON may write them
+// («https:\/\/»), and one without it (//host) in an attribute or in CSS. The host runs up to a
+// delimiter, so «[2001:db8::1]» and «сервер.рф» are hosts too; a backslash is one, since an https
+// address treats it as a slash.
+const ABSOLUTE = /https?:(?:\/\/|\\\/\\\/)(?:[^\s/?#@"'`<>\\]*@)?([^\s/?#"'`<>\\]*)/gi;
 const ATTRIBUTE = /=\s*["']?\s*\/\/([^\s/?#"'`<>\\]*)/gi;
 const STYLE = /(?:url\(\s*["']?|@import\s+["'])\s*\/\/([^\s/?#"'`<>\\]*)/gi;
 // Services that make a host name of an IP address.
@@ -29,9 +30,13 @@ const IPV4 = /(?:^|[^\d.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?!\d|\.\d)/
 // two together (src/test/sourceRules.test.ts).
 const LOOKBEHIND = /\(\?<[=!]/;
 
-/** The host an address names, without its port; "" for none: «https://», «https://…», «https://${…}». */
+/**
+ * The host an address names, without its port and the punctuation of a sentence or of CSS after
+ * it, as in «(https://t.me)» and «url(https://t.me)}», where a placeholder keeps its brace; "" for
+ * none: «https://», «https://…», «https://${…}».
+ */
 function hostOf(found) {
-  const host = found.replace(/\.+$/, "").toLowerCase();
+  const host = found.replace(/(\$\{[^}]*\})?[.,;!)}]*$/, "$1").toLowerCase();
   const colon = host.indexOf(":", host.startsWith("[") ? host.indexOf("]") + 1 : 0);
   const name = colon < 0 ? host : host.slice(0, colon);
   return name === "…" || /^\$\{[^}]*\}$/.test(name) ? "" : name;

@@ -162,6 +162,18 @@ async def test_the_chats_of_one_theme_leave_the_scenes_unrecorded(
     assert run.scenes == {"chat/chats.json": manifest.scene_sums(SCENES)}
 
 
+async def test_a_chat_picture_over_its_budget_is_refused_before_it_is_written(
+    run: showcase.Run, chats_drawn: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # As every other picture of the generator: written, it would be recorded in the manifest and
+    # committed, and only CI's check of the pictures' weight would fail it.
+    monkeypatch.setattr(compose, "PICTURE_BUDGET", 30)
+    over = r"^chat/morning\.dark\.webp: \d+ bytes, over 30$"
+    with pytest.raises(compose.BudgetError, match=over):
+        await showcase.draw_chats(run)
+    assert not list(run.images.glob("chat/*.webp"))
+
+
 async def test_the_readme_step_writes_between_the_markers_only(
     run: showcase.Run, tmp_path: Path
 ) -> None:

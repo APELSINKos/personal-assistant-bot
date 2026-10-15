@@ -162,10 +162,13 @@ async def test_each_scene_plays_on_the_demo_as_the_story_left_it(
         done.clear()
         folder = tmp_path / scene.name
         frames = await walk.record(Tab(done), "http://127.0.0.1:1", short(scene), "en", folder)  # type: ignore[arg-type]
-        assert frames and all(frame.path.parent == folder for frame in frames), scene.name
+        # The folder holds the scene's frames, in their order, and nothing else.
+        assert frames and sorted(folder.iterdir()) == [frame.path for frame in frames], scene.name
+        assert all(frame.path.read_bytes() == b"a frame" for frame in frames), scene.name
         played[scene.name] = list(done)
     # «Sport», ticked in the first scene, is done in those after it that show it; the list is
-    # the story's. Each screen passes its checks before the touches and the acts.
+    # the story's. Each screen passes its checks before the touches and the acts, and so does the
+    # screen the acts lead to.
     assert played == {
         "today": [
             "load / en dark motion=True",
@@ -176,6 +179,7 @@ async def test_each_scene_plays_on_the_demo_as_the_story_left_it(
             "touches",
             'scroll("button.toggle", "Sport", 0)',
             'tap("button.toggle", "Sport", 0)',
+            "check",
         ],
         "weather": [
             "load /weather en dark motion=True",
@@ -183,6 +187,7 @@ async def test_each_scene_plays_on_the_demo_as_the_story_left_it(
             "check",
             "touches",
             'drag(".strip", "", 300)',
+            "check",
         ],
         "habit": [
             "load / en dark motion=True",
@@ -193,6 +198,7 @@ async def test_each_scene_plays_on_the_demo_as_the_story_left_it(
             "check",
             "touches",
             'tap("a.habit__open", "Sport", 0)',
+            "check",
         ],
         "money": [
             "load /habits en dark motion=True",
@@ -204,6 +210,7 @@ async def test_each_scene_plays_on_the_demo_as_the_story_left_it(
             "touches",
             'tap(".tab", "/money", 0)',
             "hook money legend",
+            "check",
         ],
         "list": [
             "load / en dark motion=True",
@@ -213,6 +220,7 @@ async def test_each_scene_plays_on_the_demo_as_the_story_left_it(
             "check",
             "touches",
             'tap("input.item__check:not(:checked)", "", 0)',
+            "check",
         ],
     }
 
@@ -223,6 +231,13 @@ def test_the_finger_moves_with_what_it_drags() -> None:
     assert "transition: opacity 0.25s;" in walk.TOUCH  # the finger only fades by itself
     assert "transition: transform" not in walk.TOUCH
     assert '"smooth"' not in walk.TOUCH
+
+
+def test_an_error_in_a_step_of_a_slide_fails_its_act_at_once() -> None:
+    # Its promise settles from inside the frames' steps: an exception there rejects it, and the
+    # act ends with the page's error, not with a command's 20 s and the scene played once more.
+    assert "new Promise((resolve, reject) =>" in walk.TOUCH
+    assert "catch (error) {\n          reject(error);\n        }" in walk.TOUCH
 
 
 def test_the_walk_through_is_shown_at_two_thirds() -> None:

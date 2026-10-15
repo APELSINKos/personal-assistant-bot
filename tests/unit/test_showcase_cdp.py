@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -37,14 +38,14 @@ async def devtools(request: web.Request) -> web.WebSocketResponse:
         elif method == "Test.event":  # the event in its params, then the answer
             await socket.send_json(command["params"])
             await socket.send_json({"id": number, "result": {}})
-        elif method == "Page.navigate":
+        elif method == "Page.navigate" and session == "tab":
             await socket.send_json({"method": "Page.loadEventFired", "sessionId": "other"})
             await socket.send_json({"id": number, "result": {"frameId": "1", "loaderId": "2"}})
             event = {"method": "Page.loadEventFired", "params": {"timestamp": 1}}
             await socket.send_json({**event, "sessionId": session})
-        elif method == "Test.close":
+        elif method == "Test.close" or session == "gone":  # the browser goes away
             await socket.close()
-        # Test.hang: never answered
+        # Test.hang, and the tab of a hung browser: never answered
     return socket
 
 
@@ -93,6 +94,35 @@ async def test_a_message_past_four_megabytes_arrives_whole(connection: cdp.Conne
 async def test_a_page_waits_for_its_own_load_event(connection: cdp.Connection) -> None:
     page = cdp.Page(connection, "tab")
     await page.navigate("http://127.0.0.1/demo/")
+
+
+@pytest.mark.parametrize(
+    ("tab", "failure"), [("hung", cdp.CommandTimeout), ("gone", ConnectionError)]
+)
+async def test_a_navigation_that_fails_leaves_no_load_event_behind(
+    connection: cdp.Connection,
+    monkeypatch: pytest.MonkeyPatch,
+    tab: str,
+    failure: type[Exception],
+) -> None:
+    # Page.navigate without an answer from a hung browser, whose scene plays once more, or from
+    # one that went away: the load event asked for before it goes with it. Left waiting, it would
+    # take the error of the connection's close, which no one reads, and asyncio would print
+    # «Future exception was never retrieved» next to the scene's «once more».
+    asked: list[asyncio.Future[dict[str, Any]]] = []
+
+    def expect(method: str, *, session: str | None = None) -> asyncio.Future[dict[str, Any]]:
+        asked.append(cdp.Connection.expect(connection, method, session=session))
+        return asked[-1]
+
+    monkeypatch.setattr(connection, "expect", expect)
+    send = functools.partialmethod(cdp.Page.send, limit=0.2)  # a command's 20 s, cut short
+    monkeypatch.setattr(cdp.Page, "send", send)
+    with pytest.raises(failure):
+        await cdp.Page(connection, tab).navigate("http://127.0.0.1/demo/")
+    assert [future.done() for future in asked] == [True]  # nothing waits for the load event
+    await connection.close()  # as the scene's browser is closed
+    assert [future._log_traceback for future in asked] == [False]  # no error left unread
 
 
 async def test_another_tab_s_event_is_not_this_tab_s(connection: cdp.Connection) -> None:
